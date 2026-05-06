@@ -23,7 +23,7 @@ dependencies = [
     "fpdf2>=2.7.0",
     "markdown>=3.6",
     "apscheduler>=3.10.0",
-    "python-multipart>=0.0.9",
+    "python-multipart>=0.0.27",
     "tenacity>=9.1.4",
 ]
 
