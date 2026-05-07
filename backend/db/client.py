@@ -177,6 +177,7 @@ def _init_sql():
         ("learning_delta", "INTEGER DEFAULT 0"),
         ("learning_reason", "TEXT DEFAULT ''"),
         ("resume_version", "INTEGER DEFAULT 0"),
+        ("url_hash", "TEXT DEFAULT ''"),
     ]:
         try:
             c.execute(f"ALTER TABLE leads ADD COLUMN {col} {definition}")
@@ -199,7 +200,8 @@ _LEAD_SELECT_COLUMNS = (
     "signal_reason,signal_tags,outreach_reply,outreach_dm,source_meta,feedback,"
     "feedback_note,followup_due_at,last_contacted_at,outreach_email,proposal_draft,"
     "fit_bullets,followup_sequence,proof_snippet,tech_stack,location,urgency,"
-    "base_signal_score,learning_delta,learning_reason,created_at,resume_version"
+    "base_signal_score,learning_delta,learning_reason,created_at,resume_version,"
+    "url_hash"
 )
 
 
@@ -216,6 +218,42 @@ def record_event(job_id: str | None, action: str):
 def url_exists(jid: str) -> bool:
     c = _sq.connect(sql)
     r = c.execute("SELECT 1 FROM leads WHERE job_id=?", (jid,)).fetchone()
+    c.close()
+    return r is not None
+
+
+def _url_hash(url: str) -> str:
+    """Normalized SHA-256 hash of a URL for dedup comparison.
+
+    Strips trailing slashes, query params order, fragments, and whitespace
+    so that minor URL variations resolve to the same hash.
+    """
+    import hashlib
+    from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+
+    if not url or not url.strip():
+        return ""
+    parsed = urlparse(url.strip())
+    # Sort query params for normalization
+    sorted_qs = urlencode(sorted(parse_qs(parsed.query, keep_blank_values=True).items()), doseq=True)
+    normalized = urlunparse((
+        parsed.scheme.lower(),
+        parsed.netloc.lower(),
+        parsed.path.rstrip("/"),
+        parsed.params,
+        sorted_qs,
+        "",  # drop fragment
+    ))
+    return hashlib.sha256(normalized.encode()).hexdigest()[:32]
+
+
+def url_exists_by_url(url: str) -> bool:
+    """Check if a lead with the same URL already exists (by normalized hash)."""
+    h = _url_hash(url)
+    if not h:
+        return False
+    c = _sq.connect(sql)
+    r = c.execute("SELECT 1 FROM leads WHERE url_hash=?", (h,)).fetchone()
     c.close()
     return r is not None
 
@@ -286,8 +324,8 @@ def save_lead(
             signal_score,signal_reason,signal_tags,outreach_reply,outreach_dm,
             outreach_email,proposal_draft,fit_bullets,followup_sequence,
             proof_snippet,tech_stack,location,urgency,base_signal_score,
-            learning_delta,learning_reason,source_meta
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            learning_delta,learning_reason,source_meta,url_hash
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             jid, t, co, u, plat, desc, lead.get("kind") or "job", lead.get("budget") or "",
@@ -304,6 +342,7 @@ def save_lead(
             int(lead.get("learning_delta") or 0),
             str(lead.get("learning_reason") or "")[:700],
             json.dumps(lead.get("source_meta") or {}, ensure_ascii=False),
+            _url_hash(u),
         ),
     )
     c.commit()
@@ -468,6 +507,7 @@ def _lead_row_dict(r) -> dict:
         "learning_reason": r[36] or "",
         "created_at": r[37] or "",
         "resume_version": r[38] or 0,
+        "url_hash": r[39] or "",
     }
 
 
@@ -1590,3 +1630,29 @@ def _add_project_vec(pid: str, title: str, stack: str, impact: str):
                 vec.create_table("projects", data=rows)
     except Exception:
         pass
+
+
+def backfill_url_hashes(limit: int = 5000) -> int:
+    """Compute and store url_hash for leads that don't have one yet.
+
+    Returns the number of leads updated.
+    """
+    c = _sq.connect(sql)
+    rows = c.execute(
+        f"SELECT job_id, url FROM leads "
+        "WHERE COALESCE(url_hash, '') = '' AND COALESCE(url, '') != '' "
+        "ORDER BY created_at DESC LIMIT ?",
+        (max(1, min(int(limit or 5000), 10000)),),
+    ).fetchall()
+
+    updated = 0
+    for row in rows:
+        jid, url = row
+        h = _url_hash(url)
+        if h:
+            c.execute("UPDATE leads SET url_hash=? WHERE job_id=?", (h, jid))
+            updated += 1
+
+    c.commit()
+    c.close()
+    return updated

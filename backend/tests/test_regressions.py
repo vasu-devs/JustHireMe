@@ -1169,5 +1169,38 @@ class TestLeadQualityGate(unittest.TestCase):
         self.assertIn("red flags", quality["reason"])
 
 
+class TestUrlHashDedup(unittest.TestCase):
+    """Verify that _url_hash normalizes URLs so minor variations resolve
+    to the same hash, enabling dedup across different scrapers."""
+
+    def _hash(self, url: str) -> str:
+        from db.client import _url_hash
+        return _url_hash(url)
+
+    def test_trailing_slash_normalized(self):
+        self.assertEqual(self._hash("https://jobs.example.com/posting"),
+                         self._hash("https://jobs.example.com/posting/"))
+
+    def test_fragment_stripped(self):
+        self.assertEqual(self._hash("https://jobs.example.com/posting"),
+                         self._hash("https://jobs.example.com/posting#section"))
+
+    def test_case_insensitive_scheme_and_host(self):
+        self.assertEqual(self._hash("https://Jobs.Example.COM/posting"),
+                         self._hash("https://jobs.example.com/posting"))
+
+    def test_query_param_order_normalized(self):
+        self.assertEqual(self._hash("https://jobs.example.com/search?q=python&loc=remote"),
+                         self._hash("https://jobs.example.com/search?loc=remote&q=python"))
+
+    def test_empty_url_returns_empty_hash(self):
+        self.assertEqual(self._hash(""), "")
+        self.assertEqual(self._hash("   "), "")
+
+    def test_different_paths_are_different(self):
+        self.assertNotEqual(self._hash("https://jobs.example.com/posting-a"),
+                            self._hash("https://jobs.example.com/posting-b"))
+
+
 if __name__ == "__main__":
     unittest.main()
