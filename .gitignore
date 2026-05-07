@@ -72,6 +72,8 @@ src-tauri/resources/backend-*
 *.sqlite3
 JustHireMe/
 BoomBoom/
+JustHireMe/
+justhireme/
 scratch/
 
 # Generated artifacts and local analysis output

@@ -1,16 +1,13 @@
 import os
 import re
 from pydantic import BaseModel, Field
-from db.client import get_profile, sql
+from db.client import get_profile, sql, _data_dir
 import sqlite3 as _sq
 from logger import get_logger
 
 _log = get_logger(__name__)
 
-_assets = os.path.join(
-    os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
-    "JustHireMe", "assets",
-)
+_assets = os.path.join(_data_dir(), "assets")
 os.makedirs(_assets, exist_ok=True)
 
 

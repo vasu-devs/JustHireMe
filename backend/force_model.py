@@ -1,7 +1,17 @@
 import sqlite3
 import os
+import sys
 
-b = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "JustHireMe")
+def _data_dir():
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+        return os.path.join(base, "JustHireMe")
+    if sys.platform == "darwin":
+        return os.path.join(os.path.expanduser("~"), "Library", "Application Support", "JustHireMe")
+    base = os.environ.get("XDG_DATA_HOME", os.path.join(os.path.expanduser("~"), ".local", "share"))
+    return os.path.join(base, "justhireme")
+
+b = _data_dir()
 db_path = os.path.join(b, "crm.db")
 
 conn = sqlite3.connect(db_path)

@@ -655,8 +655,13 @@ async def get_lead_versions(job_id: str):
     ]
     base_dir = next((os.path.dirname(path) for path in paths if path), None)
     if not base_dir:
-        base_dir = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "JustHireMe", "assets")
+        base_dir = os.path.join(_data_dir(), "assets")
     return _versioned_assets(job_id, base_dir)
+
+
+def _data_dir():
+    from db.client import _data_dir as _dd
+    return _dd()
 
 
 @app.get("/api/v1/leads/{job_id}")
@@ -824,7 +829,7 @@ async def get_lead_pdf(job_id: str, kind: str = "resume", version: int | None = 
         ]
         base_dir = next((os.path.dirname(path) for path in paths if path), None)
         if not base_dir:
-            base_dir = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "JustHireMe", "assets")
+            base_dir = os.path.join(_data_dir(), "assets")
         filename = f"{job_id}_cl_v{version}.pdf" if is_cover else f"{job_id}_v{version}.pdf"
         path = os.path.join(base_dir, filename)
         missing = "Cover letter not generated yet" if is_cover else "Resume not generated yet"

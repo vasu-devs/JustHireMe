@@ -1,4 +1,5 @@
 import os
+import sys
 import sqlite3 as _sq
 import json
 from datetime import UTC, datetime, timedelta
@@ -8,7 +9,25 @@ from logger import get_logger
 
 _log = get_logger(__name__)
 
-_b = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "JustHireMe")
+
+def _data_dir() -> str:
+    """Return the platform-appropriate data directory for JustHireMe.
+
+    Windows : %LOCALAPPDATA%/JustHireMe
+    macOS   : ~/Library/Application Support/JustHireMe
+    Linux   : ~/.local/share/justhireme
+    Fallback: ~/.justhireme
+    """
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+        return os.path.join(base, "JustHireMe")
+    if sys.platform == "darwin":
+        return os.path.join(os.path.expanduser("~"), "Library", "Application Support", "JustHireMe")
+    base = os.environ.get("XDG_DATA_HOME", os.path.join(os.path.expanduser("~"), ".local", "share"))
+    return os.path.join(base, "justhireme")
+
+
+_b = _data_dir()
 _g, _v = os.path.join(_b, "graph"), os.path.join(_b, "vector")
 sql = os.path.join(_b, "crm.db")
 
