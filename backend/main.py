@@ -1205,35 +1205,41 @@ async def _probe_provider_key(provider: str, key: str) -> dict:
 
     started = time.perf_counter()
     try:
-        timeout = httpx.Timeout(5.0)
+        timeout = httpx.Timeout(10.0, connect=5.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
             if provider == "anthropic":
-                r = await client.post(
-                    "https://api.anthropic.com/v1/messages",
+                r = await client.get(
+                    "https://api.anthropic.com/v1/models",
                     headers={
                         "x-api-key": key,
                         "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": "claude-haiku-4-5-20251001",
-                        "max_tokens": 1,
-                        "messages": [{"role": "user", "content": "ping"}],
                     },
                 )
-                status = "ok" if r.status_code in {200, 400} else "invalid_key" if r.status_code == 401 else "unreachable"
+                status = "ok" if r.status_code == 200 else "invalid_key" if r.status_code in {401, 403} else "unreachable"
             elif provider == "openai":
                 r = await client.get(
                     "https://api.openai.com/v1/models",
                     headers={"Authorization": f"Bearer {key}"},
                 )
-                status = "ok" if r.status_code == 200 else "invalid_key" if r.status_code == 401 else "unreachable"
+                status = "ok" if r.status_code == 200 else "invalid_key" if r.status_code in {401, 403} else "unreachable"
             elif provider == "groq":
                 r = await client.get(
                     "https://api.groq.com/openai/v1/models",
                     headers={"Authorization": f"Bearer {key}"},
                 )
-                status = "ok" if r.status_code == 200 else "invalid_key" if r.status_code == 401 else "unreachable"
+                status = "ok" if r.status_code == 200 else "invalid_key" if r.status_code in {401, 403} else "unreachable"
+            elif provider == "deepseek":
+                r = await client.get(
+                    "https://api.deepseek.com/v1/models",
+                    headers={"Authorization": f"Bearer {key}"},
+                )
+                status = "ok" if r.status_code == 200 else "invalid_key" if r.status_code in {401, 403} else "unreachable"
+            elif provider == "nvidia":
+                r = await client.get(
+                    "https://integrate.api.nvidia.com/v1/models",
+                    headers={"Authorization": f"Bearer {key}"},
+                )
+                status = "ok" if r.status_code == 200 else "invalid_key" if r.status_code in {401, 403} else "unreachable"
             else:
                 status = "unchecked"
     except Exception:
@@ -1247,6 +1253,7 @@ async def validate_settings():
     from llm import _ENV_NAMES, _KEY_NAMES
 
     cfg = get_settings()
+    probeable = {"anthropic", "openai", "groq", "deepseek", "nvidia"}
     providers = ["anthropic", "openai", "groq", *[p for p in _KEY_NAMES if p not in {"anthropic", "openai", "groq"}]]
 
     async def one(provider: str):
@@ -1254,7 +1261,7 @@ async def validate_settings():
         key = str(cfg.get(key_name) or os.environ.get(_ENV_NAMES.get(provider, ""), "") or "").strip()
         if not key:
             return provider, {"status": "not_configured", "latency_ms": 0}
-        if provider not in {"anthropic", "openai", "groq"}:
+        if provider not in probeable:
             return provider, {"status": "unchecked", "latency_ms": 0}
         return provider, await _probe_provider_key(provider, key)
 

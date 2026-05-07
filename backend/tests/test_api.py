@@ -243,6 +243,83 @@ class TestSettingsEndpoints(unittest.TestCase):
         self.assertIsInstance(resp.json(), dict)
 
 
+class TestProviderKeyProbe(unittest.IsolatedAsyncioTestCase):
+    """Probe should hit /v1/models on each provider (cheap, no inference cost)
+    and map auth-failure codes to invalid_key rather than unreachable."""
+
+    async def _probe(self, provider, status_code):
+        from main import _probe_provider_key
+
+        captured = {}
+
+        class _FakeResponse:
+            def __init__(self, code):
+                self.status_code = code
+
+        class _FakeAsyncClient:
+            def __init__(self, *_a, **_kw):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_a):
+                return False
+
+            async def get(self, url, headers=None):
+                captured["method"] = "GET"
+                captured["url"] = url
+                captured["headers"] = dict(headers or {})
+                return _FakeResponse(status_code)
+
+            async def post(self, *_a, **_kw):
+                raise AssertionError("probe must not POST — that costs tokens")
+
+        with mock.patch("httpx.AsyncClient", _FakeAsyncClient):
+            result = await _probe_provider_key(provider, "k-test-123")
+        return result, captured
+
+    async def test_anthropic_uses_models_endpoint_with_x_api_key(self):
+        result, captured = await self._probe("anthropic", 200)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(captured["url"], "https://api.anthropic.com/v1/models")
+        self.assertEqual(captured["headers"].get("x-api-key"), "k-test-123")
+        self.assertIn("anthropic-version", captured["headers"])
+
+    async def test_openai_uses_models_endpoint_with_bearer(self):
+        result, captured = await self._probe("openai", 200)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(captured["url"], "https://api.openai.com/v1/models")
+        self.assertEqual(captured["headers"].get("Authorization"), "Bearer k-test-123")
+
+    async def test_groq_uses_openai_compat_models_endpoint(self):
+        result, captured = await self._probe("groq", 200)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(captured["url"], "https://api.groq.com/openai/v1/models")
+
+    async def test_deepseek_probe(self):
+        result, captured = await self._probe("deepseek", 200)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(captured["url"], "https://api.deepseek.com/v1/models")
+
+    async def test_nvidia_probe(self):
+        result, captured = await self._probe("nvidia", 200)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(captured["url"], "https://integrate.api.nvidia.com/v1/models")
+
+    async def test_401_maps_to_invalid_key(self):
+        result, _ = await self._probe("anthropic", 401)
+        self.assertEqual(result["status"], "invalid_key")
+
+    async def test_403_maps_to_invalid_key(self):
+        result, _ = await self._probe("openai", 403)
+        self.assertEqual(result["status"], "invalid_key")
+
+    async def test_5xx_maps_to_unreachable(self):
+        result, _ = await self._probe("groq", 503)
+        self.assertEqual(result["status"], "unreachable")
+
+
 class TestFollowupsEndpoint(unittest.TestCase):
     def test_due_followups_returns_list(self):
         resp = get("/api/v1/followups/due")
