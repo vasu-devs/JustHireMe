@@ -197,9 +197,12 @@ def call_llm(s: str, u: str, m: type[BaseModel], step: str | None = None):
         if not k:
             _log.warning("groq — no key (step=%s) — falling back", step)
             return _parse_fallback(u, m)
+        # JSON mode avoids Groq's strict tool-call schema validation, which rejects
+        # responses that omit fields with default_factory (e.g. _DocPackage.selected_projects).
         c = instructor.from_openai(
             OpenAI(base_url="https://api.groq.com/openai/v1", api_key=k,
-                   timeout=_TIMEOUT, max_retries=0)
+                   timeout=_TIMEOUT, max_retries=0),
+            mode=instructor.Mode.JSON,
         )
         return c.chat.completions.create(
             model=model,
