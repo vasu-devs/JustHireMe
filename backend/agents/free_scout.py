@@ -634,6 +634,7 @@ def run(
                 learning_delta=item.get("learning_delta"),
                 learning_reason=item.get("learning_reason", ""),
                 source_meta=item.get("source_meta", {}),
+                seniority_level=(item.get("source_meta") or {}).get("seniority_level", ""),
             )
             LAST_USAGE["saved"] += 1
             leads.append(item)

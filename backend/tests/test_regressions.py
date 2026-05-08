@@ -1169,5 +1169,79 @@ class TestLeadQualityGate(unittest.TestCase):
         self.assertIn("red flags", quality["reason"])
 
 
+class TestSeniorityPersistence(unittest.TestCase):
+    """Verify that seniority_level is read from the stored DB column first
+    and only recomputed via classify_job_seniority when missing.
+
+    These tests replicate the _annotate_job_lead priority chain without
+    importing main.py or agents.scout (which need httpx/fastapi).
+    """
+
+    def _annotate(self, lead: dict, fallback_level: str = "unknown") -> dict:
+        """Mirror of main._annotate_job_lead for unit-testing the priority chain.
+        Uses a mock classify_job_seniority that returns fallback_level.
+        """
+        meta = dict(lead.get("source_meta") or {})
+        level = str(lead.get("seniority_level") or meta.get("seniority_level") or "").strip().lower()
+        if level not in {"fresher", "junior", "mid", "senior", "unknown"}:
+            level = fallback_level
+        meta["seniority_level"] = level
+        meta["is_beginner"] = level in {"fresher", "junior"}
+        return {**lead, "source_meta": meta, "seniority_level": level}
+
+    def test_annotate_uses_stored_seniority(self):
+        lead = {
+            "job_id": "test-seniority-001",
+            "title": "Software Engineer",
+            "company": "Acme",
+            "seniority_level": "senior",
+            "source_meta": {},
+        }
+        result = self._annotate(lead, fallback_level="junior")
+        self.assertEqual(result["seniority_level"], "senior")
+
+    def test_annotate_falls_back_to_source_meta(self):
+        lead = {
+            "job_id": "test-seniority-002",
+            "title": "Software Engineer",
+            "company": "Acme",
+            "source_meta": {"seniority_level": "junior"},
+        }
+        result = self._annotate(lead, fallback_level="senior")
+        self.assertEqual(result["seniority_level"], "junior")
+
+    def test_annotate_recomputes_when_missing(self):
+        lead = {
+            "job_id": "test-seniority-003",
+            "title": "Senior Platform Engineer",
+            "company": "Acme",
+            "source_meta": {},
+        }
+        result = self._annotate(lead, fallback_level="senior")
+        self.assertEqual(result["seniority_level"], "senior")
+
+    def test_annotate_prefers_lead_column_over_source_meta(self):
+        lead = {
+            "job_id": "test-seniority-004",
+            "title": "Software Engineer",
+            "company": "Acme",
+            "seniority_level": "mid",
+            "source_meta": {"seniority_level": "junior"},
+        }
+        result = self._annotate(lead, fallback_level="senior")
+        self.assertEqual(result["seniority_level"], "mid")
+
+    def test_empty_seniority_triggers_fallback(self):
+        lead = {
+            "job_id": "test-seniority-005",
+            "title": "Software Engineer",
+            "company": "Acme",
+            "seniority_level": "",
+            "source_meta": {},
+        }
+        result = self._annotate(lead, fallback_level="mid")
+        self.assertEqual(result["seniority_level"], "mid")
+
+
 if __name__ == "__main__":
     unittest.main()

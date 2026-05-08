@@ -177,6 +177,7 @@ def _init_sql():
         ("learning_delta", "INTEGER DEFAULT 0"),
         ("learning_reason", "TEXT DEFAULT ''"),
         ("resume_version", "INTEGER DEFAULT 0"),
+        ("seniority_level", "TEXT DEFAULT ''"),
     ]:
         try:
             c.execute(f"ALTER TABLE leads ADD COLUMN {col} {definition}")
@@ -199,7 +200,8 @@ _LEAD_SELECT_COLUMNS = (
     "signal_reason,signal_tags,outreach_reply,outreach_dm,source_meta,feedback,"
     "feedback_note,followup_due_at,last_contacted_at,outreach_email,proposal_draft,"
     "fit_bullets,followup_sequence,proof_snippet,tech_stack,location,urgency,"
-    "base_signal_score,learning_delta,learning_reason,created_at,resume_version"
+    "base_signal_score,learning_delta,learning_reason,created_at,resume_version,"
+    "seniority_level"
 )
 
 
@@ -246,6 +248,7 @@ def save_lead(
     learning_delta: int | None = None,
     learning_reason: str = "",
     source_meta: dict | None = None,
+    seniority_level: str = "",
 ):
     lead = {
         "job_id": jid,
@@ -286,8 +289,8 @@ def save_lead(
             signal_score,signal_reason,signal_tags,outreach_reply,outreach_dm,
             outreach_email,proposal_draft,fit_bullets,followup_sequence,
             proof_snippet,tech_stack,location,urgency,base_signal_score,
-            learning_delta,learning_reason,source_meta
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            learning_delta,learning_reason,source_meta,seniority_level
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             jid, t, co, u, plat, desc, lead.get("kind") or "job", lead.get("budget") or "",
@@ -304,6 +307,7 @@ def save_lead(
             int(lead.get("learning_delta") or 0),
             str(lead.get("learning_reason") or "")[:700],
             json.dumps(lead.get("source_meta") or {}, ensure_ascii=False),
+            lead.get("seniority_level") or seniority_level or "",
         ),
     )
     c.commit()
@@ -468,6 +472,7 @@ def _lead_row_dict(r) -> dict:
         "learning_reason": r[36] or "",
         "created_at": r[37] or "",
         "resume_version": r[38] or 0,
+        "seniority_level": r[39] or "",
     }
 
 
@@ -1590,3 +1595,33 @@ def _add_project_vec(pid: str, title: str, stack: str, impact: str):
                 vec.create_table("projects", data=rows)
     except Exception:
         pass
+
+
+def backfill_seniority_levels(limit: int = 5000) -> int:
+    """Compute and store seniority_level for leads that don't have one yet.
+
+    Returns the number of leads updated.
+    """
+    from agents.scout import classify_job_seniority
+
+    c = _sq.connect(sql)
+    rows = c.execute(
+        f"SELECT {_LEAD_SELECT_COLUMNS} FROM leads "
+        "WHERE COALESCE(seniority_level, '') = '' "
+        "ORDER BY created_at DESC LIMIT ?",
+        (max(1, min(int(limit or 5000), 10000)),),
+    ).fetchall()
+
+    updated = 0
+    for row in rows:
+        lead = _lead_row_dict(row)
+        level = classify_job_seniority(lead)
+        c.execute(
+            "UPDATE leads SET seniority_level=? WHERE job_id=?",
+            (level, lead["job_id"]),
+        )
+        updated += 1
+
+    c.commit()
+    c.close()
+    return updated

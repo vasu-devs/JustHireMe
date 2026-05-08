@@ -1017,7 +1017,7 @@ def run(
                 LAST_ERRORS.append(f"filtered {plat}:{u} - {quality.get('reason', 'quality gate')}")
                 continue
             source_meta = item["source_meta"]
-            save_lead(jid, t, co, u, plat, desc, source_meta=source_meta)
+            save_lead(jid, t, co, u, plat, desc, source_meta=source_meta, seniority_level=source_meta.get("seniority_level", ""))
             leads.append({
                 "job_id": jid, "title": t, "company": co, "url": u,
                 "platform": plat, "description": desc, "source_meta": source_meta,

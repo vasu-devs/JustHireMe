@@ -657,7 +657,7 @@ def _annotate_job_lead(lead: dict) -> dict:
     from agents.scout import classify_job_seniority
 
     meta = dict(lead.get("source_meta") or {})
-    level = str(meta.get("seniority_level") or lead.get("seniority_level") or "").strip().lower()
+    level = str(lead.get("seniority_level") or meta.get("seniority_level") or "").strip().lower()
     if level not in {"fresher", "junior", "mid", "senior", "unknown"}:
         level = classify_job_seniority(lead)
     meta["seniority_level"] = level
@@ -832,6 +832,7 @@ async def create_manual_lead(body: ManualLeadBody):
         learning_delta=lead.get("learning_delta"),
         learning_reason=lead.get("learning_reason", ""),
         source_meta=lead["source_meta"],
+        seniority_level=lead.get("seniority_level", ""),
     )
     saved = get_lead_by_id(lead["job_id"]) or lead
     await cm.broadcast({"type": "LEAD_UPDATED", "data": saved})
