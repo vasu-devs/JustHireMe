@@ -4,6 +4,13 @@ import Icon from "./Icon";
 import type { ApiFetch, Lead } from "../types";
 import { getMark, getTone, leadDisplayHeading, leadSeniority, seniorityLabel, seniorityTone } from "../lib/leadUtils";
 
+async function generateLeadPackage(api: ApiFetch, jobId: string) {
+  const response = await api(`/api/v1/leads/${jobId}/generate`, { method: "POST" });
+  if (response.ok) return;
+  const detail = await response.json().then(d => d.detail).catch(() => "");
+  throw new Error(detail || `Generation returned ${response.status}`);
+}
+
 export function JobCard({ lead, onOpen, onDelete, showScore = false, showGenerate = false, port, api }: {
   lead: Lead;
   onOpen: (l: Lead) => void;
@@ -14,6 +21,7 @@ export function JobCard({ lead, onOpen, onDelete, showScore = false, showGenerat
   api?: ApiFetch | null;
 }) {
   const [generating, setGenerating] = useState(false);
+  const [generateErr, setGenerateErr] = useState<string | null>(null);
   const desc = lead.description?.trim();
   const signalScore = lead.signal_score || 0;
   const qualityReason = String(lead.lead_quality_reason || lead.source_meta?.lead_quality_reason || "");
@@ -26,8 +34,14 @@ export function JobCard({ lead, onOpen, onDelete, showScore = false, showGenerat
     e.stopPropagation();
     if (!port || !api) return;
     setGenerating(true);
-    await api(`/api/v1/leads/${lead.job_id}/generate`, { method: "POST" });
-    setTimeout(() => setGenerating(false), 2000);
+    setGenerateErr(null);
+    try {
+      await generateLeadPackage(api, lead.job_id);
+      setTimeout(() => setGenerating(false), 2000);
+    } catch (err) {
+      setGenerateErr(err instanceof Error ? err.message : "Generation failed");
+      setGenerating(false);
+    }
   };
 
   return (
@@ -152,6 +166,11 @@ export function JobCard({ lead, onOpen, onDelete, showScore = false, showGenerat
           >Details →</button>
         </div>
       </div>
+      {generateErr && (
+        <div style={{ fontSize: 11.5, color: "var(--bad)", background: "var(--bad-soft)", border: "1px solid var(--bad)", borderRadius: 8, padding: "7px 9px" }}>
+          {generateErr}
+        </div>
+      )}
     </div>
   );
 }
@@ -169,6 +188,7 @@ export function PipelineJobCard({ lead, onOpen, onDelete, showGenerate = false, 
   api?: ApiFetch | null;
 }) {
   const [generating, setGenerating] = useState(false);
+  const [generateErr, setGenerateErr] = useState<string | null>(null);
   const signalScore = lead.signal_score || 0;
   const matchScore = lead.score || 0;
   const qualityScore = Number(lead.lead_quality_score || lead.source_meta?.lead_quality_score || 0);
@@ -183,8 +203,14 @@ export function PipelineJobCard({ lead, onOpen, onDelete, showGenerate = false, 
     e.stopPropagation();
     if (!port || !api) return;
     setGenerating(true);
-    await api(`/api/v1/leads/${lead.job_id}/generate`, { method: "POST" });
-    setTimeout(() => setGenerating(false), 2000);
+    setGenerateErr(null);
+    try {
+      await generateLeadPackage(api, lead.job_id);
+      setTimeout(() => setGenerating(false), 2000);
+    } catch (err) {
+      setGenerateErr(err instanceof Error ? err.message : "Generation failed");
+      setGenerating(false);
+    }
   };
 
   return (
@@ -231,6 +257,11 @@ export function PipelineJobCard({ lead, onOpen, onDelete, showGenerate = false, 
           </button>
         </div>
         <div className="pipeline-source mono" title={lead.url}>{urlLabel}</div>
+        {generateErr && (
+          <div style={{ fontSize: 11.5, color: "var(--bad)", background: "var(--bad-soft)", border: "1px solid var(--bad)", borderRadius: 8, padding: "7px 9px", marginTop: 8 }}>
+            {generateErr}
+          </div>
+        )}
       </div>
     </div>
   );
