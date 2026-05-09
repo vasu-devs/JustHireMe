@@ -6,7 +6,7 @@ TARGET_DIR="src-tauri/resources/backend"
 
 echo "Building Python sidecar..."
 cd backend
-uv run pyinstaller backend.spec --distpath ../src-tauri/resources --noconfirm
+uv run pyinstaller backend.spec --distpath ../src-tauri/resources/backend --noconfirm
 cd ..
 
 echo "Sidecar built at: $TARGET_DIR"
