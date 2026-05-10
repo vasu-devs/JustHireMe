@@ -306,13 +306,27 @@ uv sync --dev
 cd ..
 ```
 
+Build the packaged sidecar resource once:
+
+macOS/Linux:
+
+```bash
+bash scripts/build-sidecar.sh
+```
+
+Windows PowerShell:
+
+```powershell
+.\scripts\build-sidecar.ps1
+```
+
 Then run:
 
 ```bash
 npm run tauri dev
 ```
 
-The Tauri shell starts the frontend and launches the Python backend sidecar/dev process.
+The first desktop run expects the packaged sidecar resource to exist. After building it once, the Tauri shell starts the frontend and launches the Python backend sidecar/dev process.
 
 ### Before Opening An Issue
 
@@ -329,6 +343,8 @@ The Tauri shell starts the frontend and launches the Python backend sidecar/dev 
 | --- | --- |
 | Frontend dev server | `npm run dev` |
 | Desktop dev app | `npm run tauri dev` |
+| Build sidecar on macOS/Linux | `bash scripts/build-sidecar.sh` |
+| Build sidecar on Windows | `.\scripts\build-sidecar.ps1` |
 | TypeScript check | `npm run typecheck` |
 | Frontend tests | `npm test` |
 | Frontend build | `npm run build` |

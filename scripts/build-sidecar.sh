@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
-set -e
-cd "$(dirname "$0")/.."
+set -euo pipefail
 
+cd "$(dirname "$0")/.."
+REPO_ROOT="$(pwd)"
 TARGET_DIR="src-tauri/resources/backend"
 
+export UV_CACHE_DIR="$REPO_ROOT/backend/.uv-cache"
+export PYTHONNOUSERSITE="1"
+export PYINSTALLER_CONFIG_DIR="$REPO_ROOT/backend/.pyinstaller-cache"
+export HF_HOME="$REPO_ROOT/backend/.hf-cache"
+
 echo "Building Python sidecar..."
+rm -rf "$TARGET_DIR"
+rm -f "${TARGET_DIR}.exe"
+
 cd backend
-uv run pyinstaller backend.spec --distpath ../src-tauri/resources --noconfirm
+uv run pyinstaller backend.spec --distpath ../src-tauri/resources/backend --noconfirm --clean
 cd ..
 
-echo "Sidecar built at: $TARGET_DIR"
-echo "Rename the binary for Tauri's triple-target naming..."
-
-TRIPLE=$(rustc -vV | grep 'host:' | awk '{print $2}')
+TRIPLE="$(rustc -vV | awk '/host:/ {print $2}')"
 
 if [[ "$OSTYPE" == "msys"* || "$OSTYPE" == "win"* ]]; then
   SRC="$TARGET_DIR/backend.exe"
@@ -20,6 +26,11 @@ if [[ "$OSTYPE" == "msys"* || "$OSTYPE" == "win"* ]]; then
 else
   SRC="$TARGET_DIR/backend"
   DST="$TARGET_DIR/jhm-sidecar-${TRIPLE}"
+fi
+
+if [[ ! -f "$SRC" ]]; then
+  echo "Expected sidecar was not created: $SRC" >&2
+  exit 1
 fi
 
 cp "$SRC" "$DST"

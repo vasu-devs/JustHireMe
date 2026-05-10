@@ -99,11 +99,27 @@ uv sync --dev
 cd ..
 ```
 
+### Build The Sidecar
+
+macOS/Linux:
+
+```bash
+bash scripts/build-sidecar.sh
+```
+
+Windows PowerShell:
+
+```powershell
+.\scripts\build-sidecar.ps1
+```
+
 ### Run The App
 
 ```bash
 npm run tauri dev
 ```
+
+The first desktop run expects the packaged sidecar resource to exist. After building it once, `npm run tauri dev` starts the frontend and launches the local backend dev process.
 
 ### Run Frontend Only
 
