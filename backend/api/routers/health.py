@@ -4,7 +4,7 @@ import os
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from api.dependencies import get_repository
 from data.repository import Repository
@@ -20,6 +20,8 @@ def _check_sqlite(repo: Repository) -> dict:
 
 def _check_graph(repo: Repository) -> dict:
     try:
+        if not repo.graph.graph_available():
+            return {"status": "error", "error": repo.graph.graph_error(), "counts": repo.graph.graph_counts()}
         counts = repo.graph.graph_counts()
         return {"status": "ok", "counts": counts}
     except Exception as exc:
@@ -81,7 +83,8 @@ def create_router(started_at: float) -> APIRouter:
     router = APIRouter()
 
     @router.get("/health", dependencies=[])
-    async def health(repo: Repository = Depends(get_repository)):
+    async def health(request: Request, repo: Repository = Depends(get_repository)):
+        service_registry = getattr(request.app.state, "service_registry", None)
         checks = {
             "sqlite": _check_sqlite(repo),
             "graph": _check_graph(repo),
@@ -98,6 +101,7 @@ def create_router(started_at: float) -> APIRouter:
             "last_scan_finished_at": repo.settings.get_setting("last_scan_finished_at", ""),
             "components": checks,
             "checks": checks,
+            "services": service_registry.snapshot() if service_registry else {},
         }
 
     return router

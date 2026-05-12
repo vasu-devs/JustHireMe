@@ -29,6 +29,10 @@ hidden = [
     "pypdf", "markdown",
     "tenacity",
     "graph",
+    "contracts", "contracts.services",
+    "gateway", "gateway.clients", "gateway.supervisor",
+    "services", "services.apps", "services.auth",
+    "graph_service", "graph_service.stats",
     "db.client",
     "llm", "logger",
 ] + collect_submodules("playwright") + collect_submodules(

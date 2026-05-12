@@ -143,16 +143,23 @@ def create_ghost_tick(manager):
     return ghost_tick
 
 
-def create_lifespan(scheduler: AsyncIOScheduler, ghost_tick, logger):
+def create_lifespan(scheduler: AsyncIOScheduler, ghost_tick, logger, service_supervisor=None):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         init_sql()
+        if service_supervisor is not None:
+            registry = await service_supervisor.start()
+            app.state.service_registry = registry
         ensure_ghost_job(scheduler, ghost_tick)
         log_startup_warnings(get_repository(), logger)
         scheduler.start()
         logger.info("FastAPI live.")
-        yield
-        scheduler.shutdown(wait=False)
+        try:
+            yield
+        finally:
+            scheduler.shutdown(wait=False)
+            if service_supervisor is not None:
+                await service_supervisor.stop()
         logger.info("FastAPI shutdown.")
 
     return lifespan
