@@ -10,6 +10,7 @@ _BUNDLED = Path(__file__).parent.parent / "data" / "selectors.json"
 _CACHE_KEY = "selectors_json"
 _CACHE_TS_KEY = "selectors_fetched_at"
 _TTL = 86400  # 24 hours
+_ALLOWED_DOMAINS = frozenset(("raw.githubusercontent.com", "raw.githubusercontent.io"))
 
 
 def _load_bundled() -> dict:
@@ -39,15 +40,20 @@ def get_selectors() -> dict:
             pass
 
     if remote_url:
-        try:
-            resp = httpx.get(remote_url, timeout=8)
+        from urllib.parse import urlparse
+        parsed = urlparse(remote_url)
+        if parsed.hostname not in _ALLOWED_DOMAINS:
+            _log.warning("selectors remote fetch blocked: domain %s not in allowlist", parsed.hostname)
+        else:
+            try:
+                resp = httpx.get(remote_url, timeout=8)
             resp.raise_for_status()
-            data = resp.json()
-            save_settings({_CACHE_KEY: json.dumps(data), _CACHE_TS_KEY: str(now)})
-            _log.info("selectors refreshed from %s (v%s)", remote_url, data.get("version"))
-            return data
-        except Exception as exc:
-            _log.warning("selectors remote fetch failed: %s — using cache/bundled", exc)
+                data = resp.json()
+                save_settings({_CACHE_KEY: json.dumps(data), _CACHE_TS_KEY: str(now)})
+                _log.info("selectors refreshed from %s (v%s)", remote_url, data.get("version"))
+                return data
+            except Exception as exc:
+                _log.warning("selectors remote fetch failed: %s — using cache/bundled", exc)
 
     if cached_json:
         try:
