@@ -357,6 +357,34 @@ class TestIngestionEndpoints(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
+    def test_linkedin_ingest_accepts_profile_pdf_as_resume(self):
+        from models.schema import C, E, S
+        from profile.service import ProfileService
+
+        async def _fake_ingest_resume(_self, raw="", pdf_path=None):
+            self.assertEqual(raw, "")
+            self.assertTrue(str(pdf_path).endswith(".pdf"))
+            return C(
+                n="LinkedIn User",
+                s="Profile headline",
+                skills=[S(n="Python")],
+                exp=[E(role="Engineer", co="Acme", period="2024", d="Built systems")],
+            )
+
+        with mock.patch.object(ProfileService, "ingest_resume", new=_fake_ingest_resume):
+            resp = CLIENT.post(
+                "/api/v1/ingest/linkedin",
+                headers=AUTH,
+                files={"file": ("profile.pdf", b"%PDF-1.4 profile", "application/pdf")},
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["source"], "linkedin_pdf")
+        self.assertEqual(data["profile"]["n"], "LinkedIn User")
+        self.assertEqual(data["stats"]["skills"], 1)
+        self.assertEqual(data["stats"]["experience"], 1)
+
     def test_linkedin_ingest_rejects_invalid_zip(self):
         resp = CLIENT.post(
             "/api/v1/ingest/linkedin",

@@ -127,8 +127,37 @@ def create_router(manager, logger) -> APIRouter:
 
     @router.post("/ingest/linkedin")
     async def ingest_linkedin(file: UploadFile = File(...)):
-        if not (file.filename or "").endswith(".zip"):
-            raise HTTPException(400, "expected a .zip file from LinkedIn data export")
+        filename = (file.filename or "").lower()
+        if filename.endswith(".pdf"):
+            if file.size and file.size > MAX_UPLOAD_SIZE:
+                raise HTTPException(status_code=413, detail=f"File too large (max {MAX_UPLOAD_SIZE // 1024 // 1024} MB)")
+            try:
+                with _temp_upload(file) as pdf_path:
+                    profile = await _profile_service().ingest_resume("", pdf_path)
+                    await manager.broadcast({
+                        "type": "agent",
+                        "event": "ingested",
+                        "msg": f"LinkedIn PDF ingested: {profile.n} - {len(profile.skills)} skills",
+                    })
+                    return {
+                        "status": "ok",
+                        "source": "linkedin_pdf",
+                        "profile": profile.model_dump(),
+                        "stats": {
+                            "skills": len(profile.skills),
+                            "experience": len(profile.exp),
+                            "projects": len(profile.projects),
+                            "certifications": len(profile.certifications),
+                            "education": len(profile.education),
+                            "achievements": len(profile.achievements),
+                        },
+                        "errors": [],
+                    }
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+
+        if not filename.endswith(".zip"):
+            raise HTTPException(400, "expected a .zip LinkedIn data export or .pdf LinkedIn profile")
         raw = await file.read()
         if len(raw) > 50 * 1024 * 1024:
             raise HTTPException(413, "file too large")

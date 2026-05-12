@@ -18,6 +18,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
   // LinkedIn tab state
   const [linkedinFile, setLinkedinFile] = useState<File | null>(null);
   const [linkedinResult, setLinkedinResult] = useState<any>(null);
+  const [linkedinError, setLinkedinError] = useState<string | null>(null);
   // GitHub tab state
   const [githubUsername, setGithubUsername] = useState("");
   const [githubToken, setGithubToken] = useState("");
@@ -79,20 +80,41 @@ export function IngestionView({ api }: { api: ApiFetch }) {
     } catch { setStatus("error"); }
   };
 
+  const setLinkedinUpload = (file: File | null) => {
+    if (!file) return;
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith(".zip") && !lower.endsWith(".pdf")) {
+      setLinkedinError("Choose a LinkedIn data export .zip or LinkedIn profile .pdf.");
+      setLinkedinFile(null);
+      setLinkedinResult(null);
+      return;
+    }
+    setLinkedinFile(file);
+    setLinkedinResult(null);
+    setLinkedinError(null);
+  };
+
   const ingestLinkedin = async () => {
     if (!linkedinFile) return;
     setStatus("loading");
     setLinkedinResult(null);
+    setLinkedinError(null);
     const fd = new FormData();
     fd.append("file", linkedinFile);
     try {
       const r = await api(`/api/v1/ingest/linkedin`, { method: "POST", body: fd });
+      const data = await r.json().catch(() => ({}));
       if (r.ok) {
-        const data = await r.json();
         setLinkedinResult(data);
         setStatus("idle");
-      } else { setStatus("error"); }
-    } catch { setStatus("error"); }
+      } else {
+        setLinkedinError(data?.detail || `Import failed (${r.status})`);
+        setStatus("idle");
+      }
+    } catch {
+      setLinkedinError("Could not import LinkedIn file.");
+      setStatus("idle");
+    }
   };
 
   const ingestGithub = async () => {
@@ -201,7 +223,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
     { id: "manual" as const, label: "Manual", description: "Skills, roles, projects", icon: "plus", accent: "blue" },
     { id: "raw" as const, label: "Raw Text", description: "Paste notes", icon: "file", accent: "yellow" },
     { id: "template" as const, label: "Template", description: "Resume format", icon: "layers", accent: "purple" },
-    { id: "linkedin" as const, label: "LinkedIn", description: "Data export", icon: "brief", accent: "blue" },
+    { id: "linkedin" as const, label: "LinkedIn", description: "PDF or export", icon: "brief", accent: "blue" },
     { id: "github" as const, label: "GitHub", description: "Repo signals", icon: "external-link", accent: "green" },
     { id: "portfolio" as const, label: "Portfolio", description: "Personal site", icon: "globe", accent: "orange" },
     { id: "json-import" as const, label: "JSON", description: "Structured import", icon: "download", accent: "pink" },
@@ -315,28 +337,33 @@ export function IngestionView({ api }: { api: ApiFetch }) {
               onDrop={e => {
                 e.preventDefault();
                 const f = e.dataTransfer.files[0];
-                if (f && f.name.endsWith(".zip")) { setLinkedinFile(f); setLinkedinResult(null); }
+                setLinkedinUpload(f);
               }}
               onClick={() => document.getElementById("linkedin-zip-in")?.click()}
             >
               <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--teal-soft)", color: "var(--teal)", display: "grid", placeItems: "center" }}><Icon name="upload" size={28} /></div>
               <div style={{ fontWeight: 600, fontSize: 18 }}>
-                {linkedinFile ? linkedinFile.name : "Drop your LinkedIn data export (.zip) here"}
+                {linkedinFile ? linkedinFile.name : "Drop your LinkedIn profile PDF or data export ZIP here"}
               </div>
               <div style={{ fontSize: 14, color: "var(--ink-3)", maxWidth: 400, lineHeight: 1.5 }}>
-                {linkedinFile ? "File ready to import." : "or click to browse"}
+                {linkedinFile ? (linkedinFile.name.toLowerCase().endsWith(".pdf") ? "PDF ready for resume-style parsing." : "ZIP ready for structured import.") : "or click to browse"}
               </div>
               <div style={{ fontSize: 12, color: "var(--ink-4)", maxWidth: 420, lineHeight: 1.6, marginTop: 4 }}>
-                How to get it: LinkedIn &gt; Settings &gt; Data Privacy &gt; Get a copy of your data
+                Profile PDFs use the Resume/Ollama parser. ZIP exports use LinkedIn &gt; Settings &gt; Data Privacy &gt; Get a copy of your data.
               </div>
-              <input type="file" accept=".zip" id="linkedin-zip-in" style={{ display: "none" }}
-                onChange={e => { const f = e.target.files?.[0]; if (f) { setLinkedinFile(f); setLinkedinResult(null); } }} />
+              <input type="file" accept=".zip,.pdf,application/pdf,application/zip" id="linkedin-zip-in" style={{ display: "none" }}
+                onChange={e => setLinkedinUpload(e.target.files?.[0] ?? null)} />
             </div>
             <button className="btn btn-primary" style={{ padding: 16, fontSize: 15 }}
               disabled={!linkedinFile || status === "loading"}
               onClick={ingestLinkedin}>
-              {status === "loading" ? "Importing..." : "Import LinkedIn data"}
+              {status === "loading" ? "Importing..." : linkedinFile?.name.toLowerCase().endsWith(".pdf") ? "Parse LinkedIn PDF" : "Import LinkedIn data"}
             </button>
+            {linkedinError && (
+              <div className="ingestion-alert error">
+                {linkedinError}
+              </div>
+            )}
             {linkedinResult && (
               <div style={{
                 padding: 16,
@@ -346,8 +373,11 @@ export function IngestionView({ api }: { api: ApiFetch }) {
                 border: `1px solid ${linkedinResult.status === "ok" ? "var(--green)" : "var(--line)"}`,
               }}>
                 <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                  Imported: {linkedinResult.stats?.skills ?? 0} skills - {linkedinResult.stats?.experience ?? 0} jobs - {linkedinResult.stats?.projects ?? 0} projects - {linkedinResult.stats?.certifications ?? 0} certifications
+                  Imported: {linkedinResult.stats?.skills ?? 0} skills - {linkedinResult.stats?.experience ?? 0} roles - {linkedinResult.stats?.projects ?? 0} projects - {linkedinResult.stats?.certifications ?? 0} certifications
                 </div>
+                {linkedinResult.source === "linkedin_pdf" && linkedinResult.profile?.n && (
+                  <div style={{ fontSize: 13, marginTop: 4, color: "var(--ink-3)" }}>Parsed profile for {linkedinResult.profile.n}.</div>
+                )}
                 {linkedinResult.status === "partial" && (
                   <div style={{ fontSize: 13, marginTop: 4, color: "var(--ink-3)" }}>Some items could not be imported.</div>
                 )}
