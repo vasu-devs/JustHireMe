@@ -10,6 +10,7 @@
   <img alt="Local First" src="https://img.shields.io/badge/local--first-yes-0ea5e9?style=for-the-badge">
   <img alt="Desktop: Tauri" src="https://img.shields.io/badge/desktop-Tauri-24c8db?style=for-the-badge">
   <img alt="Backend: Python" src="https://img.shields.io/badge/backend-Python_3.13-3776ab?style=for-the-badge">
+  <a href="https://github.com/sponsors/vasu-devs"><img alt="GitHub Sponsors" src="https://img.shields.io/github/sponsors/vasu-devs?style=for-the-badge&logo=githubsponsors&label=Sponsor&color=EA4AAA"></a>
 </p>
 
 <p align="center">
