@@ -647,6 +647,7 @@ function MiniApp() {
 
 function App() {
   const { views, configured } = useViewCounter();
+  const { downloads } = useDownloadCounter();
   const github = useGitHubStars();
 
   return (
@@ -837,4 +838,8 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+const root = document.getElementById("root");
+
+if (root) {
+  createRoot(root).render(<App />);
+}
