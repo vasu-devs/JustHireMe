@@ -55,14 +55,21 @@ async def broadcast_x_source_errors(manager, errors: list[str]) -> None:
         await manager.broadcast({"type": "agent", "event": "x_source_error", "msg": f"{len(errors) - 3} more X queries were skipped"})
 
 
-async def run_x_signal_scan(manager, cfg: dict, kind_filter: str | None = None, profile: dict | None = None) -> list[dict]:
+async def run_x_signal_scan(
+    manager,
+    cfg: dict,
+    kind_filter: str | None = None,
+    profile: dict | None = None,
+    discovery_service=None,
+) -> list[dict]:
     if not has_x_token(cfg):
         return []
 
+    discovery_service = discovery_service or get_discovery_service()
     kind_filter = "job"
     label = "job leads"
     await manager.broadcast({"type": "agent", "event": "x_scout_start", "msg": f"Scanning X for {label}..."})
-    result = await get_discovery_service().scan_x(cfg, kind_filter=kind_filter, profile=profile)
+    result = await discovery_service.scan_x(cfg, kind_filter=kind_filter, profile=profile)
     leads = result.leads
     usage = result.usage
     await manager.broadcast({"type": "agent", "event": "x_scout_done", "msg": f"X scout - {len(leads)} {label} found"})
@@ -85,14 +92,22 @@ async def run_x_signal_scan(manager, cfg: dict, kind_filter: str | None = None, 
     return leads
 
 
-async def run_free_source_scan(manager, cfg: dict, kind_filter: str | None = None, profile: dict | None = None, force: bool = False) -> tuple[list[dict], dict, list[str]]:
+async def run_free_source_scan(
+    manager,
+    cfg: dict,
+    kind_filter: str | None = None,
+    profile: dict | None = None,
+    force: bool = False,
+    discovery_service=None,
+) -> tuple[list[dict], dict, list[str]]:
     if not force and not free_sources_enabled(cfg):
         return [], {}, []
 
+    discovery_service = discovery_service or get_discovery_service()
     kind_filter = "job"
     label = "job leads"
     await manager.broadcast({"type": "agent", "event": "free_scout_start", "msg": f"Scanning free sources for {label}..."})
-    result = await get_discovery_service().scan_free_sources(cfg, kind_filter=kind_filter, profile=profile, force=force)
+    result = await discovery_service.scan_free_sources(cfg, kind_filter=kind_filter, profile=profile, force=force)
     leads = result.leads
     usage = result.usage
     await manager.broadcast({
@@ -128,8 +143,8 @@ async def run_scan(
     profile = profile_for_discovery(repo.profile.get_profile(), cfg)
     market_focus = cfg.get("job_market_focus", "global")
     raw_urls = job_targets(cfg.get("job_boards", ""), market_focus)
-    await run_x_signal_scan(manager, cfg, "job", profile)
-    await run_free_source_scan(manager, cfg, "job", profile, force=True)
+    await run_x_signal_scan(manager, cfg, "job", profile, discovery_service=discovery_service)
+    await run_free_source_scan(manager, cfg, "job", profile, force=True, discovery_service=discovery_service)
 
     await manager.broadcast({"type": "agent", "event": "query_gen_start", "msg": "Generating profile-tailored search queries..."})
     try:
