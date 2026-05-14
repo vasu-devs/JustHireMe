@@ -47,7 +47,7 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "framer-motion": "^12.38.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react-dom": "^19.2.6",
     "tailwindcss": "^4.2.4"
   },
   "devDependencies": {
