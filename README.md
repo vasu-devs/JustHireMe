@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="docs/assets/justhireme-hero.png" alt="JustHireMe local-first job intelligence workbench hero" width="100%" />
-</p>
-
 <h1 align="center">JustHireMe</h1>
 
 <p align="center">
@@ -592,6 +588,18 @@ Near-term priorities:
 - Windows installer polish
 - contributor-friendly source plugin boundaries
 - OS keychain support for API keys
+
+---
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=vasu-devs%2FJustHireMe&type=timeline&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=vasu-devs/JustHireMe&type=timeline&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=vasu-devs/JustHireMe&type=timeline&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=vasu-devs/JustHireMe&type=timeline&legend=top-left" />
+ </picture>
+</a>
 
 ---
 
