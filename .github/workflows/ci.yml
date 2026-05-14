@@ -2,6 +2,9 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
+      - codex-local-microservices
   pull_request:
     branches: [main]
 

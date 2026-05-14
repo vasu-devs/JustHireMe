@@ -27,7 +27,7 @@ jobs:
           cache: npm
 
       - name: Verify tag matches project versions
-        run: npm run version:check -- "${GITHUB_REF_NAME}"
+        run: npm run version:check -- "${{ github.ref_name }}"
 
   build-backend:
     name: Build backend sidecar (${{ matrix.name }})
@@ -261,7 +261,7 @@ jobs:
           workspaces: "src-tauri -> target"
 
       - name: Verify project versions
-        run: npm run version:check -- "${GITHUB_REF_NAME}"
+        run: npm run version:check -- "${{ github.ref_name }}"
 
       - name: Build frontend
         run: npm run build
