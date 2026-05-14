@@ -41,6 +41,7 @@ async def _require_ws_token(ws: WebSocket) -> bool:
 def build_gateway_app(*, enable_services: bool = False):
     ghost_tick = create_ghost_tick(cm)
     supervisor = LocalServiceSupervisor(enabled=True) if enable_services else None
+    internal_token = supervisor.internal_token if supervisor is not None else secrets.token_urlsafe(32)
     lifespan = create_lifespan(_sched, ghost_tick, _log, service_supervisor=supervisor)
     return create_app(
         lifespan=lifespan,
@@ -51,6 +52,7 @@ def build_gateway_app(*, enable_services: bool = False):
         connection_manager=cm,
         logger=_log,
         websocket_token_guard=_require_ws_token,
+        internal_token=internal_token,
     )
 
 

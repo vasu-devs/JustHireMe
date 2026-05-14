@@ -3,11 +3,12 @@ import { motion } from "framer-motion";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Icon from "../../../shared/components/Icon";
 import type { ApiFetch, KeywordCoverage, Lead } from "../../../types";
+import { isAbortLikeError } from "../../../api/client";
 import { GENERATION_TIMEOUT_MS } from "../../../api/generation";
 import { cleanLeadText, getTone, leadDisplayHeading } from "../../../shared/lib/leadUtils";
 import { FormReader } from "../../apply/components/FormReader";
 
-export function ApprovalDrawer({ j, api, onClose }: {
+export function ApprovalDrawer({ j: initialLead, api, onClose }: {
   j: Lead; api: ApiFetch; onClose: () => void;
 }) {
   type DocKind = "resume" | "cover";
@@ -16,6 +17,7 @@ export function ApprovalDrawer({ j, api, onClose }: {
   const [activeDoc, setActiveDoc] = useState<DocKind>("resume");
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [pdfLoadErr, setPdfLoadErr] = useState<string | null>(null);
+  const [pdfPreviewAttempt, setPdfPreviewAttempt] = useState(0);
   const [generateErr, setGenerateErr] = useState<string | null>(null);
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineMsg, setPipelineMsg] = useState<string | null>(null);
@@ -27,8 +29,10 @@ export function ApprovalDrawer({ j, api, onClose }: {
   const [versions, setVersions] = useState<VersionEntry[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [versionErr, setVersionErr] = useState<string | null>(null);
+  const [generatedLead, setGeneratedLead] = useState<Lead | null>(null);
   const generateControllerRef = useRef<AbortController | null>(null);
   const pipelineControllerRef = useRef<AbortController | null>(null);
+  const j = generatedLead ? { ...initialLead, ...generatedLead } : initialLead;
 
   useEffect(() => () => {
     generateControllerRef.current?.abort();
@@ -56,6 +60,9 @@ export function ApprovalDrawer({ j, api, onClose }: {
   const hasCoverage = missingTerms.length > 0 || incorporatedTerms.length > 0 || coveredTerms.length > 0;
   const qualityScore = Number(j.lead_quality_score || j.source_meta?.lead_quality_score || 0);
   const qualityReason = String(j.lead_quality_reason || j.source_meta?.lead_quality_reason || "");
+  const visibleGenerateErr = generateErr && !/request\s+cancel(?:led|ed)|abort/i.test(generateErr)
+    ? generateErr
+    : null;
   const display = leadDisplayHeading(j);
   const originalTitle = cleanLeadText(j.title);
   const descriptionText = cleanLeadText(j.description);
@@ -80,6 +87,14 @@ export function ApprovalDrawer({ j, api, onClose }: {
     }
   }, [api, j.job_id]);
 
+  const refreshLead = useCallback(async (signal?: AbortSignal) => {
+    const r = await api(`/api/v1/leads/${initialLead.job_id}`, { signal });
+    if (!r.ok) throw new Error(`Lead refresh returned ${r.status}`);
+    const lead = await r.json() as Lead;
+    setGeneratedLead(lead);
+    return lead;
+  }, [api, initialLead.job_id]);
+
   useEffect(() => {
     const controller = new AbortController();
     loadVersions(controller.signal);
@@ -92,29 +107,37 @@ export function ApprovalDrawer({ j, api, onClose }: {
     let revoke: string | null = null;
     let alive = true;
     const controller = new AbortController();
+    const previewTimer = window.setTimeout(() => {
+      if (!alive) return;
+      controller.abort();
+      setPdfLoadErr("PDF preview timed out. The package exists, but the embedded preview did not respond.");
+      setPdfBlobUrl(null);
+    }, 12000);
     setPdfLoadErr(null);
     setPdfBlobUrl(null);
-    api(activeDocPath, { signal: controller.signal })
+    api(activeDocPath, { signal: controller.signal, timeoutMs: 12000 })
       .then(r => { if (!r.ok) throw new Error(`Server returned ${r.status}`); return r.blob(); })
       .then(blob => {
         if (!alive) return;
+        if (!blob.size) throw new Error("Generated PDF was empty");
+        window.clearTimeout(previewTimer);
         const url = URL.createObjectURL(blob);
         revoke = url;
         setPdfBlobUrl(url);
       })
       .catch(err => {
         if (!alive) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        if (String(err).toLowerCase().includes("signal is aborted")) return;
+        if (isAbortLikeError(err)) return;
         setPdfLoadErr(String(err));
         setPdfBlobUrl(null);
       });
     return () => {
       alive = false;
+      window.clearTimeout(previewTimer);
       controller.abort();
       if (revoke) URL.revokeObjectURL(revoke);
     };
-  }, [activeDocPath, api]);
+  }, [activeDocPath, api, pdfPreviewAttempt]);
 
   // Clear generating flag when the lead actually receives its generated documents.
   useEffect(() => {
@@ -135,10 +158,16 @@ export function ApprovalDrawer({ j, api, onClose }: {
       const r = await api(`/api/v1/leads/${j.job_id}/generate`, { method: "POST", signal: controller.signal, timeoutMs: GENERATION_TIMEOUT_MS });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.detail || `Server returned ${r.status}`);
+      if (body.lead) setGeneratedLead(body.lead as Lead);
+      await refreshLead(controller.signal).catch(() => null);
       window.dispatchEvent(new CustomEvent("leads-refresh"));
       await loadVersions();
+      setPdfPreviewAttempt(n => n + 1);
     } catch (err) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || isAbortLikeError(err)) {
+        setGenerating(false);
+        return;
+      }
       setGenerateErr(err instanceof Error ? err.message : String(err));
       setGenerating(false);
     } finally {
@@ -154,12 +183,21 @@ export function ApprovalDrawer({ j, api, onClose }: {
     const controller = new AbortController();
     pipelineControllerRef.current = controller;
     try {
-      const r = await api(`/api/v1/leads/${j.job_id}/pipeline/run`, { method: "POST", signal: controller.signal });
-      if (!r.ok) throw new Error(`Server returned ${r.status}`);
-      setPipelineMsg("Pipeline running...");
-      window.setTimeout(() => setPipelineRunning(false), 3000);
+      const r = await api(`/api/v1/leads/${j.job_id}/pipeline/run`, { method: "POST", signal: controller.signal, timeoutMs: 15000 });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.detail || `Server returned ${r.status}`);
+      setPipelineMsg("Pipeline started. You can keep working while it finishes.");
+      window.setTimeout(() => {
+        setPipelineRunning(false);
+        setPipelineMsg(null);
+        refreshLead().catch(() => null);
+        window.dispatchEvent(new CustomEvent("leads-refresh"));
+      }, 3000);
     } catch (err) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || isAbortLikeError(err)) {
+        setPipelineRunning(false);
+        return;
+      }
       setPipelineMsg(err instanceof Error ? err.message : "Pipeline failed to start");
       setPipelineRunning(false);
     } finally {
@@ -249,12 +287,12 @@ export function ApprovalDrawer({ j, api, onClose }: {
   ) : null;
 
   return (
-    <div className="drawer-backdrop" onClick={onClose} style={{ zIndex: 100, display: "grid", placeItems: "center", padding: 16, overflow: "auto" }}>
+    <div className="drawer-backdrop" onClick={onClose} style={{ zIndex: 100, display: "grid", placeItems: "center", padding: 12, overflow: "hidden" }}>
       <motion.div className="card"
         initial={{ opacity: 0, y: 24, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 18, scale: 0.985 }}
         transition={{ type: "spring", damping: 28, stiffness: 260 }}
         onClick={e => e.stopPropagation()}
-        style={{ width: "min(1240px, calc(100vw - 32px))", height: "min(900px, calc(100vh - 32px))", maxHeight: "calc(100vh - 32px)", display: "flex", flexDirection: "column", background: "var(--paper)", zIndex: 101, overflow: "hidden", borderRadius: 18 }}>
+        style={{ width: "min(1480px, calc(100vw - 24px))", height: "calc(100dvh - 24px)", maxHeight: "calc(100dvh - 24px)", display: "flex", flexDirection: "column", background: "var(--paper)", zIndex: 101, overflow: "hidden", borderRadius: 18 }}>
 
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "18px 22px 16px", borderBottom: "1px solid var(--line)", flexShrink: 0, gap: 16, background: "var(--paper)", flexWrap: "wrap" }}>
           <div style={{ minWidth: 0 }}>
@@ -287,7 +325,7 @@ export function ApprovalDrawer({ j, api, onClose }: {
 
         <div className="approval-modal-grid" style={{ flex: 1, overflow: "hidden", display: "grid", minHeight: 0 }}>
           {/* Left: PDF */}
-          <div className="approval-doc-pane" style={{ padding: 18, borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}>
+          <div className="approval-doc-pane" style={{ padding: 18, borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <div>
                 <div className="eyebrow">Application Package</div>
@@ -379,15 +417,15 @@ export function ApprovalDrawer({ j, api, onClose }: {
                 )}
               </div>
             )}
-            {generateErr && <div style={{ color: "var(--bad)", fontSize: 12, padding: "8px 10px", background: "var(--bad-soft)", border: "1px solid var(--bad)", borderRadius: 8 }}>{generateErr}</div>}
-            <div style={{ flex: 1, minHeight: 0, background: "var(--card)", border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+            {visibleGenerateErr && <div style={{ color: "var(--bad)", fontSize: 12, padding: "8px 10px", background: "var(--bad-soft)", border: "1px solid var(--bad)", borderRadius: 8 }}>{visibleGenerateErr}</div>}
+            <div style={{ flex: "0 0 clamp(680px, 82vh, 980px)", minHeight: 560, background: "var(--card)", border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
               {activeReady && pdfBlobUrl && (
                 <iframe
                   key={pdfBlobUrl}
                   src={pdfBlobUrl}
                   title={activeDoc === "resume" ? "Resume" : "Cover Letter"}
                   width="100%"
-                  style={{ height: "100%", minHeight: 520, border: "none", display: "block" }}
+                  style={{ height: "100%", border: "none", display: "block" }}
                 />
               )}
               {generating && !pdfBlobUrl && (
@@ -398,10 +436,22 @@ export function ApprovalDrawer({ j, api, onClose }: {
               )}
               {!generating && activeReady && !pdfBlobUrl && (
                 <div style={{ height: "100%", minHeight: 420, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: "var(--ink-3)", fontSize: 12, padding: 24, textAlign: "center" }}>
-                  {pdfLoadErr
-                    ? <div style={{ color: "var(--bad)" }}>Failed to load PDF: {pdfLoadErr}</div>
-                    : <div>Loading {activeDoc === "resume" ? "resume" : "cover letter"}...</div>
-                  }
+                  {pdfLoadErr ? (
+                    <>
+                      <div style={{ color: "var(--bad)", maxWidth: 460, lineHeight: 1.5 }}>Failed to load PDF preview: {pdfLoadErr}</div>
+                      <button
+                        onClick={() => setPdfPreviewAttempt(n => n + 1)}
+                        style={{ padding: "8px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700, border: "1px solid var(--blue)", background: "var(--blue-soft)", color: "var(--blue-ink)", cursor: "pointer" }}
+                      >
+                        Retry preview
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div>Loading {activeDoc === "resume" ? "resume" : "cover letter"}...</div>
+                      <div className="mono" style={{ fontSize: 10.5, color: "var(--ink-4)" }}>Preview will time out automatically if the backend does not respond.</div>
+                    </>
+                  )}
                 </div>
               )}
               {!generating && !activeReady && (
@@ -603,7 +653,7 @@ export function ApprovalDrawer({ j, api, onClose }: {
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {j.match_points.map((pt, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "var(--ink-2)" }}>
-                      <span style={{ color: "var(--ok)", fontWeight: 700, flexShrink: 0 }}>?</span>
+                      <Icon name="check" size={13} color="var(--ok)" style={{ flexShrink: 0, marginTop: 2 }} />
                       <span style={{ lineHeight: 1.5 }}>{pt}</span>
                     </div>
                   ))}
@@ -617,7 +667,7 @@ export function ApprovalDrawer({ j, api, onClose }: {
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {j.gaps.map((g, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "var(--ink-2)" }}>
-                      <span style={{ color: "var(--bad)", fontWeight: 700, flexShrink: 0 }}>?</span>
+                      <Icon name="alert-circle" size={13} color="var(--bad)" style={{ flexShrink: 0, marginTop: 2 }} />
                       <span style={{ lineHeight: 1.5 }}>{g}</span>
                     </div>
                   ))}

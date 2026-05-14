@@ -21,9 +21,9 @@ const Settings = ({ open, onClose, ghost, setGhost }) => {
           <button className="btn btn-icon" onClick={onClose}><Icon name="x" size={15}/></button>
         </div>
         <div className="scroll" style={{ padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
-          <Field tone="purple" icon="key" label="Anthropic API key" hint="Used by evaluator + tailor agents" type="password" placeholder="sk-ant-•••••••••••••" defaultValue="sk-ant-api03-7f2a9b...c4d1"/>
+          <Field tone="purple" icon="key" label="Anthropic API key" hint="Used by evaluator + tailor agents" type="password" placeholder="sk-ant-•••••••••••••" defaultValue=""/>
           <Field tone="orange" icon="key" label="OpenAI API key" hint="Fallback for embeddings" type="password" placeholder="sk-•••••••••••••" defaultValue=""/>
-          <Field tone="blue" icon="link" label="LinkedIn session cookie" hint="Required for LinkedIn scraper" type="password" placeholder="li_at=•••" defaultValue="li_at=AQED..."/>
+          <Field tone="blue" icon="link" label="LinkedIn session cookie" hint="Required for LinkedIn scraper" type="password" placeholder="li_at=•••" defaultValue=""/>
           <Field tone="green" icon="globe" label="Target job boards" hint="One URL per line" type="textarea" defaultValue={"https://lever.co/linear\nhttps://greenhouse.io/stripe\nhttps://ashby.hq/figma\nhttps://jobs.ashbyhq.com/anthropic"}/>
 
           <div style={{

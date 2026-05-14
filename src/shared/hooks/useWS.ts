@@ -73,7 +73,7 @@ export function useWS() {
         if (d.type === "heartbeat") {
           setBeat(d.beat);
           if (d.beat % 10 === 1)
-            addLog(`Heartbeat #${d.beat} — uptime ${d.uptime_seconds.toFixed(0)}s`, "heartbeat", "hb");
+            addLog(`Heartbeat #${d.beat} - uptime ${d.uptime_seconds.toFixed(0)}s`, "heartbeat", "hb");
         } else if (d.type === "agent") {
           addLog(d.msg ?? d.event ?? "agent", "agent", d.event ?? "agent");
           if (d.event === "eval_done") window.dispatchEvent(new CustomEvent("scan-done"));

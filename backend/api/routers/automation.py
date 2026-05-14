@@ -6,8 +6,7 @@ import os
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import Field
 
-from api.dependencies import get_automation_service, get_repository
-from automation.service import AutomationService
+from api.dependencies import get_automation_service, get_job_runner, get_repository
 from core.types import StrictBody
 from data.repository import Repository
 
@@ -35,11 +34,15 @@ def fire_blocker(lead: dict, asset: str) -> tuple[int, str]:
     return 0, ""
 
 
-async def actuate_job(job_id: str, manager, repo: Repository | None = None, service: AutomationService | None = None) -> None:
+async def actuate_job(job_id: str, manager, repo: Repository | None = None, service=None, job_store=None) -> None:
     repo = repo or get_repository()
     service = service or get_automation_service()
+    job_store = job_store or get_job_runner()
+    job = job_store.create("automation_fire", {"job_id": job_id})
     try:
-        lead, asset = await service.get_lead_for_fire(job_id)
+        job_store.update(job.job_id, status="running", progress=10)
+        lead = await asyncio.to_thread(repo.leads.get_lead_by_id, job_id)
+        asset = (lead or {}).get("resume_asset") or (lead or {}).get("asset") or ""
         _status, detail = fire_blocker(lead, asset)
         if detail:
             await manager.broadcast({
@@ -48,6 +51,7 @@ async def actuate_job(job_id: str, manager, repo: Repository | None = None, serv
                 "job_id": job_id,
                 "msg": f"Submission blocked for {job_id}: {detail}",
             })
+            job_store.update(job.job_id, status="failed", error=detail)
             return
 
         await manager.broadcast({
@@ -64,10 +68,12 @@ async def actuate_job(job_id: str, manager, repo: Repository | None = None, serv
             "job_id": job_id,
             "msg": f"Submission failed for {job_id}: {exc}",
         })
+        job_store.update(job.job_id, status="failed", error=str(exc))
         return
 
     if ok:
-        await service.mark_applied(job_id)
+        await asyncio.to_thread(repo.leads.mark_applied, job_id)
+        job_store.update(job.job_id, status="succeeded", progress=100)
         await manager.broadcast({
             "type": "agent",
             "event": "applied",
@@ -75,6 +81,7 @@ async def actuate_job(job_id: str, manager, repo: Repository | None = None, serv
             "msg": f"Application submitted for {job_id}",
         })
     else:
+        job_store.update(job.job_id, status="failed", error="submit_application returned false")
         await manager.broadcast({
             "type": "agent",
             "event": "failed",
@@ -91,9 +98,10 @@ def create_router(manager) -> APIRouter:
         job_id: str,
         bt: BackgroundTasks,
         repo: Repository = Depends(get_repository),
-        service: AutomationService = Depends(get_automation_service),
+        service=Depends(get_automation_service),
     ):
-        lead, asset = await service.get_lead_for_fire(job_id)
+        lead = await asyncio.to_thread(repo.leads.get_lead_by_id, job_id)
+        asset = (lead or {}).get("resume_asset") or (lead or {}).get("asset") or ""
         status, detail = fire_blocker(lead, asset)
         if detail:
             raise HTTPException(status_code=status, detail=detail)
@@ -105,7 +113,7 @@ def create_router(manager) -> APIRouter:
         job_id: str,
         body: FormReadBody,
         repo: Repository = Depends(get_repository),
-        service: AutomationService = Depends(get_automation_service),
+        service=Depends(get_automation_service),
     ):
         lead = repo.leads.get_lead_by_id(job_id)
         if not lead:
@@ -158,13 +166,18 @@ def create_router(manager) -> APIRouter:
         }
 
     @router.post("/selectors/refresh")
-    async def refresh_selectors(service: AutomationService = Depends(get_automation_service)):
+    async def refresh_selectors(service=Depends(get_automation_service)):
         data = await service.refresh_selectors()
         return {"version": data.get("version"), "platforms": list(data.get("platforms", {}).keys())}
 
     @router.post("/leads/{job_id}/apply/preview")
-    async def preview_apply(job_id: str, service: AutomationService = Depends(get_automation_service)):
-        lead, asset = await service.get_lead_for_fire(job_id)
+    async def preview_apply(
+        job_id: str,
+        repo: Repository = Depends(get_repository),
+        service=Depends(get_automation_service),
+    ):
+        lead = await asyncio.to_thread(repo.leads.get_lead_by_id, job_id)
+        asset = (lead or {}).get("resume_asset") or (lead or {}).get("asset") or ""
         status_code, detail = fire_blocker(lead, asset)
         if detail:
             raise HTTPException(status_code=status_code, detail=detail)

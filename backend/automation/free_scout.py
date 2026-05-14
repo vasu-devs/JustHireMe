@@ -105,6 +105,21 @@ def _connector_headers(raw_headers: str | None, name: str) -> dict:
     return _source_connector_headers(raw_headers, name, LAST_ERRORS)
 
 
+def _source_error_detail(exc: Exception) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status == 403:
+            return "HTTP 403 blocked by source"
+        if status == 429:
+            return "HTTP 429 rate limited by source"
+        return f"HTTP {status}"
+    if isinstance(exc, httpx.TimeoutException):
+        return "request timed out"
+    if isinstance(exc, httpx.ConnectError):
+        return "connection failed"
+    return str(exc).strip() or type(exc).__name__
+
+
 async def _scrape_custom_connector(connector: dict, raw_headers: str | None = None) -> list[dict]:
     return await _source_scrape_custom_connector(connector, raw_headers, LAST_ERRORS)
 
@@ -281,7 +296,17 @@ def run(
         min_score = max(0, min(int(min_signal_score or 45), 100))
     except Exception:
         min_score = MIN_DEFAULT_QUALITY
-    LAST_USAGE = {"configured": len(all_targets) + len(custom_connectors), "executed": 0, "saved": 0, "filtered": 0}
+    LAST_USAGE = {
+        "configured": len(all_targets) + len(custom_connectors),
+        "executed": 0,
+        "candidates": 0,
+        "saved": 0,
+        "duplicates": 0,
+        "filtered": 0,
+        "missing_url": 0,
+        "errors": 0,
+        "by_source": {},
+    }
     leads: list[dict] = []
     seen: set[str] = set()
 
@@ -289,9 +314,11 @@ def run(
         try:
             batch = asyncio.run(_scrape_target(target))
             LAST_USAGE["executed"] += 1
+            LAST_USAGE["candidates"] += len(batch)
+            LAST_USAGE["by_source"][target] = len(batch)
         except Exception as exc:
-            detail = str(exc).strip() or type(exc).__name__
-            LAST_ERRORS.append(f"{target}: {detail}")
+            LAST_USAGE["errors"] += 1
+            LAST_ERRORS.append(f"{target}: {_source_error_detail(exc)}")
             continue
 
         for item in batch:
@@ -310,9 +337,11 @@ def run(
                 continue
             url = item.get("url", "")
             if not url:
+                LAST_USAGE["missing_url"] += 1
                 continue
             jid = lead_id(item.get("platform", "free"), url)
             if jid in seen or url_exists(jid):
+                LAST_USAGE["duplicates"] += 1
                 continue
             seen.add(jid)
             item["job_id"] = jid
@@ -354,10 +383,13 @@ def run(
         try:
             batch = asyncio.run(_scrape_custom_connector(connector, raw_custom_headers))
             LAST_USAGE["executed"] += 1
+            name = str(connector.get("name") or connector.get("url") or "custom")
+            LAST_USAGE["candidates"] += len(batch)
+            LAST_USAGE["by_source"][name] = len(batch)
         except Exception as exc:
+            LAST_USAGE["errors"] += 1
             name = str(connector.get("name") or "custom")
-            detail = str(exc).strip() or type(exc).__name__
-            LAST_ERRORS.append(f"{name}: {detail}")
+            LAST_ERRORS.append(f"{name}: {_source_error_detail(exc)}")
             continue
 
         for item in batch:
@@ -376,9 +408,11 @@ def run(
                 continue
             url = item.get("url", "")
             if not url:
+                LAST_USAGE["missing_url"] += 1
                 continue
             jid = lead_id(item.get("platform", "connector"), url)
             if jid in seen or url_exists(jid):
+                LAST_USAGE["duplicates"] += 1
                 continue
             seen.add(jid)
             item["job_id"] = jid

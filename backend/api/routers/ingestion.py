@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from api.rate_limit import RateLimiter, require_rate_limit
 from api.dependencies import get_profile_service
 from core.types import StrictBody
+from gateway.clients.base import ServiceRequestError, ServiceTimeout, ServiceUnavailable
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
@@ -20,7 +21,7 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 class GithubIngestBody(StrictBody):
     username: str = Field(max_length=100)
     token: str = Field(default="", max_length=200)
-    max_repos: int = Field(default=12, ge=1, le=30)
+    max_repos: int = Field(default=100, ge=1, le=500)
 
 
 class PortfolioIngestBody(StrictBody):
@@ -149,7 +150,8 @@ def create_router(manager, logger) -> APIRouter:
             max_repos=body.max_repos,
         )
         if "error" in result:
-            raise HTTPException(404, result["error"])
+            status_code = int(result.get("status_code") or (404 if result.get("error_kind") == "not_found" else 502))
+            raise HTTPException(status_code, result["error"])
         return result
 
     @router.post("/ingest/profile")
@@ -166,9 +168,16 @@ def create_router(manager, logger) -> APIRouter:
     async def ingest_portfolio_endpoint(body: PortfolioIngestBody):
         if not body.url.startswith(("http://", "https://")):
             raise HTTPException(400, "url must start with http:// or https://")
-        result = await get_profile_service().ingest_portfolio(body.url, auto_import=body.auto_import)
+        try:
+            result = await get_profile_service().ingest_portfolio(body.url, auto_import=body.auto_import)
+        except ServiceTimeout as exc:
+            raise HTTPException(504, str(exc))
+        except ServiceUnavailable as exc:
+            raise HTTPException(503, str(exc))
+        except ServiceRequestError as exc:
+            raise HTTPException(502, str(exc))
         if result.get("error") and not result.get("screenshot_b64"):
-            raise HTTPException(422, result["error"])
+            raise HTTPException(int(result.get("status_code") or 422), result["error"])
         if result.get("imported"):
             result["import_stats"] = result["imported"]["stats"]
             result["import_errors"] = result["imported"]["errors"]

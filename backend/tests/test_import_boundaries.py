@@ -16,18 +16,22 @@ DOMAIN_PACKAGES = {
 PROJECT_PACKAGES = DOMAIN_PACKAGES | {
     "api",
     "automation",
+    "contracts",
     "core",
     "data",
     "db",
+    "gateway",
+    "graph_service",
     "help",
     "llm",
     "main",
+    "services",
 }
 
 ALLOWED_IMPORTS: dict[str, set[str]] = {
-    "api": {"api", "automation", "core", "data", "discovery", "help", "llm", "profile", "ranking", "generation"},
+    "api": {"api", "contracts", "core", "data", "gateway", "graph_service", "help", "llm"},
     "automation": {"automation", "core", "data", "discovery", "llm"},
-    "data": {"core", "data"},
+    "data": {"core", "data", "graph_service"},
     "profile": {"automation", "core", "data", "llm", "profile"},
     "discovery": {"automation", "core", "data", "discovery", "llm"},
     "help": {"help", "llm"},
@@ -35,6 +39,10 @@ ALLOWED_IMPORTS: dict[str, set[str]] = {
     "ranking": {"core", "data", "llm", "ranking"},
     "generation": {"core", "data", "generation", "llm"},
     "db": {"core", "data", "automation", "ranking"},
+    "contracts": {"contracts"},
+    "gateway": {"contracts", "core", "data", "gateway"},
+    "graph_service": {"core", "data", "graph_service"},
+    "services": {"automation", "contracts", "core", "data", "discovery", "generation", "graph_service", "profile", "ranking", "services"},
 }
 
 LEGACY_IMPORT_EXCEPTIONS: dict[str, set[str]] = {}
@@ -82,3 +90,28 @@ def test_core_remains_dependency_free_inside_the_project():
             violations.append(f"{rel}: {', '.join(sorted(imports))}")
 
     assert not violations, "core/ must not import project packages:\n" + "\n".join(violations)
+
+
+def test_gateway_clients_do_not_import_domain_packages():
+    violations = []
+    clients_root = BACKEND_ROOT / "gateway" / "clients"
+    for path in clients_root.rglob("*.py"):
+        imports = _project_imports(path)
+        forbidden = imports & {"automation", "discovery", "generation", "graph_service", "profile", "ranking"}
+        if forbidden:
+            rel = path.relative_to(BACKEND_ROOT).as_posix()
+            violations.append(f"{rel}: {', '.join(sorted(forbidden))}")
+
+    assert not violations, "gateway clients must use contracts, not domain internals:\n" + "\n".join(violations)
+
+
+def test_services_do_not_import_gateway_or_api():
+    violations = []
+    for path in (BACKEND_ROOT / "services").rglob("*.py"):
+        imports = _project_imports(path)
+        forbidden = imports & {"api", "gateway"}
+        if forbidden:
+            rel = path.relative_to(BACKEND_ROOT).as_posix()
+            violations.append(f"{rel}: {', '.join(sorted(forbidden))}")
+
+    assert not violations, "internal services must not import gateway/api:\n" + "\n".join(violations)

@@ -11,6 +11,7 @@ from core.types import HelpChatBody
 from core.telemetry import log_error
 from data.repository import Repository
 from gateway.clients import graph_client
+from graph_service.stats import graph_stats_payload
 
 
 router = APIRouter(prefix="/api/v1", tags=["misc"])
@@ -20,7 +21,7 @@ _help_limiter = RateLimiter(20, 60)
 @router.get("/graph")
 async def graph_stats(repo: Repository = Depends(get_repository), repair: bool = False):
     client = graph_client()
-    if client:
+    if client and isinstance(repo, Repository):
         return await client.stats(repair=repair)
 
     errors: list[str] = []

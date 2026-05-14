@@ -4,7 +4,7 @@ import os
 from urllib.parse import urlparse
 
 from data.repository import Repository
-from discovery.targets import free_sources_enabled, has_x_token, job_targets, truthy
+from gateway.discovery_config import free_sources_enabled, has_x_token, job_targets, truthy
 
 
 def startup_warnings(repo: Repository) -> list[str]:

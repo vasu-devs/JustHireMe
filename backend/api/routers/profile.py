@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.dependencies import get_profile_service
-from core.types import CandidateBody, ExperienceBody, ProjectBody, SkillBody
+from core.types import CandidateBody, ExperienceBody, IdentityBody, ProfileEntryBody, ProjectBody, SkillBody
 
 
 router = APIRouter(prefix="/api/v1", tags=["profile"])
@@ -19,6 +19,11 @@ async def update_candidate_endpoint(body: CandidateBody, service=Depends(get_pro
     if not body.n.strip() and not body.s.strip():
         raise HTTPException(status_code=422, detail="Name or summary is required")
     return await _maybe_await(service.update_candidate(body.n, body.s))
+
+
+@router.put("/profile/identity")
+async def update_identity_endpoint(body: IdentityBody, service=Depends(get_profile_service)):
+    return await _maybe_await(service.update_identity(body.model_dump()))
 
 
 @router.post("/profile/skill")
@@ -79,6 +84,27 @@ async def update_project_endpoint(pid: str, body: ProjectBody, service=Depends(g
 async def delete_project_endpoint(pid: str, service=Depends(get_profile_service)):
     await _maybe_await(service.delete_project(pid))
     return {"ok": True}
+
+
+@router.post("/profile/education")
+async def add_education_endpoint(body: ProfileEntryBody, service=Depends(get_profile_service)):
+    if not body.title.strip():
+        raise HTTPException(status_code=422, detail="Education title is required")
+    return await _maybe_await(service.add_education(body.title))
+
+
+@router.post("/profile/certification")
+async def add_certification_endpoint(body: ProfileEntryBody, service=Depends(get_profile_service)):
+    if not body.title.strip():
+        raise HTTPException(status_code=422, detail="Certification title is required")
+    return await _maybe_await(service.add_certification(body.title))
+
+
+@router.post("/profile/achievement")
+async def add_achievement_endpoint(body: ProfileEntryBody, service=Depends(get_profile_service)):
+    if not body.title.strip():
+        raise HTTPException(status_code=422, detail="Achievement title is required")
+    return await _maybe_await(service.add_achievement(body.title))
 
 
 async def _maybe_await(value):

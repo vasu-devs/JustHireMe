@@ -1,6 +1,6 @@
 [project]
 name = "backend"
-version = "0.1.28"
+version = "0.1.29"
 description = "FastAPI sidecar for JustHireMe's local-first job intelligence workbench"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -26,6 +26,8 @@ dependencies = [
     "apscheduler>=3.10.0",
     "python-multipart>=0.0.27",
     "tenacity>=9.1.4",
+    "langsmith>=0.8.0",
+    "urllib3>=2.7.0",
 ]
 
 [dependency-groups]

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.auth import LOCAL_ORIGIN_RE, require_http_token
 from api.dependencies import get_event_bus
-from api.routers import automation, discovery, events, generation, health, ingestion, leads, misc, profile, settings
+from api.routers import automation, discovery, events, generation, health, ingestion, internal, leads, misc, profile, settings
 from api.websocket import register_websocket
 from core.telemetry import record_exception
 
@@ -31,6 +31,7 @@ def create_app(
     connection_manager=None,
     logger=None,
     websocket_token_guard=None,
+    internal_token: str = "",
 ) -> FastAPI:
     app = FastAPI(
         title="JustHireMe",
@@ -44,6 +45,8 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.state.internal_token = internal_token
+    app.state.connection_manager = connection_manager
 
     @app.middleware("http")
     async def require_http_token_middleware(request: Request, call_next):
@@ -58,6 +61,7 @@ def create_app(
             raise
 
     app.include_router(health.create_router(started_at))
+    app.include_router(internal.router)
     app.include_router(events.router)
     app.include_router(misc.router)
     app.include_router(profile.router)

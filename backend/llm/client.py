@@ -40,6 +40,10 @@ _KEY_NAMES: dict[str, str] = {
     "cerebras":  "cerebras_api_key",
     "perplexity": "perplexity_api_key",
     "huggingface": "huggingface_api_key",
+    "cohere": "cohere_api_key",
+    "sambanova": "sambanova_api_key",
+    "qwen": "qwen_api_key",
+    "azure": "azure_openai_api_key",
     "custom":    "custom_api_key",
 }
 
@@ -60,6 +64,10 @@ _ENV_NAMES: dict[str, str] = {
     "cerebras":  "CEREBRAS_API_KEY",
     "perplexity": "PERPLEXITY_API_KEY",
     "huggingface": "HF_TOKEN",
+    "cohere": "COHERE_API_KEY",
+    "sambanova": "SAMBANOVA_API_KEY",
+    "qwen": "DASHSCOPE_API_KEY",
+    "azure": "AZURE_OPENAI_API_KEY",
     "custom":    "OPENAI_COMPAT_API_KEY",
 }
 
@@ -72,7 +80,7 @@ _DEFAULT_MODELS: dict[str, str] = {
     "openai":    "gpt-4o-mini",
     "deepseek":  "deepseek-chat",
     "xai":       "grok-4",
-    "kimi":      "kimi-k2-turbo-preview",
+    "kimi":      "kimi-k2.6",
     "mistral":   "mistral-large-latest",
     "openrouter": "openrouter/auto",
     "together":  "openai/gpt-oss-120b",
@@ -80,6 +88,10 @@ _DEFAULT_MODELS: dict[str, str] = {
     "cerebras":  "llama-3.3-70b",
     "perplexity": "sonar",
     "huggingface": "openai/gpt-oss-120b",
+    "cohere": "command-a-03-2025",
+    "sambanova": "Meta-Llama-3.3-70B-Instruct",
+    "qwen": "qwen-plus",
+    "azure": "gpt-4o-mini",
     "custom":    "model-id",
     "ollama":    "llama3",
 }
@@ -94,9 +106,12 @@ _OPENAI_COMPAT_BASE_URLS: dict[str, str] = {
     "cerebras": "https://api.cerebras.ai/v1",
     "perplexity": "https://api.perplexity.ai/v1",
     "huggingface": "https://router.huggingface.co/v1",
+    "cohere": "https://api.cohere.ai/compatibility/v1",
+    "sambanova": "https://api.sambanova.ai/v1",
+    "qwen": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
 }
 
-_OPENAI_COMPAT_PROVIDERS = set(_OPENAI_COMPAT_BASE_URLS) | {"custom"}
+_OPENAI_COMPAT_PROVIDERS = set(_OPENAI_COMPAT_BASE_URLS) | {"azure", "custom"}
 _BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
 
 
@@ -117,6 +132,16 @@ def _validate_base_url(url: str) -> str:
 
 
 def _provider_base_url(provider: str) -> str:
+    if provider == "azure":
+        base = (
+            get_setting("azure_openai_endpoint", "")
+            or os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+        ).strip().rstrip("/")
+        if not base:
+            raise ValueError("Azure OpenAI endpoint is required")
+        if not base.endswith("/openai/v1"):
+            base = f"{base}/openai/v1"
+        return _validate_base_url(base)
     if provider == "custom":
         return _validate_base_url(
             get_setting("custom_base_url", "")
@@ -306,8 +331,13 @@ def call_llm(s: str, u: str, m: type[BaseModel], step: str | None = None):
             except Exception:
                 _log.warning("perplexity structured parse failed (step=%s)", step)
                 return _parse_fallback(u, m)
+        try:
+            client = _client_openai_compat(p, k)
+        except ValueError as exc:
+            _log.warning("%s configuration invalid (step=%s): %s", p, step, exc)
+            return _parse_fallback(u, m)
         c = instructor.from_openai(
-            _client_openai_compat(p, k),
+            client,
             mode=instructor.Mode.JSON,
         )
         return c.chat.completions.create(
@@ -408,7 +438,11 @@ def call_raw(s: str, u: str, step: str | None = None) -> str:
     elif p in _OPENAI_COMPAT_PROVIDERS:
         if not k:
             return ""
-        c = _client_openai_compat(p, k)
+        try:
+            c = _client_openai_compat(p, k)
+        except ValueError as exc:
+            _log.warning("%s configuration invalid (step=%s): %s", p, step, exc)
+            return ""
         if p == "perplexity":
             r = c.responses.create(
                 model=model,

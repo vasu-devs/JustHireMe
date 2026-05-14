@@ -1,19 +1,57 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { LogLine } from "../../types";
 
+type ActivityTab = "all" | "scout" | "eval" | "customize" | "system";
+
+function visibleForTab(logs: LogLine[], tab: ActivityTab) {
+  return logs.filter(l => {
+    const message = l.msg.toLowerCase();
+    if (tab === "all") return l.kind !== "heartbeat";
+    if (tab === "scout") return l.src === "scout" || (l.kind === "agent" && message.includes("scout"));
+    if (tab === "eval") return l.src === "eval" || (l.kind === "agent" && (message.includes("eval") || message.includes("scor")));
+    if (tab === "customize") return l.src === "apply" || (l.kind === "agent" && (message.includes("custom") || message.includes("generat") || message.includes("package")));
+    if (tab === "system") return l.kind === "system";
+    return true;
+  });
+}
+
 export function ActivityView({ logs }: { logs: LogLine[] }) {
-  const [actTab, setActTab] = useState<"all"|"scout"|"eval"|"customize"|"system">("all");
+  const [actTab, setActTab] = useState<ActivityTab>("all");
+  const [copied, setCopied] = useState(false);
+  const visibleLogs = useMemo(() => visibleForTab(logs, actTab), [actTab, logs]);
+
+  const copyThinking = async () => {
+    const body = visibleLogs
+      .map(ln => `[${ln.ts}] ${ln.kind.toUpperCase()} ${ln.src}: ${ln.msg}`)
+      .join("\n");
+    const text = body || "No agent logs visible.";
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1400);
+  };
+
   return (
     <div className="scroll" style={{ padding: 24, flex: 1, height: "100%", minHeight: 0 }}>
-      <div style={{display:"flex", gap:6, marginBottom:16, flexWrap:"wrap"}}>
-        {(["all","scout","eval","customize","system"] as const).map(tab => (
+      <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+        {(["all", "scout", "eval", "customize", "system"] as const).map(tab => (
           <button key={tab} onClick={() => setActTab(tab)} style={{
-            padding:"5px 14px", borderRadius:999, fontSize:11, fontWeight:700,
-            letterSpacing:"0.1em", textTransform:"uppercase", cursor:"pointer",
+            padding: "5px 14px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+            letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer",
             border: actTab === tab ? "none" : "1px solid var(--line)",
             background: actTab === tab ? "var(--ink)" : "var(--paper)",
             color: actTab === tab ? "var(--card)" : "var(--ink-3)",
-            transition:"all 0.15s ease",
+            transition: "all 0.15s ease",
           }}>
             {tab === "all" ? "All" : tab === "scout" ? "Scout" : tab === "eval" ? "Eval" : tab === "customize" ? "Customize" : "System"}
           </button>
@@ -26,20 +64,18 @@ export function ActivityView({ logs }: { logs: LogLine[] }) {
       <div className="card" style={{ padding: 18, background: "var(--purple-soft)" }}>
         <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
           <h3>Stream</h3>
-          <span className="pill" style={{ background: "var(--green)", color: "var(--green-ink)" }}>
-            <span className="dot pulse-soft" /> live
-          </span>
+          <div className="row gap-2">
+            <button className="btn btn-ghost" onClick={copyThinking} style={{ fontSize: 12 }}>
+              {copied ? "Copied" : "Copy thinking"}
+            </button>
+            <span className="pill" style={{ background: "var(--green)", color: "var(--green-ink)" }}>
+              <span className="dot pulse-soft" /> live
+            </span>
+          </div>
         </div>
         <div style={{ height: 440, display: "flex" }}>
           <div className="scroll terminal" style={{ background: "#1F1A14", color: "#EFE7D6", borderRadius: 12, padding: "14px 16px", flex: 1 }}>
-            {logs.filter(l => {
-              if (actTab === "all") return l.kind !== "heartbeat";
-              if (actTab === "scout") return l.src === "scout" || (l.kind === "agent" && l.msg.toLowerCase().includes("scout"));
-              if (actTab === "eval")  return l.src === "eval"  || (l.kind === "agent" && (l.msg.toLowerCase().includes("eval") || l.msg.toLowerCase().includes("scor")));
-              if (actTab === "customize") return l.src === "apply" || (l.kind === "agent" && (l.msg.toLowerCase().includes("custom") || l.msg.toLowerCase().includes("generat") || l.msg.toLowerCase().includes("package")));
-              if (actTab === "system") return l.kind === "system";
-              return true;
-            }).map((ln) => {
+            {visibleLogs.map(ln => {
               const tone = ln.kind === "heartbeat" ? "blue" : ln.kind === "agent" ? "green" : "yellow";
               return (
                 <div key={ln.id} className="row gap-3" style={{ marginBottom: 5, alignItems: "baseline" }}>
@@ -51,8 +87,8 @@ export function ActivityView({ logs }: { logs: LogLine[] }) {
               );
             })}
             <div className="row gap-2" style={{ marginTop: 4 }}>
-              <span style={{ color: "var(--accent)" }}>›</span>
-              <span className="blink">▌</span>
+              <span style={{ color: "var(--accent)" }}>{">"}</span>
+              <span className="blink">|</span>
             </div>
           </div>
         </div>
@@ -60,7 +96,3 @@ export function ActivityView({ logs }: { logs: LogLine[] }) {
     </div>
   );
 }
-
-/* ══════════════════════════════════════
-   PROFILE VIEW
-══════════════════════════════════════ */

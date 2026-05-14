@@ -59,7 +59,7 @@ def connect(db_path: str = DEFAULT_DB_PATH):
 def _ensure_parent(db_path: str) -> None:
     parent = os.path.dirname(db_path)
     if parent:
-        os.makedirs(parent, exist_ok=True)
+        Path(parent).mkdir(parents=True, exist_ok=True)
 
 
 def _migration_files() -> list[Path]:
@@ -176,6 +176,7 @@ def _ensure_core_tables(conn) -> None:
 def run_migrations(db_path: str = DEFAULT_DB_PATH) -> None:
     _ensure_parent(db_path)
     lock_path = db_path + ".migration.lock"
+    Path(lock_path).parent.mkdir(parents=True, exist_ok=True)
     with open(lock_path, "a+", encoding="utf-8") as lock_file:
         try:
             _lock_file(lock_file)

@@ -126,6 +126,19 @@ export default function Icon({ name, size = 16, stroke = 1.7, color = "currentCo
           <path d="M14 2v6h6" />
         </svg>
       );
+    case "mail":
+      return (
+        <svg {...props}>
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <path d="m3 7 9 6 9-6" />
+        </svg>
+      );
+    case "phone":
+      return (
+        <svg {...props}>
+          <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.7.6 2.5a2 2 0 0 1-.5 2.1L8 9.5a16 16 0 0 0 6.5 6.5l1.2-1.2a2 2 0 0 1 2.1-.5c.8.3 1.6.5 2.5.6a2 2 0 0 1 1.7 2z" />
+        </svg>
+      );
     case "download":
       return (
         <svg {...props}>
@@ -145,6 +158,14 @@ export default function Icon({ name, size = 16, stroke = 1.7, color = "currentCo
       return (
         <svg {...props}>
           <path d="m5 12 5 5L20 7" />
+        </svg>
+      );
+    case "alert-circle":
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v6" />
+          <path d="M12 17h.01" />
         </svg>
       );
     case "fire":

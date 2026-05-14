@@ -11,10 +11,10 @@ export function useGraphStats(api: ApiFetch | null) {
     }
     const controller = new AbortController();
     let alive = true;
-    const load = async () => {
+    const load = async (repair = false) => {
       setStats(prev => ({ ...prev, loading: true, request_error: "" }));
       try {
-        const response = await api(`/api/v1/graph`, { signal: controller.signal });
+        const response = await api(`/api/v1/graph${repair ? "?repair=true" : ""}`, { signal: controller.signal, timeoutMs: repair ? 45000 : undefined });
         if (!response.ok) {
           const detail = await response.text().catch(() => "");
           throw new Error(`Graph request failed (${response.status})${detail ? `: ${detail.slice(0, 240)}` : ""}`);
@@ -28,7 +28,7 @@ export function useGraphStats(api: ApiFetch | null) {
         setStats(prev => ({ ...prev, loaded: true, loading: false, request_error: message }));
       }
     };
-    const refresh = () => load();
+    const refresh = () => load(true);
     load();
     window.addEventListener("lead-updated", refresh);
     window.addEventListener("leads-refresh", refresh);
