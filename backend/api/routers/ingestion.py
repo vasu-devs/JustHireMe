@@ -11,7 +11,9 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from api.rate_limit import RateLimiter, require_rate_limit
+from api.dependencies import get_profile_service
 from core.types import StrictBody
+from gateway.clients.base import ServiceRequestError, ServiceTimeout, ServiceUnavailable
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
@@ -19,7 +21,7 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 class GithubIngestBody(StrictBody):
     username: str = Field(max_length=100)
     token: str = Field(default="", max_length=200)
-    max_repos: int = Field(default=12, ge=1, le=30)
+    max_repos: int = Field(default=100, ge=1, le=500)
 
 
 class PortfolioIngestBody(StrictBody):
@@ -80,12 +82,6 @@ class ProfileImportBody(BaseModel):
     achievements: list[ProfileEntry] = Field(default_factory=list)
 
 
-def _profile_service():
-    from profile.service import ProfileService
-
-    return ProfileService()
-
-
 @contextlib.contextmanager
 def _temp_upload(file: UploadFile | None):
     if not file or not file.filename:
@@ -115,13 +111,21 @@ def create_router(manager, logger) -> APIRouter:
             raise HTTPException(status_code=413, detail=f"File too large (max {MAX_UPLOAD_SIZE // 1024 // 1024} MB)")
         try:
             with _temp_upload(file) as pdf_path:
-                profile = await _profile_service().ingest_resume(raw, pdf_path)
+                profile = await get_profile_service().ingest_resume(raw, pdf_path)
+                if isinstance(profile, dict):
+                    profile_payload = profile
+                    skill_count = len(profile.get("skills", []))
+                    profile_name = profile.get("n", "")
+                else:
+                    profile_payload = profile.model_dump()
+                    skill_count = len(profile.skills)
+                    profile_name = profile.n
                 await manager.broadcast({
                     "type": "agent",
                     "event": "ingested",
-                    "msg": f"Profile ingested: {profile.n} - {len(profile.skills)} skills",
+                    "msg": f"Profile ingested: {profile_name} - {skill_count} skills",
                 })
-                return profile.model_dump()
+                return profile_payload
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
@@ -133,25 +137,26 @@ def create_router(manager, logger) -> APIRouter:
         if len(raw) > 50 * 1024 * 1024:
             raise HTTPException(413, "file too large")
         try:
-            return await _profile_service().ingest_linkedin(raw)
+            return await get_profile_service().ingest_linkedin(raw)
         except Exception as exc:
             logger.error("linkedin parse failed: %s", exc)
             raise HTTPException(422, f"could not parse linkedin export: {exc}")
 
     @router.post("/ingest/github")
     async def ingest_github_endpoint(body: GithubIngestBody):
-        result = await _profile_service().ingest_github(
+        result = await get_profile_service().ingest_github(
             body.username,
             token=body.token or None,
             max_repos=body.max_repos,
         )
         if "error" in result:
-            raise HTTPException(404, result["error"])
+            status_code = int(result.get("status_code") or (404 if result.get("error_kind") == "not_found" else 502))
+            raise HTTPException(status_code, result["error"])
         return result
 
     @router.post("/ingest/profile")
     async def import_profile_json(body: ProfileImportBody):
-        return await _profile_service().import_profile_data(body)
+        return await get_profile_service().import_profile_data(body)
 
     @router.get("/ingest/profile/template")
     async def get_profile_template():
@@ -163,9 +168,16 @@ def create_router(manager, logger) -> APIRouter:
     async def ingest_portfolio_endpoint(body: PortfolioIngestBody):
         if not body.url.startswith(("http://", "https://")):
             raise HTTPException(400, "url must start with http:// or https://")
-        result = await _profile_service().ingest_portfolio(body.url, auto_import=body.auto_import)
+        try:
+            result = await get_profile_service().ingest_portfolio(body.url, auto_import=body.auto_import)
+        except ServiceTimeout as exc:
+            raise HTTPException(504, str(exc))
+        except ServiceUnavailable as exc:
+            raise HTTPException(503, str(exc))
+        except ServiceRequestError as exc:
+            raise HTTPException(502, str(exc))
         if result.get("error") and not result.get("screenshot_b64"):
-            raise HTTPException(422, result["error"])
+            raise HTTPException(int(result.get("status_code") or 422), result["error"])
         if result.get("imported"):
             result["import_stats"] = result["imported"]["stats"]
             result["import_errors"] = result["imported"]["errors"]

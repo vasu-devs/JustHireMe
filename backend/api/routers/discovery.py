@@ -5,11 +5,10 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
 
-from api.dependencies import get_discovery_service, get_ranking_service, get_repository
+from api.dependencies import get_discovery_service, get_job_runner, get_ranking_service, get_repository
 from api.rate_limit import RateLimiter, require_rate_limit
 from data.repository import Repository
-from discovery.service import DiscoveryService
-from discovery.targets import (
+from gateway.discovery_config import (
     free_sources_enabled,
     has_x_token,
     int_cfg,
@@ -17,7 +16,6 @@ from discovery.targets import (
     profile_for_discovery,
     truthy,
 )
-from ranking.service import RankingService
 
 
 SCAN_STOP = asyncio.Event()
@@ -29,6 +27,19 @@ _reevaluate_lock = asyncio.Lock()
 _scan_limiter = RateLimiter(3, 60)
 
 REEVALUATION_STATUS_LOCKS = {"approved", "applied", "interviewing", "rejected", "accepted", "discarded"}
+
+
+def _merge_scan_usage(total: dict, incoming: dict, target_count: int) -> None:
+    total["configured"] = total.get("configured", 0) + target_count
+    for key in ("executed", "candidates", "saved", "duplicates", "filtered", "missing_url", "errors"):
+        total[key] = total.get(key, 0) + int(incoming.get(key, 0) or 0)
+    for key, value in (incoming.get("by_source") or {}).items():
+        total.setdefault("by_source", {})[key] = value
+
+
+def _target_batches(urls: list[str], size: int) -> list[list[str]]:
+    size = max(1, size)
+    return [urls[index:index + size] for index in range(0, len(urls), size)]
 
 
 def should_preserve_job_status(status: str) -> bool:
@@ -87,11 +98,14 @@ async def run_free_source_scan(manager, cfg: dict, kind_filter: str | None = Non
     await manager.broadcast({
         "type": "agent",
         "event": "free_scout_done",
-        "msg": f"Free scout - {len(leads)} {label} found ({usage.get('executed', 0)} sources checked)",
+        "msg": (
+            f"Free scout - {len(leads)} new {label} "
+            f"({usage.get('candidates', 0)} candidates, {usage.get('duplicates', 0)} duplicates, "
+            f"{usage.get('filtered', 0)} filtered, {usage.get('executed', 0)} sources checked)"
+        ),
     })
-    if not leads:
-        for msg in result.errors[:4]:
-            await manager.broadcast({"type": "agent", "event": "free_source_error", "msg": f"Free source skipped: {msg}"})
+    for msg in result.errors[:4]:
+        await manager.broadcast({"type": "agent", "event": "free_source_error", "msg": f"Free source detail: {msg}"})
     for lead in leads:
         await manager.broadcast({"type": "LEAD_UPDATED", "data": lead})
     return leads, usage, result.errors
@@ -101,18 +115,21 @@ async def run_scan(
     manager,
     *,
     repo: Repository | None = None,
-    discovery_service: DiscoveryService | None = None,
-    ranking_service: RankingService | None = None,
+    discovery_service=None,
+    ranking_service=None,
 ) -> None:
     repo = repo or get_repository()
     discovery_service = discovery_service or get_discovery_service()
     ranking_service = ranking_service or get_ranking_service()
+    job_store = get_job_runner()
+    job = job_store.create("scan", {})
+    job_store.update(job.job_id, status="running", progress=5)
     cfg = repo.settings.get_settings()
     profile = profile_for_discovery(repo.profile.get_profile(), cfg)
     market_focus = cfg.get("job_market_focus", "global")
     raw_urls = job_targets(cfg.get("job_boards", ""), market_focus)
     await run_x_signal_scan(manager, cfg, "job", profile)
-    await run_free_source_scan(manager, cfg, "job", profile)
+    await run_free_source_scan(manager, cfg, "job", profile, force=True)
 
     await manager.broadcast({"type": "agent", "event": "query_gen_start", "msg": "Generating profile-tailored search queries..."})
     try:
@@ -125,9 +142,36 @@ async def run_scan(
         await manager.broadcast({"type": "agent", "event": "query_gen_error", "msg": f"Query generation failed ({exc}), using raw URLs"})
 
     await manager.broadcast({"type": "agent", "event": "scout_start", "msg": f"Launching scan for {len(urls)} targets..."})
-    scout_result = await discovery_service.scan_job_boards(urls, cfg)
-    leads = scout_result.leads
-    await manager.broadcast({"type": "agent", "event": "scout_done", "msg": f"Scout finished - {len(leads)} new leads found"})
+    leads: list[dict] = []
+    scout_usage: dict = {"configured": 0, "executed": 0, "candidates": 0, "saved": 0, "duplicates": 0, "filtered": 0, "missing_url": 0, "errors": 0, "by_source": {}}
+    scout_errors: list[str] = []
+    batch_size = int_cfg(cfg, "board_scan_batch_size", 4, 1, 12)
+    batches = _target_batches(urls, batch_size)
+    for batch_index, batch in enumerate(batches, start=1):
+        if SCAN_STOP.is_set():
+            break
+        try:
+            scout_result = await discovery_service.scan_job_boards(batch, cfg)
+            leads.extend(scout_result.leads)
+            _merge_scan_usage(scout_usage, scout_result.usage or {}, len(batch))
+            scout_errors.extend(scout_result.errors or [])
+        except Exception as exc:
+            scout_usage["configured"] += len(batch)
+            scout_usage["errors"] += len(batch)
+            detail = str(exc).strip() or type(exc).__name__
+            scout_errors.append(f"board batch {batch_index}/{len(batches)} skipped ({len(batch)} targets): {detail}")
+
+    await manager.broadcast({
+        "type": "agent",
+        "event": "scout_done",
+        "msg": (
+            f"Scout finished - {len(leads)} new leads found "
+            f"({scout_usage.get('candidates', 0)} candidates, {scout_usage.get('duplicates', 0)} duplicates, "
+            f"{scout_usage.get('filtered', 0)} filtered, {scout_usage.get('errors', 0)} source errors)"
+        ),
+    })
+    for msg in scout_errors[:5]:
+        await manager.broadcast({"type": "agent", "event": "scout_source_detail", "msg": f"Scout source detail: {msg}"})
 
     if SCAN_STOP.is_set():
         await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Scan stopped after scouting."})
@@ -154,6 +198,7 @@ async def run_scan(
 
     await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Evaluation cycle complete"})
     await asyncio.to_thread(repo.settings.save_settings, {"last_scan_finished_at": datetime.now(timezone.utc).isoformat()})
+    job_store.update(job.job_id, status="succeeded", progress=100)
 
 
 async def run_scan_task(
@@ -161,8 +206,8 @@ async def run_scan_task(
     logger,
     *,
     repo: Repository | None = None,
-    discovery_service: DiscoveryService | None = None,
-    ranking_service: RankingService | None = None,
+    discovery_service=None,
+    ranking_service=None,
 ) -> None:
     global SCAN_TASK
     try:
@@ -183,10 +228,13 @@ async def run_reevaluate_jobs(
     manager,
     *,
     repo: Repository | None = None,
-    ranking_service: RankingService | None = None,
+    ranking_service=None,
 ) -> None:
     repo = repo or get_repository()
     ranking_service = ranking_service or get_ranking_service()
+    job_store = get_job_runner()
+    job = job_store.create("reevaluate", {})
+    job_store.update(job.job_id, status="running", progress=5)
     cfg = await asyncio.to_thread(repo.settings.get_settings)
     profile = await asyncio.to_thread(repo.profile.get_profile)
     jobs = await asyncio.to_thread(repo.leads.get_job_leads_for_evaluation)
@@ -238,6 +286,7 @@ async def run_reevaluate_jobs(
     if failed:
         summary += f", {failed} failed"
     await manager.broadcast({"type": "agent", "event": "reeval_done", "msg": summary})
+    job_store.update(job.job_id, status="succeeded", progress=100, result={"scored": scored, "failed": failed, "total": total})
 
 
 async def run_reevaluate_jobs_task(
@@ -245,7 +294,7 @@ async def run_reevaluate_jobs_task(
     logger,
     *,
     repo: Repository | None = None,
-    ranking_service: RankingService | None = None,
+    ranking_service=None,
 ) -> None:
     global REEVALUATE_TASK
     try:
@@ -267,8 +316,8 @@ def create_router(
     @router.post("/scan")
     async def scan(
         repo: Repository = Depends(get_repository),
-        discovery_service: DiscoveryService = Depends(get_discovery_service),
-        ranking_service: RankingService = Depends(get_ranking_service),
+        discovery_service=Depends(get_discovery_service),
+        ranking_service=Depends(get_ranking_service),
     ):
         global SCAN_TASK
         require_rate_limit(_scan_limiter)
@@ -301,7 +350,7 @@ def create_router(
     @router.post("/leads/reevaluate")
     async def reevaluate_jobs(
         repo: Repository = Depends(get_repository),
-        ranking_service: RankingService = Depends(get_ranking_service),
+        ranking_service=Depends(get_ranking_service),
     ):
         global REEVALUATE_TASK
         async with _reevaluate_lock:

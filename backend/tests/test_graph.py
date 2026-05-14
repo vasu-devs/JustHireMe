@@ -110,6 +110,13 @@ class TestGraphStructure(unittest.TestCase):
         nodes = getattr(graph, "nodes", {})
         self.assertIn("evaluate", nodes)
 
+    def test_vector_label_guard_rejects_error_rows(self):
+        from graph_service.helpers import is_bad_vector_label
+
+        self.assertTrue(is_bad_vector_label("404: NOT_FOUND Code: NOT_FOUND"))
+        self.assertTrue(is_bad_vector_label("Failed to fetch project metadata"))
+        self.assertFalse(is_bad_vector_label("DryRunVisualised"))
+
 
 class TestGraphInvoke(unittest.TestCase):
     def setUp(self):

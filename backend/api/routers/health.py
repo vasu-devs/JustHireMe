@@ -4,10 +4,11 @@ import os
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from api.dependencies import get_repository
 from data.repository import Repository
+from gateway.clients import graph_client, get_service_registry
 
 
 def _check_sqlite(repo: Repository) -> dict:
@@ -20,10 +21,33 @@ def _check_sqlite(repo: Repository) -> dict:
 
 def _check_graph(repo: Repository) -> dict:
     try:
+        if not repo.graph.graph_available():
+            return {"status": "error", "error": repo.graph.graph_error(), "counts": repo.graph.graph_counts()}
         counts = repo.graph.graph_counts()
         return {"status": "ok", "counts": counts}
     except Exception as exc:
         return {"status": "error", "error": str(exc)}
+
+
+async def _check_graph_service(repo: Repository) -> dict:
+    client = graph_client()
+    if not client:
+        return _check_graph(repo)
+    try:
+        payload = await client.stats(repair=False)
+        return {
+            "status": "ok" if payload.get("available") else "error",
+            "counts": {
+                "candidate": payload.get("candidate", 0),
+                "skill": payload.get("skill", 0),
+                "project": payload.get("project", 0),
+                "experience": payload.get("experience", 0),
+                "joblead": payload.get("joblead", 0),
+            },
+            "error": payload.get("error", ""),
+        }
+    except Exception as exc:
+        return {"status": "error", "error": str(exc), "counts": {}}
 
 
 def _check_vector(repo: Repository) -> dict:
@@ -49,6 +73,14 @@ def _check_profile(repo: Repository) -> dict:
         }
     except Exception as exc:
         return {"status": "error", "error": str(exc)}
+
+
+async def _check_profile_service(repo: Repository) -> dict:
+    registry = get_service_registry()
+    endpoint = registry.get("profile") if registry else None
+    if endpoint:
+        return {"status": "ok" if endpoint.status == "healthy" else endpoint.status, "has_profile": None}
+    return _check_profile(repo)
 
 
 def _check_llm(repo: Repository) -> dict:
@@ -81,12 +113,16 @@ def create_router(started_at: float) -> APIRouter:
     router = APIRouter()
 
     @router.get("/health", dependencies=[])
-    async def health(repo: Repository = Depends(get_repository)):
+    async def health(request: Request, repo: Repository = Depends(get_repository)):
+        service_registry = getattr(request.app.state, "service_registry", None)
+        service_supervisor = getattr(request.app.state, "service_supervisor", None)
+        if service_supervisor is not None:
+            await service_supervisor.refresh_health()
         checks = {
             "sqlite": _check_sqlite(repo),
-            "graph": _check_graph(repo),
+            "graph": await _check_graph_service(repo),
             "vector": _check_vector(repo),
-            "profile": _check_profile(repo),
+            "profile": await _check_profile_service(repo),
             "llm": _check_llm(repo),
         }
         status = "alive" if checks["sqlite"]["status"] == "ok" and checks["graph"]["status"] == "ok" else "degraded"
@@ -98,6 +134,7 @@ def create_router(started_at: float) -> APIRouter:
             "last_scan_finished_at": repo.settings.get_setting("last_scan_finished_at", ""),
             "components": checks,
             "checks": checks,
+            "services": service_registry.snapshot() if service_registry else {},
         }
 
     return router

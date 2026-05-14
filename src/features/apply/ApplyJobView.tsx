@@ -2,14 +2,33 @@ import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Icon from "../../shared/components/Icon";
 import type { ApiFetch, ContactLookup, KeywordCoverage, Lead } from "../../types";
-import { GENERATION_TIMEOUT_MS } from "../../api/generation";
 import { roleFromLead } from "../../shared/lib/leadUtils";
+
+const CUSTOMIZE_START_TIMEOUT_MS = 10000;
+const CUSTOMIZE_WATCHDOG_MS = 12000;
+
+function withDeadline<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      value => {
+        window.clearTimeout(timeoutId);
+        resolve(value);
+      },
+      error => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
+}
 
 export function ApplyJobView({ port, api, leads, openDrawer, initialInput, autoFocus }: { port: number | null; api: ApiFetch | null; leads: Lead[]; openDrawer: (l: Lead) => void; initialInput?: string; autoFocus?: boolean }) {
   const [input, setInput] = useState("");
   const initialApplied = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const submitControllerRef = useRef<AbortController | null>(null);
+  const submitRunRef = useRef(0);
   const mountedRef = useRef(true);
   const [lead, setLead] = useState<Lead | null>(null);
   const [busy, setBusy] = useState(false);
@@ -22,7 +41,7 @@ export function ApplyJobView({ port, api, leads, openDrawer, initialInput, autoF
   const liveLead = lead ? (leads.find(l => l.job_id === lead.job_id) || lead) : null;
   const resumeReady = Boolean(liveLead?.resume_asset || liveLead?.asset);
   const coverReady = Boolean(liveLead?.cover_letter_asset);
-  const generating = Boolean(liveLead && (!resumeReady || !coverReady) && (busy || liveLead.status === "tailoring" || liveLead.status === "approved"));
+  const generating = Boolean(liveLead && (!resumeReady || !coverReady) && (liveLead.status === "tailoring" || liveLead.status === "approved"));
   const resumeDocPath = liveLead && resumeReady ? `/api/v1/leads/${liveLead.job_id}/pdf?kind=resume` : null;
   const coverDocPath = liveLead && coverReady ? `/api/v1/leads/${liveLead.job_id}/pdf?kind=cover_letter` : null;
   const coverage = (liveLead?.keyword_coverage || liveLead?.source_meta?.keyword_coverage || {}) as KeywordCoverage;
@@ -112,6 +131,30 @@ export function ApplyJobView({ port, api, leads, openDrawer, initialInput, autoF
     if (busy && resumeReady && coverReady) setBusy(false);
   }, [busy, resumeReady, coverReady]);
 
+  useEffect(() => {
+    if (!api || !lead?.job_id || !generating || (resumeReady && coverReady)) return;
+    let alive = true;
+    const timer = window.setInterval(async () => {
+      try {
+        const res = await api(`/api/v1/leads/${lead.job_id}`, { timeoutMs: 10000 });
+        if (!res.ok) return;
+        const latest = await res.json();
+        if (alive && latest?.job_id === lead.job_id) setLead(latest);
+      } catch {
+        // Live websocket updates are preferred; polling is only a fallback.
+      }
+    }, 5000);
+    const guard = window.setTimeout(() => {
+      if (!alive || resumeReady || coverReady) return;
+      setErr("Generation is still running in the background. Open the job from Ready shortly, or press Analyse & Generate again to retry if it does not finish.");
+    }, 120000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      window.clearTimeout(guard);
+    };
+  }, [api, lead?.job_id, generating, resumeReady, coverReady]);
+
   const submit = async () => {
     if (!port || !api || busy || !input.trim()) return;
     setBusy(true);
@@ -121,32 +164,44 @@ export function ApplyJobView({ port, api, leads, openDrawer, initialInput, autoF
     const controller = new AbortController();
     submitControllerRef.current?.abort();
     submitControllerRef.current = controller;
+    const runId = ++submitRunRef.current;
+    const watchdogId = window.setTimeout(() => {
+      if (!mountedRef.current || submitRunRef.current !== runId) return;
+      setBusy(false);
+      setErr("Customize is taking too long to respond. I stopped waiting here; check Activity/Ready shortly or retry.");
+      controller.abort();
+    }, CUSTOMIZE_WATCHDOG_MS);
     try {
       const trimmed = input.trim();
       const url = trimmed.match(/https?:\/\/\S+/)?.[0] || "";
-      const r = await api(`/api/v1/leads/manual`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "job", url, text: trimmed }),
-        signal: controller.signal,
-      });
+      const r = await withDeadline(
+        api(`/api/v1/leads/manual/generate/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: "job", url, text: trimmed }),
+          signal: controller.signal,
+          timeoutMs: CUSTOMIZE_START_TIMEOUT_MS,
+        }),
+        CUSTOMIZE_START_TIMEOUT_MS + 1000,
+        "Customize did not accept the job quickly enough.",
+      );
       if (!r.ok) {
         const detail = await r.json().then(d => d.detail).catch(() => "");
         throw new Error(detail || `Server returned ${r.status}`);
       }
-      const created = await r.json();
-      setLead(created);
-      const gen = await api(`/api/v1/leads/${created.job_id}/generate`, { method: "POST", signal: controller.signal, timeoutMs: GENERATION_TIMEOUT_MS });
-      const generated = await gen.json().catch(() => ({}));
-      if (!gen.ok) throw new Error(generated.detail || `Generation returned ${gen.status}`);
-      if (generated.lead) setLead(generated.lead);
+      const started = await r.json();
+      if (submitRunRef.current !== runId) return;
+      setLead(started.lead || null);
+      setBusy(false);
       window.dispatchEvent(new CustomEvent("leads-refresh"));
     } catch (e) {
       if (mountedRef.current) {
-        setErr(e instanceof Error ? e.message : "Application package failed");
+        const message = e instanceof Error ? e.message : "Application package failed";
+        setErr(message === "Request cancelled" ? "Stopped waiting. If generation already started, it may still finish in the background." : message);
         setBusy(false);
       }
     } finally {
+      window.clearTimeout(watchdogId);
       if (submitControllerRef.current === controller) submitControllerRef.current = null;
     }
   };
@@ -183,6 +238,11 @@ export function ApplyJobView({ port, api, leads, openDrawer, initialInput, autoF
           <button className="btn btn-accent" onClick={submit} disabled={!port || !api || busy || !input.trim()} style={{ justifyContent: "center", padding: "12px 16px", fontSize: 14 }}>
             <Icon name="spark" size={15} color="#fff" /> {busy ? "Analysing and generating..." : "Analyse & Generate"}
           </button>
+          {busy && (
+            <button className="btn" onClick={() => { submitControllerRef.current?.abort(); setBusy(false); setErr("Stopped waiting. If generation already started, it may still finish in the background."); }} style={{ justifyContent: "center" }}>
+              <Icon name="x" size={13} /> Stop waiting
+            </button>
+          )}
           {err && <div style={{ color: "var(--bad)", background: "var(--bad-soft)", border: "1px solid var(--bad)", borderRadius: 8, padding: "9px 11px", fontSize: 12 }}>{err}</div>}
           {liveLead && (
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>

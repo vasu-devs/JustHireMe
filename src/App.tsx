@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import SettingsModal from "./features/settings/SettingsModal";
 import "./index.css";
-import type { ApiFetch } from "./types";
+import type { ApiFetch, PipelineTab, View } from "./types";
 import { createApiFetch } from "./api/client";
 import { useAppShellState } from "./shared/context/AppContext";
 import { ONBOARDING_KEY } from "./shared/lib/leadUtils";
@@ -26,8 +26,18 @@ import { OnboardingWizard } from "./shared/components/OnboardingWizard";
 import { HelpChat } from "./shared/components/HelpChat";
 import { UpdatePrompt } from "./shared/components/UpdatePrompt";
 
+const PIPELINE_VIEW_TO_TAB: Partial<Record<View, PipelineTab>> = {
+  pipeline: "all",
+  "pipeline-hot": "hot",
+  "pipeline-found": "found",
+  "pipeline-evaluated": "evaluated",
+  "pipeline-generated": "generated",
+  "pipeline-applied": "applied",
+  "pipeline-discarded": "discarded",
+};
+
 export default function App() {
-  const { conn, port, apiToken, sidecarError, logs, beat, addLog: wsAddLog } = useWS();
+  const { conn, port, apiToken, sidecarError, logs, addLog: wsAddLog } = useWS();
   const api = useMemo<ApiFetch | null>(() => {
     if (!port || !apiToken) return null;
     return createApiFetch(port, apiToken);
@@ -162,15 +172,21 @@ export default function App() {
 
   const leadCounts = {
     total:        leads.length,
+    hot:          leads.filter(l => (l.signal_score || 0) >= 80 || (l.score || 0) >= 85).length,
     discovered:   leads.filter(l=>l.status==="discovered").length,
+    evaluated:    leads.filter(l => l.score > 0 || (l.signal_score || 0) > 0).length,
     evaluating:   leads.filter(l=>l.status==="evaluating").length,
     tailoring:    leads.filter(l=>l.status==="tailoring").length,
     approved:     leads.filter(l=>l.status==="approved").length,
+    ready:        leads.filter(l=>l.status==="tailoring" || l.status==="approved").length,
     applied:      leads.filter(l=>l.status==="applied").length,
+    discarded:    leads.filter(l=>l.status==="discarded").length,
     interviewing: leads.filter(l=>l.status==="interviewing").length,
     accepted:     leads.filter(l=>l.status==="accepted").length,
     rejected:     leads.filter(l=>l.status==="rejected").length,
   };
+  const pipelineTab = PIPELINE_VIEW_TO_TAB[view] || "all";
+  const isPipelineView = Boolean(PIPELINE_VIEW_TO_TAB[view]);
 
   if (!api) {
     return <StartupScreen conn={conn} port={port} seconds={startupSeconds} sidecarError={sidecarError} />;
@@ -182,9 +198,6 @@ export default function App() {
         view={view}
         setView={setView}
         leadCounts={leadCounts}
-        online={conn === "connected"}
-        port={port}
-        beat={beat}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed(value => !value)}
         onSettings={() => setShowSettings(true)}
@@ -195,7 +208,7 @@ export default function App() {
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "var(--paper)" }}>
           {view === "apply"     && <ErrorBoundary label="Apply" api={api ?? undefined}><ApplyJobView port={port} api={api} leads={leads} openDrawer={setSel} initialInput={applyDraft} autoFocus={applyAutoFocus} /></ErrorBoundary>}
           {view === "dashboard" && <ErrorBoundary label="Dashboard" api={api ?? undefined}><DashboardView leads={leads} dueFollowups={dueFollowups} logs={logs} setView={setView} openDrawer={setSel} scanning={scanning} reevaluating={reevaluating} cleaning={cleaning} onScan={onScan} onStopScan={onStopScan} onReevaluate={onReevaluateJobs} onStopReevaluate={onStopReevaluate} onCleanup={onCleanupLeads} scanErr={scanErr} /></ErrorBoundary>}
-          {view === "pipeline"  && <ErrorBoundary label="Pipeline" api={api ?? undefined}><PipelineView leads={leads} openDrawer={setSel} deleteLead={deleteLead} port={port} api={api} scanning={scanning} reevaluating={reevaluating} cleaning={cleaning} onReevaluate={onReevaluateJobs} onStopReevaluate={onStopReevaluate} onCleanup={onCleanupLeads} loading={leadsLoading || !port || !api} error={leadsError} /></ErrorBoundary>}
+          {isPipelineView  && <ErrorBoundary label="Pipeline" api={api ?? undefined}><PipelineView leads={leads} openDrawer={setSel} deleteLead={deleteLead} port={port} api={api} scanning={scanning} reevaluating={reevaluating} cleaning={cleaning} onReevaluate={onReevaluateJobs} onStopReevaluate={onStopReevaluate} onCleanup={onCleanupLeads} loading={leadsLoading || !port || !api} error={leadsError} tab={pipelineTab} /></ErrorBoundary>}
           {view === "graph"     && <ErrorBoundary label="Graph" api={api ?? undefined}><GraphView stats={stats} /></ErrorBoundary>}
           {view === "activity"  && <ErrorBoundary label="Activity" api={api ?? undefined}><ActivityView logs={logs} /></ErrorBoundary>}
           {view === "profile"   && (api ? <ErrorBoundary label="Profile" api={api ?? undefined}><ProfileView api={api} setView={setView} /></ErrorBoundary> : <BackendUnavailable title="Profile" conn={conn} port={port} />)}

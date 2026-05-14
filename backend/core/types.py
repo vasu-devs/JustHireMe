@@ -93,9 +93,13 @@ class Profile(TypedDict, total=False):
     n: str
     s: str
     desired_position: str
+    identity: dict
     skills: list[dict]
     exp: list[dict]
     projects: list[dict]
+    education: list
+    certifications: list
+    achievements: list
 
 
 class StrictBody(BaseModel):
@@ -155,6 +159,19 @@ class TemplateBody(StrictBody):
 class CandidateBody(StrictBody):
     n: str = Field(default="", max_length=160)
     s: str = Field(default="", max_length=4000)
+
+
+class IdentityBody(StrictBody):
+    email: str = Field(default="", max_length=200)
+    phone: str = Field(default="", max_length=80)
+    linkedin_url: str = Field(default="", max_length=500)
+    github_url: str = Field(default="", max_length=500)
+    website_url: str = Field(default="", max_length=500)
+    city: str = Field(default="", max_length=200)
+
+
+class ProfileEntryBody(StrictBody):
+    title: str = Field(default="", max_length=500)
 
 
 class SkillBody(StrictBody):

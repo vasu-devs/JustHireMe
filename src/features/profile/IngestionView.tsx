@@ -11,6 +11,10 @@ export function IngestionView({ api }: { api: ApiFetch }) {
   const [skillForm, setSkillForm] = useState({ n: "", cat: "technical" });
   const [expForm, setExpForm]     = useState({ role: "", co: "", period: "", d: "" });
   const [projForm, setProjForm]   = useState({ title: "", stack: "", repo: "", impact: "" });
+  const [identityForm, setIdentityForm] = useState({ email: "", phone: "", linkedin_url: "", github_url: "", website_url: "", city: "" });
+  const [eduForm, setEduForm] = useState({ title: "" });
+  const [certForm, setCertForm] = useState({ title: "" });
+  const [achievementForm, setAchievementForm] = useState({ title: "" });
   const [rawText, setRawText]     = useState("");
   const [template, setTemplate]   = useState("");
   const [templateLoaded, setTemplateLoaded] = useState(false);
@@ -23,7 +27,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
   const [githubToken, setGithubToken] = useState("");
   const [githubResult, setGithubResult] = useState<any>(null);
   const [showToken, setShowToken] = useState(false);
-  const [githubMaxRepos, setGithubMaxRepos] = useState(12);
+  const [githubMaxRepos, setGithubMaxRepos] = useState(100);
   // Portfolio tab state
   const [portfolioUrl, setPortfolioUrl] = useState("");
   const [portfolioResult, setPortfolioResult] = useState<any>(null);
@@ -58,13 +62,19 @@ export function IngestionView({ api }: { api: ApiFetch }) {
     try {
       const endpointType = type === "exp" ? "experience" : type;
       const r = await api(`/api/v1/profile/${endpointType}`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+        method: type === "identity" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
       });
       if (r.ok) {
         setStatus("done");
         if (type === "skill")   setSkillForm({ n: "", cat: "technical" });
         if (type === "exp")     setExpForm({ role: "", co: "", period: "", d: "" });
         if (type === "project") setProjForm({ title: "", stack: "", repo: "", impact: "" });
+        if (type === "identity") setIdentityForm({ email: "", phone: "", linkedin_url: "", github_url: "", website_url: "", city: "" });
+        if (type === "education") setEduForm({ title: "" });
+        if (type === "certification") setCertForm({ title: "" });
+        if (type === "achievement") setAchievementForm({ title: "" });
+        window.dispatchEvent(new CustomEvent("profile-refresh"));
+        window.dispatchEvent(new CustomEvent("graph-refresh"));
       } else { setStatus("error"); }
     } catch { setStatus("error"); }
   };
@@ -86,13 +96,32 @@ export function IngestionView({ api }: { api: ApiFetch }) {
     const fd = new FormData();
     fd.append("file", linkedinFile);
     try {
-      const r = await api(`/api/v1/ingest/linkedin`, { method: "POST", body: fd });
+      const isPdf = linkedinFile.name.toLowerCase().endsWith(".pdf");
+      const r = await api(isPdf ? `/api/v1/ingest` : `/api/v1/ingest/linkedin`, { method: "POST", body: fd });
       if (r.ok) {
         const data = await r.json();
-        setLinkedinResult(data);
+        setLinkedinResult(isPdf ? {
+          status: "ok",
+          source: "pdf",
+          stats: {
+            skills: data?.skills?.length ?? 0,
+            experience: data?.exp?.length ?? data?.experience?.length ?? 0,
+            projects: data?.projects?.length ?? 0,
+            certifications: data?.certifications?.length ?? 0,
+          },
+        } : data);
+        window.dispatchEvent(new CustomEvent("profile-refresh"));
+        window.dispatchEvent(new CustomEvent("graph-refresh"));
         setStatus("idle");
-      } else { setStatus("error"); }
-    } catch { setStatus("error"); }
+      } else {
+        const data = await r.json().catch(() => ({}));
+        setLinkedinResult({ errorMsg: data?.detail || `Import failed (${r.status})` });
+        setStatus("idle");
+      }
+    } catch (err: any) {
+      setLinkedinResult({ errorMsg: err?.message || "Could not import LinkedIn context." });
+      setStatus("idle");
+    }
   };
 
   const ingestGithub = async () => {
@@ -108,11 +137,15 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         const data = await r.json();
         setGithubResult(data);
         setStatus("idle");
-      } else if (r.status === 404) {
-        setGithubResult({ errorMsg: `GitHub user '${githubUsername}' not found` });
+      } else {
+        const data = await r.json().catch(() => ({}));
+        setGithubResult({ errorMsg: data?.detail || `GitHub import failed (${r.status})` });
         setStatus("idle");
-      } else { setStatus("error"); }
-    } catch { setStatus("error"); }
+      }
+    } catch {
+      setGithubResult({ errorMsg: "Could not reach the local backend." });
+      setStatus("idle");
+    }
   };
 
   const scanPortfolio = async (autoImport = false) => {
@@ -123,17 +156,55 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: portfolioUrl, auto_import: autoImport }),
+        timeoutMs: 180000,
       });
       const data = await r.json().catch(() => ({}));
       if (r.ok) {
-        setPortfolioResult(autoImport ? { ...data, imported: true } : data);
+        setPortfolioResult(data);
         setStatus("idle");
       } else {
         setPortfolioResult({ errorMsg: data?.detail || "Could not fetch portfolio." });
         setStatus("idle");
       }
-    } catch {
-      setPortfolioResult({ errorMsg: "Could not fetch portfolio." });
+    } catch (err: any) {
+      setPortfolioResult({ errorMsg: err?.message || "Could not fetch portfolio." });
+      setStatus("idle");
+    }
+  };
+
+  const importPortfolioResult = async () => {
+    if (!portfolioResult || portfolioResult.errorMsg || portfolioResult.error) return;
+    setStatus("loading");
+    setPortfolioResult({ ...portfolioResult, importError: null });
+    const payload = {
+      candidate: portfolioResult.candidate,
+      identity: portfolioResult.identity,
+      skills: portfolioResult.skills || [],
+      projects: portfolioResult.projects || [],
+      achievements: portfolioResult.achievements || [],
+      experience: portfolioResult.experience || [],
+      education: portfolioResult.education || [],
+      certifications: portfolioResult.certifications || [],
+    };
+    try {
+      const r = await api(`/api/v1/ingest/profile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        timeoutMs: 120000,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setPortfolioResult({ ...portfolioResult, importError: data?.detail || `Import failed (${r.status})` });
+        setStatus("idle");
+        return;
+      }
+      setPortfolioResult({ ...portfolioResult, imported: data });
+      window.dispatchEvent(new CustomEvent("profile-refresh"));
+      window.dispatchEvent(new CustomEvent("graph-refresh"));
+      setStatus("idle");
+    } catch (err: any) {
+      setPortfolioResult({ ...portfolioResult, importError: err?.message || "Could not import portfolio." });
       setStatus("idle");
     }
   };
@@ -293,6 +364,35 @@ export function IngestionView({ api }: { api: ApiFetch }) {
               <textarea className="field-input" placeholder="Impact / Description" rows={3} value={projForm.impact} onChange={v => setProjForm({...projForm, impact: v.target.value})} />
               <button className="btn btn-primary" style={{alignSelf:"flex-start",padding:"10px 24px"}} onClick={() => addManual("project", projForm)} disabled={status==="loading" || !projForm.title.trim()}>Add Project</button>
             </div>
+            <div className="card col gap-4" style={{ padding: 24 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, display: "flex", gap: 8, alignItems: "center" }}><Icon name="user" size={16}/> Contact & Social Links</h3>
+              <div className="grid-2 gap-3">
+                <input className="field-input" placeholder="Email address" value={identityForm.email} onChange={v => setIdentityForm({...identityForm, email: v.target.value})} />
+                <input className="field-input" placeholder="Phone number" value={identityForm.phone} onChange={v => setIdentityForm({...identityForm, phone: v.target.value})} />
+                <input className="field-input" placeholder="LinkedIn URL" value={identityForm.linkedin_url} onChange={v => setIdentityForm({...identityForm, linkedin_url: v.target.value})} />
+                <input className="field-input" placeholder="GitHub URL" value={identityForm.github_url} onChange={v => setIdentityForm({...identityForm, github_url: v.target.value})} />
+                <input className="field-input" placeholder="Portfolio / website URL" value={identityForm.website_url} onChange={v => setIdentityForm({...identityForm, website_url: v.target.value})} />
+                <input className="field-input" placeholder="City / location" value={identityForm.city} onChange={v => setIdentityForm({...identityForm, city: v.target.value})} />
+              </div>
+              <button className="btn btn-primary" style={{alignSelf:"flex-start",padding:"10px 24px"}} onClick={() => addManual("identity", identityForm)} disabled={status==="loading"}>Save Contact</button>
+            </div>
+            <div className="grid-2 gap-4">
+              <div className="card col gap-4" style={{ padding: 24 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 600, display: "flex", gap: 8, alignItems: "center" }}><Icon name="file" size={16}/> Add Education</h3>
+                <input className="field-input" placeholder="Degree, school, year" value={eduForm.title} onChange={v => setEduForm({...eduForm, title: v.target.value})} />
+                <button className="btn btn-primary" style={{alignSelf:"flex-start",padding:"10px 24px"}} onClick={() => addManual("education", eduForm)} disabled={status==="loading" || !eduForm.title.trim()}>Add Education</button>
+              </div>
+              <div className="card col gap-4" style={{ padding: 24 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 600, display: "flex", gap: 8, alignItems: "center" }}><Icon name="check" size={16}/> Add Certification</h3>
+                <input className="field-input" placeholder="Certification, issuer, year" value={certForm.title} onChange={v => setCertForm({...certForm, title: v.target.value})} />
+                <button className="btn btn-primary" style={{alignSelf:"flex-start",padding:"10px 24px"}} onClick={() => addManual("certification", certForm)} disabled={status==="loading" || !certForm.title.trim()}>Add Certification</button>
+              </div>
+            </div>
+            <div className="card col gap-4" style={{ padding: 24 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, display: "flex", gap: 8, alignItems: "center" }}><Icon name="trending" size={16}/> Add Achievement</h3>
+              <input className="field-input" placeholder="Award, publication, shipped milestone, competition result" value={achievementForm.title} onChange={v => setAchievementForm({...achievementForm, title: v.target.value})} />
+              <button className="btn btn-primary" style={{alignSelf:"flex-start",padding:"10px 24px"}} onClick={() => addManual("achievement", achievementForm)} disabled={status==="loading" || !achievementForm.title.trim()}>Add Achievement</button>
+            </div>
           </motion.div>
         )}
 
@@ -315,29 +415,35 @@ export function IngestionView({ api }: { api: ApiFetch }) {
               onDrop={e => {
                 e.preventDefault();
                 const f = e.dataTransfer.files[0];
-                if (f && f.name.endsWith(".zip")) { setLinkedinFile(f); setLinkedinResult(null); }
+                const lower = f?.name.toLowerCase() || "";
+                if (f && (lower.endsWith(".zip") || lower.endsWith(".pdf"))) { setLinkedinFile(f); setLinkedinResult(null); }
               }}
               onClick={() => document.getElementById("linkedin-zip-in")?.click()}
             >
               <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--teal-soft)", color: "var(--teal)", display: "grid", placeItems: "center" }}><Icon name="upload" size={28} /></div>
               <div style={{ fontWeight: 600, fontSize: 18 }}>
-                {linkedinFile ? linkedinFile.name : "Drop your LinkedIn data export (.zip) here"}
+                {linkedinFile ? linkedinFile.name : "Drop your LinkedIn export (.zip) or profile PDF here"}
               </div>
               <div style={{ fontSize: 14, color: "var(--ink-3)", maxWidth: 400, lineHeight: 1.5 }}>
                 {linkedinFile ? "File ready to import." : "or click to browse"}
               </div>
               <div style={{ fontSize: 12, color: "var(--ink-4)", maxWidth: 420, lineHeight: 1.6, marginTop: 4 }}>
-                How to get it: LinkedIn &gt; Settings &gt; Data Privacy &gt; Get a copy of your data
+                Use a LinkedIn data export ZIP for structured import, or a saved LinkedIn profile PDF for quick profile extraction.
               </div>
-              <input type="file" accept=".zip" id="linkedin-zip-in" style={{ display: "none" }}
+              <input type="file" accept=".zip,.pdf,application/zip,application/pdf" id="linkedin-zip-in" style={{ display: "none" }}
                 onChange={e => { const f = e.target.files?.[0]; if (f) { setLinkedinFile(f); setLinkedinResult(null); } }} />
             </div>
             <button className="btn btn-primary" style={{ padding: 16, fontSize: 15 }}
               disabled={!linkedinFile || status === "loading"}
               onClick={ingestLinkedin}>
-              {status === "loading" ? "Importing..." : "Import LinkedIn data"}
+              {status === "loading" ? "Importing..." : linkedinFile?.name.toLowerCase().endsWith(".pdf") ? "Import LinkedIn PDF" : "Import LinkedIn data"}
             </button>
-            {linkedinResult && (
+            {linkedinResult?.errorMsg && (
+              <div style={{ padding: 16, background: "var(--bad-soft)", color: "var(--bad)", borderRadius: 12, border: "1px solid var(--bad)", fontSize: 14 }}>
+                {linkedinResult.errorMsg}
+              </div>
+            )}
+            {linkedinResult && !linkedinResult.errorMsg && (
               <div style={{
                 padding: 16,
                 background: linkedinResult.status === "ok" ? "var(--green-soft)" : "var(--paper-3)",
@@ -348,6 +454,9 @@ export function IngestionView({ api }: { api: ApiFetch }) {
                 <div style={{ fontWeight: 600, marginBottom: 4 }}>
                   Imported: {linkedinResult.stats?.skills ?? 0} skills - {linkedinResult.stats?.experience ?? 0} jobs - {linkedinResult.stats?.projects ?? 0} projects - {linkedinResult.stats?.certifications ?? 0} certifications
                 </div>
+                {linkedinResult.source === "pdf" && (
+                  <div style={{ fontSize: 13, marginTop: 4, color: "var(--ink-3)" }}>Parsed as a profile PDF and synced into your Identity Graph.</div>
+                )}
                 {linkedinResult.status === "partial" && (
                   <div style={{ fontSize: 13, marginTop: 4, color: "var(--ink-3)" }}>Some items could not be imported.</div>
                 )}
@@ -377,15 +486,15 @@ export function IngestionView({ api }: { api: ApiFetch }) {
               )}
               <div className="row gap-3" style={{ alignItems: "center" }}>
                 <span style={{ fontSize: 14, color: "var(--ink-2)" }}>Max repos to scan:</span>
-                <input className="field-input" type="number" min={1} max={30} value={githubMaxRepos}
+                <input className="field-input" type="number" min={1} max={500} value={githubMaxRepos}
                   style={{ width: 80 }}
-                  onChange={e => setGithubMaxRepos(Math.max(1, Math.min(30, parseInt(e.target.value) || 12)))} />
+                  onChange={e => setGithubMaxRepos(Math.max(1, Math.min(500, parseInt(e.target.value) || 100)))} />
               </div>
             </div>
             <button className="btn btn-primary" style={{ padding: 16, fontSize: 15 }}
               disabled={!githubUsername.trim() || status === "loading"}
               onClick={ingestGithub}>
-              {status === "loading" ? "Fetching repos and reading READMEs..." : "Scan GitHub profile"}
+              {status === "loading" ? "Fetching repos, READMEs, languages, and manifests..." : "Scan GitHub profile"}
             </button>
             {githubResult && !githubResult.errorMsg && (
               <div className="card col gap-3" style={{ padding: 24 }}>
@@ -404,10 +513,13 @@ export function IngestionView({ api }: { api: ApiFetch }) {
                   </div>
                 </div>
                 <div style={{ fontSize: 14, color: "var(--ink-2)" }}>
-                  Found {githubResult.stats?.repos_fetched ?? 0} repos - Extracted {githubResult.stats?.projects_extracted ?? 0} projects
+                  Found {githubResult.stats?.repos_fetched ?? 0} repos - Enriched {githubResult.stats?.repos_enriched ?? 0} - Extracted {githubResult.stats?.projects_extracted ?? 0} projects - {githubResult.stats?.skills_extracted ?? 0} skills
+                </div>
+                <div style={{ fontSize: 12, color: "var(--ink-4)", lineHeight: 1.5 }}>
+                  Read {githubResult.stats?.readmes_read ?? 0} READMEs, {githubResult.stats?.languages_read ?? 0} language maps, and {githubResult.stats?.manifests_read ?? 0} manifest files.
                 </div>
                 {githubResult.errors?.length > 0 && (
-                  <div style={{ fontSize: 13, color: "var(--ink-4)" }}>Some items skipped</div>
+                  <div style={{ fontSize: 13, color: "var(--ink-4)", lineHeight: 1.5 }}>{githubResult.errors[0]}</div>
                 )}
               </div>
             )}
@@ -444,18 +556,58 @@ export function IngestionView({ api }: { api: ApiFetch }) {
                 {portfolioResult.candidate ? (
                   <>
                     <div style={{ fontSize: 14, color: "var(--ink-2)" }}>
-                      Found {portfolioResult.stats?.skills ?? 0} skills - {portfolioResult.stats?.projects ?? 0} projects
+                      Scanned {portfolioResult.stats?.pages_scanned ?? 0} pages - Structured {portfolioResult.stats?.skills ?? 0} skills - {portfolioResult.stats?.projects ?? 0} projects
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--ink-4)", lineHeight: 1.5 }}>
+                      Read {portfolioResult.stats?.links_seen ?? 0} links and preserved raw evidence{portfolioResult.stats?.llm_used ? " with LLM cleanup." : " with deterministic cleanup."}
+                    </div>
+                    <div style={{ maxHeight: 360, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8, padding: 14, background: "var(--paper-2)" }}>
+                      {portfolioResult.candidate?.summary && (
+                        <div style={{ marginBottom: 14 }}>
+                          <div className="eyebrow" style={{ marginBottom: 6 }}>Summary</div>
+                          <div style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{portfolioResult.candidate.summary}</div>
+                        </div>
+                      )}
+                      {(portfolioResult.skills || []).length > 0 && (
+                        <div style={{ marginBottom: 14 }}>
+                          <div className="eyebrow" style={{ marginBottom: 8 }}>Skills</div>
+                          <div className="row gap-1" style={{ flexWrap: "wrap" }}>
+                            {portfolioResult.skills.map((skill: any, idx: number) => (
+                              <span key={`${skill.name || skill.n}-${idx}`} className="pill" style={{ fontSize: 11 }}>{skill.name || skill.n}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {(portfolioResult.projects || []).length > 0 && (
+                        <div>
+                          <div className="eyebrow" style={{ marginBottom: 8 }}>Projects</div>
+                          <div className="col gap-2">
+                            {portfolioResult.projects.map((project: any, idx: number) => (
+                              <div key={`${project.title}-${idx}`} style={{ padding: 12, border: "1px solid var(--line)", borderRadius: 8, background: "var(--paper)" }}>
+                                <div style={{ fontWeight: 650, marginBottom: 4 }}>{project.title}</div>
+                                {project.stack && <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 6 }}>{project.stack}</div>}
+                                {project.impact && <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5 }}>{project.impact}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     {portfolioResult.imported ? (
-                      <div style={{ padding: 12, background: "var(--green-soft)", color: "var(--green-ink)", borderRadius: 8, border: "1px solid var(--green)", fontWeight: 600 }}>
-                        Imported!
+                      <div style={{ padding: 12, background: "var(--green-soft)", color: "var(--green-ink)", borderRadius: 8, border: "1px solid var(--green)", fontWeight: 600, lineHeight: 1.5 }}>
+                        Imported: {portfolioResult.imported?.stats?.skills ?? 0} skills - {portfolioResult.imported?.stats?.projects ?? 0} projects - {portfolioResult.imported?.stats?.experience ?? 0} experience items
                       </div>
                     ) : (
                       <button className="btn btn-primary" style={{ alignSelf: "flex-start", padding: "10px 24px" }}
                         disabled={status === "loading"}
-                        onClick={() => scanPortfolio(true)}>
-                        Import to Knowledge Brain
+                        onClick={importPortfolioResult}>
+                        {status === "loading" ? "Importing..." : "Import shown items to Profile"}
                       </button>
+                    )}
+                    {portfolioResult.importError && (
+                      <div style={{ padding: 12, background: "var(--bad-soft)", color: "var(--bad)", borderRadius: 8, border: "1px solid var(--bad)", fontSize: 13 }}>
+                        {portfolioResult.importError}
+                      </div>
                     )}
                   </>
                 ) : (

@@ -6,13 +6,14 @@ class RegressionTests(unittest.TestCase):
 
         providers = {
             "xai", "kimi", "mistral", "openrouter", "together", "fireworks",
-            "cerebras", "perplexity", "huggingface", "custom",
+            "cerebras", "perplexity", "huggingface", "cohere", "sambanova",
+            "qwen", "azure", "custom",
         }
         for provider in providers:
             self.assertIn(provider, _KEY_NAMES)
             self.assertIn(provider, _ENV_NAMES)
             self.assertIn(provider, _DEFAULT_MODELS)
-        for provider in providers - {"custom"}:
+        for provider in providers - {"azure", "custom"}:
             self.assertTrue(_OPENAI_COMPAT_BASE_URLS[provider].startswith("https://"))
 
     def test_help_assistant_answers_api_and_llm_setup_from_guide(self):
@@ -27,6 +28,32 @@ class RegressionTests(unittest.TestCase):
         for provider in ["gemini", "deepseek", "nvidia", "groq", "grok", "kimi", "anthropic", "ollama"]:
             self.assertIn(provider, text)
         self.assertIn("run the provider check", text)
+
+    def test_azure_provider_without_endpoint_falls_back_cleanly(self):
+        from pydantic import BaseModel
+        from data.repository import create_repository
+        from llm import call_llm, configure_repository
+
+        class Payload(BaseModel):
+            value: str = ""
+
+        class Settings:
+            def get_setting(self, key, default=""):
+                return {
+                    "llm_provider": "azure",
+                    "azure_openai_api_key": "fake-key",
+                    "azure_model": "deployment-name",
+                }.get(key, default)
+
+        class Repo:
+            settings = Settings()
+
+        try:
+            configure_repository(Repo())
+            result = call_llm("system", "user", Payload)
+            self.assertEqual(result.value, "")
+        finally:
+            configure_repository(create_repository())
 
     def test_model_facing_agents_have_production_guardrails(self):
         import inspect

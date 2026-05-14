@@ -33,7 +33,9 @@ export function JobCard({ lead, onOpen, onDelete, showScore = false, showGenerat
     requestRef.current = controller;
     try {
       const response = await api(`/api/v1/leads/${lead.job_id}/generate`, { method: "POST", signal: controller.signal, timeoutMs: GENERATION_TIMEOUT_MS });
-      if (!response.ok) throw new Error(`Generation returned ${response.status}`);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.detail || `Generation returned ${response.status}`);
+      if (body.lead) window.dispatchEvent(new CustomEvent("lead-updated", { detail: body.lead }));
       window.dispatchEvent(new CustomEvent("leads-refresh"));
     } catch (error) {
       console.error("Package generation failed", error);
@@ -204,7 +206,9 @@ export function PipelineJobCard({ lead, onOpen, onDelete, showGenerate = false, 
     requestRef.current = controller;
     try {
       const response = await api(`/api/v1/leads/${lead.job_id}/generate`, { method: "POST", signal: controller.signal, timeoutMs: GENERATION_TIMEOUT_MS });
-      if (!response.ok) throw new Error(`Generation returned ${response.status}`);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.detail || `Generation returned ${response.status}`);
+      if (body.lead) window.dispatchEvent(new CustomEvent("lead-updated", { detail: body.lead }));
       window.dispatchEvent(new CustomEvent("leads-refresh"));
     } catch (error) {
       console.error("Package generation failed", error);

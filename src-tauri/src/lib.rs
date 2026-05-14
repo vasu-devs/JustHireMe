@@ -366,30 +366,40 @@ pub fn run() {
                 while let Some(event) = rx.recv().await {
                     match event {
                         CommandEvent::Stdout(b) => {
-                            let line = String::from_utf8_lossy(&b).trim().to_string();
-                            if let Some(port_str) = line.strip_prefix("PORT:") {
-                                if let Ok(port) = port_str.parse::<u16>() {
-                                    if let Ok(mut g) = app_handle.state::<SidecarPort>().0.lock() {
-                                        *g = Some(port);
+                            let text = String::from_utf8_lossy(&b).to_string();
+                            for raw_line in text.lines() {
+                                let line = raw_line.trim();
+                                if let Some(port_str) = line.strip_prefix("PORT:") {
+                                    if let Ok(port) = port_str.parse::<u16>() {
+                                        if let Ok(mut g) = app_handle.state::<SidecarPort>().0.lock() {
+                                            *g = Some(port);
+                                        }
+                                        let _ = app_handle.emit("sidecar-port", port);
+                                        eprintln!("[tauri] Sidecar port: {port}");
                                     }
-                                    let _ = app_handle.emit("sidecar-port", port);
-                                    eprintln!("[tauri] Sidecar port: {port}");
+                                } else if let Some(token) = line.strip_prefix("JHM_TOKEN=") {
+                                    if let Ok(mut g) = app_handle.state::<ApiTokenState>().0.lock() {
+                                        *g = Some(token.to_string());
+                                    }
+                                    let _ = app_handle.emit("sidecar-token", token.to_string());
                                 }
-                            } else if let Some(token) = line.strip_prefix("JHM_TOKEN=") {
-                                if let Ok(mut g) = app_handle.state::<ApiTokenState>().0.lock() {
-                                    *g = Some(token.to_string());
-                                }
-                                let _ = app_handle.emit("sidecar-token", token.to_string());
                             }
                         }
                         CommandEvent::Stderr(b) => {
                             let line = String::from_utf8_lossy(&b).trim().to_string();
                             if !line.is_empty() {
                                 eprintln!("[sidecar] {line}");
-                                if let Ok(mut guard) = app_handle.state::<SidecarError>().0.lock() {
-                                    *guard = Some(line.clone());
+                                let lower = line.to_lowercase();
+                                let is_error = lower.contains("error")
+                                    || lower.contains("traceback")
+                                    || lower.contains("exception")
+                                    || lower.contains("failed");
+                                if is_error {
+                                    if let Ok(mut guard) = app_handle.state::<SidecarError>().0.lock() {
+                                        *guard = Some(line.clone());
+                                    }
+                                    let _ = app_handle.emit("sidecar-error", line);
                                 }
-                                let _ = app_handle.emit("sidecar-error", line);
                             }
                         }
                         CommandEvent::Terminated(s) => {

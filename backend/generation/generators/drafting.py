@@ -11,7 +11,7 @@ def _draft_package(profile: dict, proof: str, j: dict, template: str = "") -> _D
     from llm import call_llm
     import json
 
-    recommended = _rank_projects(profile, j, limit=4)
+    recommended = _rank_projects(profile, j, limit=3)
     jd_keywords = _extract_jd_keywords(j.get("description", ""), profile)
     coverage = _keyword_coverage(profile, j)
     template_instruction = (
@@ -21,20 +21,21 @@ def _draft_package(profile: dict, proof: str, j: dict, template: str = "") -> _D
         "Use a crisp ATS-friendly resume structure."
     )
     system = (
-        "You are JustHireMe's production application-package agent: an elite ATS-optimization specialist and technical resume writer. "
+        "You are JustHireMe's production application-package agent: an elite 2026 ATS-optimization specialist and technical resume writer. "
         "Your SOLE objective is to maximise the candidate's ATS (Applicant Tracking System) match score "
         "while keeping every claim truthful to the candidate profile provided.\n\n"
         "Production quality bar: every output must be recruiter-ready, specific to this role, factual, "
-        "plain Markdown, and usable without manual cleanup. If evidence is missing, do not fabricate; "
-        "write around the gap honestly using supported project/profile proof.\n\n"
+        "plain Markdown, and usable without manual cleanup. Use modern 2026 resume standards: "
+        "dense proof over adjectives, exact JD keyword mirroring where truthful, quantified outcomes only when present, "
+        "strong project-to-requirement mapping, no decorative formatting, no keyword stuffing. "
+        "If evidence is missing, do not fabricate; write around the gap honestly using supported project/profile proof.\n\n"
 
         "=== RESUME FORMAT (resume_markdown) ===\n"
         "You MUST follow this EXACT markdown structure. Do not deviate.\n\n"
 
         "```\n"
         "# Candidate Name\n"
-        "Linkedin: linkedin.com/in/handle Email: email@example.com\n"
-        "Github: github.com/handle Mobile: +91-XXXXXXXXXX\n\n"
+        "Optional single contact line using ONLY real candidate identity fields. Omit missing fields; never use placeholders.\n\n"
 
         "## SUMMARY\n"
         "One compact 2-line professional summary tailored to the exact role and JD keywords.\n\n"
@@ -54,7 +55,7 @@ def _draft_package(profile: dict, proof: str, j: dict, template: str = "") -> _D
         "- Engineered D to ensure E.\n"
         "- Tech: Framework1, Framework2, Tool1, Tool2\n\n"
 
-        "(Repeat for 2-4 projects)\n\n"
+        "(Repeat for 2-3 projects only)\n\n"
 
         "## EXPERIENCE\n"
         "### Role Title - Company Name Mon'YY - Mon'YY\n"
@@ -81,15 +82,15 @@ def _draft_package(profile: dict, proof: str, j: dict, template: str = "") -> _D
         "- You MAY add a relevant category like 'Cloud & DevOps' if the JD demands it.\n\n"
 
         "=== PROJECTS SECTION RULES ===\n"
-        "- Select 2-4 projects from the RECOMMENDED PROJECT SHORTLIST that best match the JD.\n"
-        "- Each project: bold title with one-line subtitle, 3 action-verb bullets, then a Tech: line.\n"
+        "- Select 2-3 projects from the RECOMMENDED PROJECT SHORTLIST that best match the JD.\n"
+        "- Each project: title with short one-line subtitle, 2 action-verb bullets, then a Tech: line.\n"
         "- Front-load JD keywords into bullet text. Weave in metrics where the candidate provides them.\n"
         "- The Tech: line must mirror JD keyword spelling.\n\n"
 
         "=== EXPERIENCE SECTION RULES ===\n"
         "- If the candidate has work experience, include it in reverse chronological order.\n"
         "- Each role: ### Role Title - Company Name Period\n"
-        "- 3-4 bullet points. Each MUST follow: 'Action verb + what + technology + quantified result'.\n"
+        "- 2 bullet points. Each MUST follow: 'Action verb + what + technology + outcome'. Quantify only if the candidate evidence provides a number.\n"
         "- If candidate has NO work experience, OMIT this section entirely (do NOT fabricate).\n\n"
 
         "=== ATS KEYWORD RULES ===\n"
@@ -100,7 +101,7 @@ def _draft_package(profile: dict, proof: str, j: dict, template: str = "") -> _D
         "- Keep standard ATS headings: SUMMARY, SKILLS, PROJECTS, EXPERIENCE, CERTIFICATES, ACHIEVEMENTS, EDUCATION.\n"
         "- NO headers/footers, NO 'References available upon request'.\n\n"
 
-        "PAGE BUDGET: The resume MUST fit ONE page and use the page well. Target 460-620 words. "
+        "PAGE BUDGET: The resume MUST fit ONE page and use the page well. Target 340-460 words. "
         "Be dense, specific, and ATS-readable; do not pad with generic filler.\n\n"
 
         "=== COVER LETTER RULES (cover_letter_markdown) ===\n"
@@ -148,7 +149,7 @@ def _draft_package(profile: dict, proof: str, j: dict, template: str = "") -> _D
         f"PROOF OF WORK SUMMARY:\n{proof}\n\n"
         f"RESUME TEMPLATE INSTRUCTION: {template_instruction}\n"
         "OUTPUT CONTRACT:\n"
-        "- resume_markdown: ONLY the resume. 460-620 words max. Standard ATS headings with SUMMARY first.\n"
+        "- resume_markdown: ONLY the resume. 340-460 words max. Standard ATS headings with SUMMARY first.\n"
         "- cover_letter_markdown: ONLY the cover letter. 150-220 words.\n"
         "- founder_message: 3 lines, under 280 chars. Specific to THIS company.\n"
         "- linkedin_note: Under 300 chars. Role-specific.\n"

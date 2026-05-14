@@ -29,9 +29,13 @@ hidden = [
     "pypdf", "markdown",
     "tenacity",
     "graph",
+    "contracts", "contracts.services",
+    "gateway", "gateway.clients", "gateway.supervisor",
+    "services", "services.apps", "services.auth",
+    "graph_service", "graph_service.stats", "graph_service.helpers",
     "db.client",
     "llm", "logger",
-] + collect_submodules("playwright") + collect_submodules(
+] + collect_submodules("contracts") + collect_submodules("gateway") + collect_submodules("services") + collect_submodules("graph_service") + collect_submodules("playwright") + collect_submodules(
     "lancedb",
     filter=lambda name: ".tests" not in name and not name.endswith(".conftest"),
 ) + collect_submodules(

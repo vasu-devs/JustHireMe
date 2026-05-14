@@ -123,6 +123,12 @@ def location_from_text(text: str) -> str:
 
 
 def company_from_text(text: str, fallback: str = "Manual Lead") -> str:
+    for line in str(text or "").splitlines():
+        match = re.match(r"\s*(?:company|client|startup)\s*[:\-]\s*(.+?)\s*$", line, flags=re.I)
+        if match:
+            value = match.group(1).strip(" .-|")
+            if value:
+                return value[:120]
     clean = clean_text(text)
     patterns = [
         r"(?:company|client|startup)\s*[:\-]\s*([A-Za-z0-9 .&_-]{2,80})",
@@ -130,7 +136,7 @@ def company_from_text(text: str, fallback: str = "Manual Lead") -> str:
         r"^([A-Z][A-Za-z0-9 .&_-]{2,80})\s+\|\s+",
     ]
     for pat in patterns:
-        match = re.search(pat, clean)
+        match = re.search(pat, clean, flags=re.I)
         if match:
             return match.group(1).strip(" .-|")[:120]
     return fallback

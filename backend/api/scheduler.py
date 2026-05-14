@@ -6,10 +6,10 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 
-from api.dependencies import get_automation_service, get_discovery_service, get_generation_service, get_ranking_service, get_repository
+from api.dependencies import get_automation_service, get_discovery_service, get_generation_service, get_job_runner, get_ranking_service, get_repository
 from api.routers.automation import fire_blocker
 from api.routers.discovery import run_free_source_scan, run_x_signal_scan
-from discovery.targets import free_sources_enabled, has_x_token, job_targets, profile_for_discovery
+from gateway.discovery_config import free_sources_enabled, has_x_token, job_targets, profile_for_discovery
 from api.startup_validation import log_startup_warnings
 from data.sqlite.connection import init_sql
 
@@ -30,10 +30,13 @@ def create_ghost_tick(manager):
         discovery_service = get_discovery_service()
         ranking_service = get_ranking_service()
         generation_service = get_generation_service()
+        job_store = get_job_runner()
 
         cfg = repo.settings.get_settings()
         if repo.settings.get_setting("ghost_mode") != "true":
             return
+        ghost_job = job_store.create("ghost_cycle", {})
+        job_store.update(ghost_job.job_id, status="running", progress=5)
 
         profile = profile_for_discovery(await asyncio.to_thread(repo.profile.get_profile), cfg)
         boards = job_targets(cfg.get("job_boards", ""), cfg.get("job_market_focus", "global"))
@@ -45,6 +48,7 @@ def create_ghost_tick(manager):
             await run_free_source_scan(manager, cfg, "job", profile)
         if not boards and not has_x and not has_free:
             await manager.broadcast({"type": "agent", "event": "ghost_warn", "msg": "Ghost Mode: no job boards configured - skipping"})
+            job_store.update(ghost_job.job_id, status="cancelled", error="no job boards configured")
             return
 
         await manager.broadcast({"type": "agent", "event": "ghost_scout", "msg": "Ghost Mode: scout cycle starting"})
@@ -55,6 +59,7 @@ def create_ghost_tick(manager):
             await manager.broadcast({"type": "agent", "event": "ghost_scout", "msg": f"Ghost scout complete - {len(leads)} new leads found"})
         except Exception as exc:
             await manager.broadcast({"type": "agent", "event": "ghost_error", "msg": f"Scout failed: {exc}"})
+            job_store.update(ghost_job.job_id, status="failed", error=str(exc))
             return
 
         profile = profile_for_discovery(await asyncio.to_thread(repo.profile.get_profile), cfg)
@@ -85,6 +90,7 @@ def create_ghost_tick(manager):
 
         if not approved:
             await manager.broadcast({"type": "agent", "event": "ghost_done", "msg": "Ghost Mode: no approved leads this cycle"})
+            job_store.update(ghost_job.job_id, status="succeeded", progress=100, result={"approved": 0})
             return
 
         await manager.broadcast({"type": "agent", "event": "ghost_gen", "msg": f"Ghost Mode: generating assets for {len(approved)} leads"})
@@ -118,6 +124,7 @@ def create_ghost_tick(manager):
                 "event": "ghost_done",
                 "msg": f"Ghost cycle complete - {len(generated)} leads ready. Auto-apply is OFF - waiting for manual approval in Sniper view.",
             })
+            job_store.update(ghost_job.job_id, status="succeeded", progress=100, result={"approved": len(approved), "generated": len(generated)})
             return
 
         await manager.broadcast({"type": "agent", "event": "ghost_apply", "msg": f"Ghost Mode: auto-applying to {len(generated)} leads"})
@@ -139,20 +146,29 @@ def create_ghost_tick(manager):
                 await manager.broadcast({"type": "agent", "event": "ghost_error", "msg": f"Actuator error for {item.get('title','?')}: {exc}"})
 
         await manager.broadcast({"type": "agent", "event": "ghost_done", "msg": "Ghost cycle complete."})
+        job_store.update(ghost_job.job_id, status="succeeded", progress=100, result={"approved": len(approved), "generated": len(generated)})
 
     return ghost_tick
 
 
-def create_lifespan(scheduler: AsyncIOScheduler, ghost_tick, logger):
+def create_lifespan(scheduler: AsyncIOScheduler, ghost_tick, logger, service_supervisor=None):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         init_sql()
+        if service_supervisor is not None:
+            registry = await service_supervisor.start()
+            app.state.service_registry = registry
+            app.state.service_supervisor = service_supervisor
         ensure_ghost_job(scheduler, ghost_tick)
         log_startup_warnings(get_repository(), logger)
         scheduler.start()
         logger.info("FastAPI live.")
-        yield
-        scheduler.shutdown(wait=False)
+        try:
+            yield
+        finally:
+            scheduler.shutdown(wait=False)
+            if service_supervisor is not None:
+                await service_supervisor.stop()
         logger.info("FastAPI shutdown.")
 
     return lifespan

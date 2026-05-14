@@ -332,6 +332,90 @@ class TestLeadsEndpoints(unittest.TestCase):
         resp = post("/api/v1/leads/manual", json={"text": "x" * 25000})
         self.assertEqual(resp.status_code, 422)
 
+    def test_manual_lead_uses_raw_lead_when_feedback_ranking_fails(self):
+        from api.dependencies import get_ranking_service, get_repository
+
+        saved: dict = {}
+
+        class FailingRanking:
+            async def apply_feedback(self, _lead, _examples):
+                raise RuntimeError("ranking unavailable")
+
+        class Leads:
+            def save_lead(self, lead):
+                saved.update(lead)
+
+            def get_lead_by_id(self, _job_id):
+                return saved
+
+        fake_repo = types.SimpleNamespace(
+            feedback=types.SimpleNamespace(get_feedback_training_examples=lambda: []),
+            leads=Leads(),
+        )
+        app.dependency_overrides[get_repository] = lambda: fake_repo
+        app.dependency_overrides[get_ranking_service] = lambda: FailingRanking()
+        try:
+            resp = post(
+                "/api/v1/leads/manual",
+                json={
+                    "kind": "job",
+                    "url": "https://jobs.example.com/applied-ai-engineer-demo",
+                    "text": "Applied AI Engineer\nCompany: NimbusWorks\nLocation: Remote\nPython FastAPI React PostgreSQL",
+                },
+            )
+        finally:
+            app.dependency_overrides.pop(get_repository, None)
+            app.dependency_overrides.pop(get_ranking_service, None)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["kind"], "job")
+        self.assertIn("feedback_learning_error", data.get("source_meta", {}))
+
+    def test_manual_customize_start_returns_immediately(self):
+        from api.dependencies import get_generation_service, get_job_runner, get_repository
+        from api.routers import generation
+
+        saved: dict = {}
+
+        class Leads:
+            def save_lead(self, lead):
+                saved.update(lead)
+
+            def update_lead_status(self, job_id, status):
+                saved["job_id"] = job_id
+                saved["status"] = status
+
+            def get_lead_by_id(self, _job_id):
+                return saved
+
+        fake_repo = types.SimpleNamespace(leads=Leads())
+        generate_mock = mock.AsyncMock(return_value={**saved, "status": "approved"})
+        app.dependency_overrides[get_repository] = lambda: fake_repo
+        app.dependency_overrides[get_generation_service] = lambda: object()
+        app.dependency_overrides[get_job_runner] = lambda: object()
+        try:
+            with mock.patch.object(generation, "generate_one", new=generate_mock):
+                resp = post(
+                    "/api/v1/leads/manual/generate/start",
+                    json={
+                        "kind": "job",
+                        "url": "https://jobs.example.com/applied-ai-engineer-demo",
+                        "text": "Applied AI Engineer\nCompany: NimbusWorks\nLocation: Remote\nPython FastAPI React PostgreSQL",
+                    },
+                )
+        finally:
+            app.dependency_overrides.pop(get_repository, None)
+            app.dependency_overrides.pop(get_generation_service, None)
+            app.dependency_overrides.pop(get_job_runner, None)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["status"], "started")
+        self.assertEqual(data["lead"]["status"], "tailoring")
+        self.assertEqual(data["lead"]["company"], "NimbusWorks")
+        self.assertLessEqual(generate_mock.await_count, 1)
+
 
 class TestExportEndpoint(unittest.TestCase):
     def test_export_csv_status(self):
@@ -471,6 +555,33 @@ class TestGenerateEndpoint(unittest.TestCase):
         data = resp.json()
         self.assertEqual(data["status"], "ready")
         self.assertEqual(data["lead"], ready_lead)
+
+    def test_generate_start_returns_before_package_is_ready(self):
+        from api.dependencies import get_repository
+        from api.routers import generation
+
+        mock_lead = {
+            "job_id": "test-generate-start-001",
+            "title": "Applied AI Engineer",
+            "company": "NimbusWorks",
+            "description": "Python and FastAPI role.",
+            "kind": "job",
+        }
+        fake_repo = types.SimpleNamespace(
+            leads=types.SimpleNamespace(get_lead_by_id=lambda _job_id: mock_lead),
+        )
+        generate_mock = mock.AsyncMock(return_value={**mock_lead, "status": "approved"})
+        app.dependency_overrides[get_repository] = lambda: fake_repo
+        try:
+            with mock.patch.object(generation, "generate_one", new=generate_mock):
+                resp = post("/api/v1/leads/test-generate-start-001/generate/start")
+        finally:
+            app.dependency_overrides.pop(get_repository, None)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "started")
+        self.assertEqual(resp.json()["job_id"], "test-generate-start-001")
+        self.assertEqual(generate_mock.await_count, 1)
 
 
 class TestIngestionEndpoints(unittest.TestCase):

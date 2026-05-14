@@ -17,6 +17,20 @@ def _clean(text: str) -> str:
     """
     import unicodedata
     _subs = {
+        "\u2022": "-", "\u2023": "-", "\u25cf": "-", "\u25aa": "-",
+        "\u25a0": "-", "\u25ab": "-", "\u25b6": ">",
+        "\u2013": "-", "\u2014": "--", "\u2015": "--", "\u2010": "-",
+        "\u2011": "-", "\u2012": "-",
+        "\u2018": "'", "\u2019": "'", "\u201a": ",",
+        "\u201c": '"', "\u201d": '"', "\u201e": '"',
+        "\u2192": "->", "\u2190": "<-", "\u2194": "<->",
+        "\u2026": "...",
+        "\u2713": "(check)", "\u2714": "(check)", "\u2717": "(x)", "\u2718": "(x)",
+        "\u2705": "(check)", "\u274c": "(x)",
+        "\u00ae": "(R)", "\u00a9": "(C)", "\u2122": "(TM)",
+        "\u200b": "", "\u200c": "", "\u200d": "",
+        "\u00a0": " ", "\u202f": " ", "\u2009": " ", "\u2008": " ",
+        "\u00b7": "-", "\u2605": "*", "\u2606": "*", "\u26a0": "Warning:",
         # Bullets & boxes
         "•": "-", "‣": "-", "●": "-", "▪": "-",
         "■": "-", "▫": "-", "▶": ">",
@@ -29,7 +43,7 @@ def _clean(text: str) -> str:
         # Arrows & misc symbols
         "→": "->", "←": "<-", "↔": "<->",
         "…": "...",
-        "✓": "(v)", "✔": "(v)", "✗": "(x)", "✘": "(x)",
+        "✓": "(check)", "✔": "(check)", "✗": "(x)", "✘": "(x)",
         "®": "(R)", "©": "(C)", "™": "(TM)",
         # Zero-width / special spaces
         "​": "", "‌": "", "‍": "",
@@ -37,12 +51,14 @@ def _clean(text: str) -> str:
         # Middle dot
         "·": "-",
         # Checkmarks and crosses sometimes used in LLM output
-        "✅": "(v)", "❌": "(x)",
+        "✅": "(check)", "❌": "(x)",
     }
     for ch, rep in _subs.items():
         text = text.replace(ch, rep)
+    text = re.sub(r"[\U0001F1E6-\U0001FAFF]", "", text)
+    text = text.replace("\ufffd", "")
     text = unicodedata.normalize("NFKD", text)
-    return text.encode("latin-1", errors="replace").decode("latin-1")
+    return text.encode("latin-1", errors="ignore").decode("latin-1")
 
 
 def _strip_inline(text: str) -> str:
@@ -53,6 +69,13 @@ def _strip_inline(text: str) -> str:
     text = re.sub(r'`(.+?)`',       r'\1', text)
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
     return text.strip()
+
+
+def _shorten_text(text: str, limit: int) -> str:
+    clean = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(clean) <= limit:
+        return clean
+    return clean[: max(0, limit - 1)].rstrip(" ,.;:-") + "."
 
 
 def _render_resume_template(md_text: str, filename: str) -> str:
@@ -93,6 +116,53 @@ def _render_resume_template(md_text: str, filename: str) -> str:
     if current_heading:
         sections.append((current_heading, current_lines))
 
+    def normalize_sections(source: list[tuple[str, list[str]]]) -> list[tuple[str, list[str]]]:
+        normalized: list[tuple[str, list[str]]] = []
+        budgets = {
+            "SUMMARY": {"entries": 2, "bullets": 0, "chars": 430},
+            "SKILLS": {"entries": 6, "bullets": 0, "chars": 128},
+            "PROJECTS": {"entries": 3, "bullets": 3, "chars": 155},
+            "EXPERIENCE": {"entries": 2, "bullets": 2, "chars": 155},
+            "CERTIFICATES": {"entries": 3, "bullets": 0, "chars": 120},
+            "CERTS": {"entries": 3, "bullets": 0, "chars": 120},
+            "ACHIEVEMENTS": {"entries": 3, "bullets": 0, "chars": 130},
+            "EDUCATION": {"entries": 3, "bullets": 0, "chars": 130},
+        }
+        for heading, body in source:
+            budget = budgets.get(heading, {"entries": 4, "bullets": 2, "chars": 145})
+            entry_count = 0
+            bullet_count = 0
+            out: list[str] = []
+            for raw_item in body:
+                stripped = raw_item.strip()
+                if not stripped:
+                    if out and out[-1] != "":
+                        out.append("")
+                    continue
+                if stripped.startswith("### "):
+                    if entry_count >= int(budget["entries"]):
+                        continue
+                    entry_count += 1
+                    bullet_count = 0
+                    out.append("### " + _shorten_text(stripped[4:], 95))
+                    continue
+                if re.match(r"^[-*+]\s+", stripped):
+                    if int(budget["bullets"]) and bullet_count >= int(budget["bullets"]):
+                        continue
+                    bullet_count += 1
+                    prefix = re.match(r"^[-*+]\s+", stripped).group(0)
+                    out.append(prefix + _shorten_text(re.sub(r"^[-*+]\s+", "", stripped), int(budget["chars"])))
+                    continue
+                if heading in {"SUMMARY", "SKILLS", "CERTIFICATES", "CERTS", "ACHIEVEMENTS", "EDUCATION"}:
+                    if entry_count >= int(budget["entries"]):
+                        continue
+                    entry_count += 1
+                out.append(_shorten_text(stripped, int(budget["chars"])))
+            normalized.append((heading, out))
+        return normalized
+
+    sections = normalize_sections(sections)
+
     def build_pdf(scale: float, spread: float = 1.0) -> tuple[FPDF, bool, float]:
         pdf = FPDF(format="Letter", unit="mm")
         margin_x = 11 * scale
@@ -115,7 +185,7 @@ def _render_resume_template(md_text: str, filename: str) -> str:
             return max(6.2, value * scale)
 
         def lh(value: float) -> float:
-            return max(3.0, value * 0.43 * min(spread, 1.45))
+            return max(3.35, value * 0.48 * min(spread, 1.45))
 
         def ensure(height: float) -> bool:
             nonlocal overflow
@@ -135,11 +205,11 @@ def _render_resume_template(md_text: str, filename: str) -> str:
             set_font(size, style)
             line_h = lh(fs(size))
             width = eff_w - indent
-            estimated = max(1, int((pdf.get_string_width(clean) / max(width, 1)) + 0.95)) * line_h + (after * spread)
+            estimated = max(1, int((pdf.get_string_width(clean) / max(width, 1)) + 1.25)) * line_h + (after * spread)
             if not ensure(estimated):
                 return
             pdf.set_x(margin_x + indent)
-            pdf.multi_cell(width, line_h, clean)
+            pdf.multi_cell(width, line_h, clean, align="L")
             if after:
                 pdf.ln(after * spread)
 
@@ -152,7 +222,7 @@ def _render_resume_template(md_text: str, filename: str) -> str:
             bullet_indent = 4.0 * scale
             text_indent = 7.0 * scale
             width = eff_w - text_indent
-            estimated = max(1, int((pdf.get_string_width(clean) / max(width, 1)) + 0.95)) * line_h + (0.25 * spread)
+            estimated = max(1, int((pdf.get_string_width(clean) / max(width, 1)) + 1.25)) * line_h + (0.25 * spread)
             if not ensure(estimated):
                 return
             y = pdf.get_y()
@@ -162,7 +232,7 @@ def _render_resume_template(md_text: str, filename: str) -> str:
             pdf.cell(2.5 * scale, line_h, "-")
             set_font(7.8)
             pdf.set_xy(margin_x + text_indent, y)
-            pdf.multi_cell(width, line_h, clean)
+            pdf.multi_cell(width, line_h, clean, align="L")
             pdf.ln(0.25 * spread)
 
         def split_title_meta(title: str) -> tuple[str, str]:
@@ -179,7 +249,7 @@ def _render_resume_template(md_text: str, filename: str) -> str:
             return clean, ""
 
         def write_entry_title(title: str):
-            left, right = split_title_meta(title)
+            left, right = split_title_meta(_shorten_text(title, 105))
             if not ensure(5.2 * scale):
                 return
             set_font(8.6, "B")
@@ -187,13 +257,15 @@ def _render_resume_template(md_text: str, filename: str) -> str:
             pdf.set_xy(margin_x, y)
             if right:
                 right_w = min(42 * scale, pdf.get_string_width(right) + 2)
-                pdf.multi_cell(eff_w - right_w - 3, lh(fs(8.6)), left)
+                line_h = lh(fs(8.6))
+                pdf.multi_cell(eff_w - right_w - 3, line_h, left, align="L")
+                left_bottom = pdf.get_y()
                 set_font(7.8, "", muted)
                 pdf.set_xy(page_w - margin_x - right_w, y)
-                pdf.cell(right_w, lh(fs(8.6)), right, align="R")
-                pdf.set_y(max(pdf.get_y(), y + lh(fs(8.6)) + (0.6 * spread)))
+                pdf.cell(right_w, line_h, right, align="R")
+                pdf.set_y(max(left_bottom, y + line_h) + (0.6 * spread))
             else:
-                pdf.multi_cell(eff_w, lh(fs(8.6)), left)
+                pdf.multi_cell(eff_w, lh(fs(8.6)), left, align="L")
                 pdf.ln(0.3 * spread)
 
         def write_section(heading: str, body: list[str]):

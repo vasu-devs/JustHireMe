@@ -10,7 +10,10 @@ export interface Cfg {
   mistral_api_key: string; mistral_model: string; openrouter_api_key: string; openrouter_model: string;
   together_api_key: string; together_model: string; fireworks_api_key: string; fireworks_model: string;
   cerebras_api_key: string; cerebras_model: string; perplexity_api_key: string; perplexity_model: string;
-  huggingface_api_key: string; huggingface_model: string; custom_api_key: string; custom_model: string; custom_base_url: string;
+  huggingface_api_key: string; huggingface_model: string; cohere_api_key: string; cohere_model: string;
+  sambanova_api_key: string; sambanova_model: string; qwen_api_key: string; qwen_model: string;
+  azure_openai_api_key: string; azure_model: string; azure_openai_endpoint: string;
+  custom_api_key: string; custom_model: string; custom_base_url: string;
   ollama_url: string;
   scout_provider: string;     scout_api_key: string;     scout_model: string;
   evaluator_provider: string; evaluator_api_key: string; evaluator_model: string;
@@ -31,11 +34,14 @@ export const EMPTY: Cfg = {
   anthropic_key: "", anthropic_model: "claude-sonnet-4-6", openai_api_key: "", openai_model: "gpt-4o-mini",
   deepseek_api_key: "", deepseek_model: "deepseek-chat", gemini_api_key: "", gemini_model: "gemini-2.5-flash",
   groq_api_key: "", groq_model: "llama-3.3-70b-versatile", nvidia_api_key: "",
-  nvidia_model: "z-ai/glm-5.1", xai_api_key: "", xai_model: "grok-4", kimi_api_key: "", kimi_model: "kimi-k2-turbo-preview",
+  nvidia_model: "z-ai/glm-5.1", xai_api_key: "", xai_model: "grok-4", kimi_api_key: "", kimi_model: "kimi-k2.6",
   mistral_api_key: "", mistral_model: "mistral-large-latest", openrouter_api_key: "", openrouter_model: "openrouter/auto",
   together_api_key: "", together_model: "openai/gpt-oss-120b", fireworks_api_key: "", fireworks_model: "accounts/fireworks/models/llama-v3p1-70b-instruct",
   cerebras_api_key: "", cerebras_model: "llama-3.3-70b", perplexity_api_key: "", perplexity_model: "sonar",
-  huggingface_api_key: "", huggingface_model: "openai/gpt-oss-120b", custom_api_key: "", custom_model: "model-id", custom_base_url: "https://api.openai.com/v1",
+  huggingface_api_key: "", huggingface_model: "openai/gpt-oss-120b", cohere_api_key: "", cohere_model: "command-a-03-2025",
+  sambanova_api_key: "", sambanova_model: "Meta-Llama-3.3-70B-Instruct", qwen_api_key: "", qwen_model: "qwen-plus",
+  azure_openai_api_key: "", azure_model: "gpt-4o-mini", azure_openai_endpoint: "",
+  custom_api_key: "", custom_model: "model-id", custom_base_url: "https://api.openai.com/v1",
   ollama_url: "http://localhost:11434/v1",
   scout_provider: "", scout_api_key: "", scout_model: "",
   evaluator_provider: "", evaluator_api_key: "", evaluator_model: "",
@@ -65,6 +71,10 @@ export const PROVIDERS = [
   { id: "cerebras",  label: "Cerebras",  tone: "green",  sub: "Fast"      },
   { id: "perplexity", label: "Perplexity", tone: "blue", sub: "Search"    },
   { id: "huggingface", label: "HuggingFace", tone: "yellow", sub: "Router" },
+  { id: "cohere",   label: "Cohere",   tone: "green",  sub: "Command"   },
+  { id: "sambanova", label: "SambaNova", tone: "orange", sub: "Cloud"    },
+  { id: "qwen",     label: "Qwen",      tone: "teal",   sub: "DashScope" },
+  { id: "azure",    label: "Azure",     tone: "blue",   sub: "OpenAI"    },
   { id: "openai",    label: "OpenAI",    tone: "blue",   sub: "GPT-4o"    },
   { id: "anthropic", label: "Anthropic", tone: "purple", sub: "Claude"    },
   { id: "custom",    label: "Custom",    tone: "pink",   sub: "OpenAI API" },
@@ -73,11 +83,11 @@ export const PROVIDERS = [
 
 export const MODEL_HINTS: Record<string, string[]> = {
   gemini:    ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
-  deepseek:  ["deepseek-chat", "deepseek-reasoner"],
-  nvidia:    ["z-ai/glm-5.1", "meta/llama-3.1-70b-instruct", "nvidia/llama-3.3-nemotron-super-49b-v1"],
-  groq:      ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b"],
+  deepseek:  ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"],
+  nvidia:    ["z-ai/glm-5.1", "nvidia/llama-3.3-nemotron-super-49b-v1", "meta/llama-3.1-70b-instruct", "openai/gpt-oss-120b"],
+  groq:      ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
   xai:       ["grok-4", "grok-3", "grok-3-mini"],
-  kimi:      ["kimi-k2-turbo-preview", "kimi-k2.5", "moonshot-v1-128k"],
+  kimi:      ["kimi-k2.6", "kimi-k2.5", "kimi-k2-thinking", "kimi-k2-turbo-preview", "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
   mistral:   ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "ministral-8b-latest"],
   openrouter: ["openrouter/auto", "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro", "moonshotai/kimi-k2"],
   together:  ["openai/gpt-oss-120b", "meta-llama/Llama-3.3-70B-Instruct-Turbo", "deepseek-ai/DeepSeek-V3.1", "moonshotai/Kimi-K2-Instruct"],
@@ -85,8 +95,12 @@ export const MODEL_HINTS: Record<string, string[]> = {
   cerebras:  ["llama-3.3-70b", "llama3.1-8b", "gpt-oss-120b"],
   perplexity: ["sonar", "sonar-pro", "sonar-reasoning", "sonar-deep-research"],
   huggingface: ["openai/gpt-oss-120b", "meta-llama/Llama-3.1-8B-Instruct", "Qwen/Qwen2.5-72B-Instruct"],
-  openai:    ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
-  anthropic: ["claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-6"],
+  cohere:    ["command-a-03-2025", "command-r-plus-08-2024", "command-r-08-2024"],
+  sambanova: ["Meta-Llama-3.3-70B-Instruct", "DeepSeek-R1", "Qwen3-32B"],
+  qwen:      ["qwen-plus", "qwen-max", "qwen-turbo", "qwen3-coder-plus"],
+  azure:     ["gpt-4o-mini", "gpt-4o", "gpt-4.1", "deployment-name"],
+  openai:    ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.2", "gpt-4o-mini", "gpt-4o"],
+  anthropic: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-6"],
   custom:    ["model-id", "provider/model", "chat-model"],
   ollama:    ["llama3", "mistral", "gemma2", "codellama"],
 };
@@ -148,6 +162,7 @@ export const KEY_FIELD: Record<string, keyof Cfg> = {
   xai: "xai_api_key", kimi: "kimi_api_key", mistral: "mistral_api_key",
   openrouter: "openrouter_api_key", together: "together_api_key", fireworks: "fireworks_api_key",
   cerebras: "cerebras_api_key", perplexity: "perplexity_api_key", huggingface: "huggingface_api_key",
+  cohere: "cohere_api_key", sambanova: "sambanova_api_key", qwen: "qwen_api_key", azure: "azure_openai_api_key",
   custom: "custom_api_key",
 };
 
@@ -167,8 +182,14 @@ export const GLOBAL_MODEL_FIELD: Record<string, keyof Cfg> = {
   cerebras: "cerebras_model",
   perplexity: "perplexity_model",
   huggingface: "huggingface_model",
+  cohere: "cohere_model",
+  sambanova: "sambanova_model",
+  qwen: "qwen_model",
+  azure: "azure_model",
   custom: "custom_model",
 };
+
+export const SECRET_MASKS = new Set(["__JHM_SECRET_SET__", "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢", "••••••••••••••••••••"]);
 
 /* helpers */
 export function LabelledField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -216,8 +237,8 @@ export function ProviderPills({ value, onChange, small }: { value: string; onCha
   );
 }
 
-export function ModelChips({ provider, value, onChange }: { provider: string; value: string; onChange: (v: string) => void }) {
-  const hints = MODEL_HINTS[provider] || [];
+export function ModelChips({ provider, value, onChange, extraModels = [] }: { provider: string; value: string; onChange: (v: string) => void; extraModels?: string[] }) {
+  const hints = Array.from(new Set([...(MODEL_HINTS[provider] || []), ...extraModels])).slice(0, 32);
   const placeholder = hints[0] || "model-id";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
@@ -251,10 +272,11 @@ export function ApiKeyInput({ value, onChange, provider, isStep, disabled = fals
     anthropic: "sk-ant-••••", gemini: "AIza••••", groq: "gsk_••••", nvidia: "nvapi-••••",
     openai: "sk-••••", deepseek: "sk-••••", xai: "xai-••••", kimi: "sk-••••",
     mistral: "••••", openrouter: "sk-or-••••", together: "••••", fireworks: "fw_••••",
-    cerebras: "csk-••••", perplexity: "pplx-••••", huggingface: "hf_••••", custom: "API key",
+    cerebras: "csk-••••", perplexity: "pplx-••••", huggingface: "hf_••••", cohere: "co_••••",
+    sambanova: "••••", qwen: "sk-••••", azure: "Azure OpenAI key", custom: "API key",
   };
   return (
-    <input type="password" value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
+    <input type="password" value={SECRET_MASKS.has(value) ? "" : value} onChange={e => onChange(e.target.value)} disabled={disabled}
       placeholder={placeholder || (isStep ? `API key for ${provider}` : ph[provider] || "API key")}
       className="mono field-input"
       style={{ width: "100%", padding: "9px 12px", borderRadius: 9, border: "1px solid var(--line)", background: disabled ? "var(--paper-3)" : "var(--card)", fontSize: 12, opacity: disabled ? 0.75 : 1, cursor: disabled ? "not-allowed" : "text" }}

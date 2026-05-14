@@ -7,14 +7,18 @@ const stackItems = (stack: any): string[] =>
     .map((s: string) => s.trim())
     .filter(Boolean);
 
+const entryTitle = (item: any): string => typeof item === "string" ? item : String(item?.title || "");
+
 export function ProfileView({ api, setView }: { api: ApiFetch; setView: (v: View) => void }) {
   const [profile, setProfile] = useState<any>(null);
   const [profileErr, setProfileErr] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [editData, setEditData] = useState<any>(null);
   const [editingCandidate, setEditingCandidate] = useState(false);
+  const [editingIdentity, setEditingIdentity] = useState(false);
   const [candForm, setCandForm] = useState({ n: "", s: "" });
-  const [activeProfileTab, setActiveProfileTab] = useState<"skills" | "experience" | "projects">("skills");
+  const [identityForm, setIdentityForm] = useState({ email: "", phone: "", linkedin_url: "", github_url: "", website_url: "", city: "" });
+  const [activeProfileTab, setActiveProfileTab] = useState<"skills" | "experience" | "projects" | "education" | "certifications" | "achievements">("skills");
   const [expandedProfileList, setExpandedProfileList] = useState(false);
 
   const fetchProfile = useCallback(async () => {
@@ -34,6 +38,10 @@ export function ProfileView({ api, setView }: { api: ApiFetch; setView: (v: View
   }, [api]);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
+  useEffect(() => {
+    window.addEventListener("profile-refresh", fetchProfile);
+    return () => window.removeEventListener("profile-refresh", fetchProfile);
+  }, [fetchProfile]);
   useEffect(() => { setExpandedProfileList(false); }, [activeProfileTab]);
   useEffect(() => {
     const exportProfile = () => {
@@ -83,10 +91,31 @@ export function ProfileView({ api, setView }: { api: ApiFetch; setView: (v: View
     window.dispatchEvent(new CustomEvent("graph-refresh"));
   };
 
+  const saveIdentity = async () => {
+    await api(`/api/v1/profile/identity`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(identityForm),
+    });
+    setEditingIdentity(false);
+    await fetchProfile();
+    window.dispatchEvent(new CustomEvent("profile-refresh"));
+  };
+
   const skills = profile?.skills || [];
   const exp = profile?.exp || [];
   const projects = profile?.projects || [];
-  const evidenceCount = skills.length + exp.length + projects.length;
+  const education = profile?.education || [];
+  const certifications = profile?.certifications || [];
+  const achievements = profile?.achievements || [];
+  const identity = profile?.identity || {};
+  const identityItems = [
+    ["email", identity.email, "mail"],
+    ["phone", identity.phone, "phone"],
+    ["linkedin_url", identity.linkedin_url, "external-link"],
+    ["github_url", identity.github_url, "external-link"],
+    ["website_url", identity.website_url, "globe"],
+    ["city", identity.city, "globe"],
+  ].filter(([, value]) => String(value || "").trim());
+  const evidenceCount = skills.length + exp.length + projects.length + education.length + certifications.length + achievements.length + identityItems.length;
   const topStacks = Array.from(new Set<string>(projects.flatMap((p: any) => stackItems(p.stack)))).slice(0, 10);
   const visibleStacks = topStacks.slice(0, 6);
   const summary = String(profile?.s || "").replace(/\s+/g, " ").trim();
@@ -110,12 +139,18 @@ export function ProfileView({ api, setView }: { api: ApiFetch; setView: (v: View
   const previewSkills = expandedProfileList ? skillRanks : skillRanks.slice(0, 10);
   const previewExp = expandedProfileList ? exp : exp.slice(0, 6);
   const previewProjects = expandedProfileList ? projects : projects.slice(0, 8);
-  const listTotal = activeProfileTab === "skills" ? skillRanks.length : activeProfileTab === "experience" ? exp.length : projects.length;
-  const listShown = activeProfileTab === "skills" ? previewSkills.length : activeProfileTab === "experience" ? previewExp.length : previewProjects.length;
-  const graphNodes = [
+  const previewEducation = expandedProfileList ? education : education.slice(0, 8);
+  const previewCertifications = expandedProfileList ? certifications : certifications.slice(0, 8);
+  const previewAchievements = expandedProfileList ? achievements : achievements.slice(0, 8);
+  const listTotal = activeProfileTab === "skills" ? skillRanks.length : activeProfileTab === "experience" ? exp.length : activeProfileTab === "projects" ? projects.length : activeProfileTab === "education" ? education.length : activeProfileTab === "certifications" ? certifications.length : achievements.length;
+  const listShown = activeProfileTab === "skills" ? previewSkills.length : activeProfileTab === "experience" ? previewExp.length : activeProfileTab === "projects" ? previewProjects.length : activeProfileTab === "education" ? previewEducation.length : activeProfileTab === "certifications" ? previewCertifications.length : previewAchievements.length;
+  const tabNodes = [
     { id: "skills" as const, label: "Skills", count: skills.length, tone: "blue", icon: "spark" },
     { id: "experience" as const, label: "Experience", count: exp.length, tone: "orange", icon: "brief" },
     { id: "projects" as const, label: "Projects", count: projects.length, tone: "pink", icon: "layers" },
+    { id: "education" as const, label: "Education", count: education.length, tone: "green", icon: "file" },
+    { id: "certifications" as const, label: "Certs", count: certifications.length, tone: "purple", icon: "check" },
+    { id: "achievements" as const, label: "Wins", count: achievements.length, tone: "yellow", icon: "trending" },
   ];
 
   return (
@@ -154,77 +189,100 @@ export function ProfileView({ api, setView }: { api: ApiFetch; setView: (v: View
           ) : (
             <>
               <p className="profile-summary">{summaryPreview}</p>
+              {identityItems.length > 0 && (
+                <div className="profile-contact-list">
+                  {identityItems.slice(0, 6).map(([key, value, icon]) => {
+                    const text = String(value || "");
+                    const isUrl = /^https?:\/\//i.test(text);
+                    return (
+                      <div key={String(key)} className="profile-contact-item">
+                        <Icon name={String(icon)} size={12} />
+                        {isUrl ? <a href={text} target="_blank" rel="noreferrer">{text.replace(/^https?:\/\//i, "")}</a> : <span>{text}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <div className="profile-pill-row">
                 <span className="pill mono">{skills.length} SKILLS</span>
                 <span className="pill mono">{exp.length} ROLES</span>
                 <span className="pill mono">{projects.length} PROJECTS</span>
               </div>
-            </>
-          )}
-            </div>
-
-            <div className="card profile-signal-card">
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div>
-                  <span className="eyebrow">Graph Signal</span>
-                  <div className="display tabular" style={{ fontSize: 44, color: "var(--pink-ink)", marginTop: 6 }}>{evidenceCount}</div>
+              {editingIdentity ? (
+                <div className="col gap-2" style={{ marginTop: 14 }}>
+                  <input className="field-input" placeholder="Email" value={identityForm.email} onChange={e => setIdentityForm({ ...identityForm, email: e.target.value })} />
+                  <input className="field-input" placeholder="Phone" value={identityForm.phone} onChange={e => setIdentityForm({ ...identityForm, phone: e.target.value })} />
+                  <input className="field-input" placeholder="LinkedIn URL" value={identityForm.linkedin_url} onChange={e => setIdentityForm({ ...identityForm, linkedin_url: e.target.value })} />
+                  <input className="field-input" placeholder="GitHub URL" value={identityForm.github_url} onChange={e => setIdentityForm({ ...identityForm, github_url: e.target.value })} />
+                  <input className="field-input" placeholder="Website URL" value={identityForm.website_url} onChange={e => setIdentityForm({ ...identityForm, website_url: e.target.value })} />
+                  <input className="field-input" placeholder="City / location" value={identityForm.city} onChange={e => setIdentityForm({ ...identityForm, city: e.target.value })} />
+                  <div className="row gap-2">
+                    <button className="btn btn-primary" onClick={saveIdentity}>Save Contact</button>
+                    <button className="btn btn-ghost" onClick={() => setEditingIdentity(false)}>Cancel</button>
+                  </div>
                 </div>
-                <Icon name="pulse" size={18} color="var(--pink-ink)" />
+              ) : (
+                <button className="profile-add-context" style={{ marginTop: 12 }} onClick={() => { setEditingIdentity(true); setIdentityForm({ email: identity.email || "", phone: identity.phone || "", linkedin_url: identity.linkedin_url || "", github_url: identity.github_url || "", website_url: identity.website_url || "", city: identity.city || "" }); }}>
+                  <Icon name="edit" size={14} /> Contact & Links
+                </button>
+              )}
+              <div className="profile-rail-stats">
+                <div>
+                  <span>Evidence</span>
+                  <strong>{evidenceCount}</strong>
+                </div>
+                <div>
+                  <span>Stack</span>
+                  <strong>{topStacks.length}</strong>
+                </div>
               </div>
-              <div style={{ fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55, marginTop: 8 }}>Evidence available for matching and application package generation.</div>
               {visibleStacks.length > 0 && (
-                <div className="profile-stack-mini">
+                <div className="profile-stack-mini profile-rail-stack">
                   {visibleStacks.map(s => <span key={s} className="pill">{s}</span>)}
                 </div>
               )}
-              <button className="profile-add-context" onClick={() => setView("ingestion")}>
+              <button className="profile-primary-action" onClick={() => setView("ingestion")}>
                 <Icon name="plus" size={14} /> Add Context
               </button>
+            </>
+          )}
             </div>
           </aside>
 
           <main className="profile-main-panel">
-            <section className="card profile-map-card">
-              <div className="profile-map-head">
+            <section className="card profile-overview-card">
+              <div className="profile-overview-head">
                 <div>
-                  <span className="eyebrow">Relationship View</span>
-                  <h3>Candidate Evidence Map</h3>
+                  <span className="eyebrow">Profile Snapshot</span>
+                  <h3>Structured Candidate Data</h3>
                 </div>
-                <span className="pill mono">{topStacks.length} STACK TAGS</span>
+                <button className="btn btn-ghost" onClick={() => setView("ingestion")}>
+                  <Icon name="plus" size={14} /> Add Context
+                </button>
               </div>
-              <div className="profile-map-visual">
-                <svg className="profile-map-connectors" viewBox="0 0 980 205" preserveAspectRatio="none" aria-hidden="true">
-                  <path className="profile-connector profile-connector-blue" d="M235 111 C330 111 385 111 445 111" />
-                  <path className="profile-connector profile-connector-orange" d="M565 111 C650 111 646 52 730 52 C760 52 762 52 790 52" />
-                  <path className="profile-connector profile-connector-purple" d="M565 111 C650 111 646 168 730 168 C760 168 762 168 790 168" />
-                </svg>
-                <div className="profile-map-node profile-map-center-node">
-                  <div className="profile-map-icon"><Icon name="user" size={18} /></div>
-                  <strong>{profile?.n || "Candidate"}</strong>
-                  <span>{evidenceCount} evidence items</span>
-                </div>
-                {graphNodes.map(node => (
-                  <button
-                    key={node.id}
-                    className={`profile-map-node profile-map-node-${node.id} ${activeProfileTab === node.id ? "active" : ""}`}
-                    onClick={() => { setActiveProfileTab(node.id); setEditId(null); }}
-                    style={{ color: `var(--${node.tone}-ink)` }}
-                  >
-                    <div className="profile-map-icon" style={{ background: `var(--${node.tone}-soft)`, borderColor: `var(--${node.tone})` }}>
-                      <Icon name={node.icon} size={17} />
-                    </div>
-                    <div className="profile-map-copy">
-                      <strong>{node.label}</strong>
-                      <span className="tabular">{node.count}</span>
-                    </div>
+              <div className="profile-overview-grid">
+                {tabNodes.map(node => (
+                  <button key={node.id} className={`profile-overview-stat profile-overview-stat-${node.tone} ${activeProfileTab === node.id ? "active" : ""}`} onClick={() => { setActiveProfileTab(node.id); setEditId(null); }}>
+                    <Icon name={node.icon} size={16} />
+                    <span>{node.label}</span>
+                    <strong>{node.count}</strong>
                   </button>
                 ))}
+                <div className="profile-overview-stack">
+                  <div>
+                    <span className="eyebrow">Stack Tags</span>
+                    <strong>{topStacks.length}</strong>
+                  </div>
+                  <div className="profile-stack-mini">
+                    {visibleStacks.length ? visibleStacks.map(s => <span key={s} className="pill">{s}</span>) : <span className="pill">No project stack yet</span>}
+                  </div>
+                </div>
               </div>
             </section>
 
             <section className="card profile-tab-card">
               <div className="profile-tabs">
-                {graphNodes.map(node => (
+                {tabNodes.map(node => (
                   <button
                     key={node.id}
                     className={activeProfileTab === node.id ? "active" : ""}
@@ -341,6 +399,48 @@ export function ProfileView({ api, setView }: { api: ApiFetch; setView: (v: View
                             {p.repo && <div className="row gap-2" style={{ marginTop: 10 }}><Icon name="link" size={12} color="var(--ink-3)" /><a href={p.repo} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--ink-3)" }}>{p.repo}</a></div>}
                           </div>
                         )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {activeProfileTab === "education" && (
+                  <div className="profile-skill-grid">
+                    {education.length === 0 && <div className="profile-empty">No education recorded.</div>}
+                    {previewEducation.map((item: any, idx: number) => (
+                      <div key={`${entryTitle(item)}-${idx}`} className="profile-list-tile profile-list-tile-green">
+                        <div className="profile-list-leading">
+                          <Icon name="file" size={14} />
+                          <span>{entryTitle(item)}</span>
+                        </div>
+                        <span className="profile-count-badge">{idx + 1}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {activeProfileTab === "certifications" && (
+                  <div className="profile-skill-grid">
+                    {certifications.length === 0 && <div className="profile-empty">No certifications recorded.</div>}
+                    {previewCertifications.map((item: any, idx: number) => (
+                      <div key={`${entryTitle(item)}-${idx}`} className="profile-list-tile profile-list-tile-purple">
+                        <div className="profile-list-leading">
+                          <Icon name="check" size={14} />
+                          <span>{entryTitle(item)}</span>
+                        </div>
+                        <span className="profile-count-badge">{idx + 1}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {activeProfileTab === "achievements" && (
+                  <div className="profile-skill-grid">
+                    {achievements.length === 0 && <div className="profile-empty">No achievements recorded.</div>}
+                    {previewAchievements.map((item: any, idx: number) => (
+                      <div key={`${entryTitle(item)}-${idx}`} className="profile-list-tile profile-list-tile-yellow">
+                        <div className="profile-list-leading">
+                          <Icon name="trending" size={14} />
+                          <span>{entryTitle(item)}</span>
+                        </div>
+                        <span className="profile-count-badge">{idx + 1}</span>
                       </div>
                     ))}
                   </div>

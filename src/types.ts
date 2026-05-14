@@ -1,6 +1,14 @@
 export type ConnSt = "disconnected" | "connecting" | "connected";
-export type View = "apply" | "dashboard" | "pipeline" | "graph" | "activity" | "profile" | "ingestion";
 export type PipelineTab = "all" | "hot" | "found" | "evaluated" | "generated" | "applied" | "discarded";
+export type PipelineViewId =
+  | "pipeline"
+  | "pipeline-hot"
+  | "pipeline-found"
+  | "pipeline-evaluated"
+  | "pipeline-generated"
+  | "pipeline-applied"
+  | "pipeline-discarded";
+export type View = "apply" | "dashboard" | PipelineViewId | "graph" | "activity" | "profile" | "ingestion";
 export type LeadSort = "recommended" | "newest" | "signal" | "match" | "company";
 export type SeniorityFilter = "all" | "beginner" | "fresher" | "junior" | "mid" | "senior" | "unknown";
 

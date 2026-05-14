@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import httpx
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from discovery.normalizer import (
     budget_from_text,
@@ -17,6 +17,15 @@ from discovery.normalizer import (
     tech_stack_from_text,
     urgency_from_text,
 )
+
+
+def _is_retryable_source_error(exc: BaseException) -> bool:
+    if isinstance(exc, (httpx.ConnectError, httpx.TimeoutException)):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        return status == 429 or 500 <= status < 600
+    return False
 
 
 def text_lead(item: dict, default_kind: str = "job") -> dict:
@@ -61,7 +70,7 @@ def text_lead(item: dict, default_kind: str = "job") -> dict:
 
 
 @retry(
-    retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
+    retry=retry_if_exception(_is_retryable_source_error),
     wait=wait_exponential(multiplier=1, min=2, max=30),
     stop=stop_after_attempt(4),
     reraise=True,

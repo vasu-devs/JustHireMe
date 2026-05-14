@@ -335,7 +335,7 @@ def cleanup_bad_leads(limit: int = 1000, dry_run: bool = False, db_path: str = D
             f"""
             SELECT {LEAD_SELECT_COLUMNS}
             FROM leads
-            WHERE status NOT IN ('approved','applied','interviewing','accepted','completed')
+            WHERE status NOT IN ('approved','applied','interviewing','rejected','accepted','discarded','completed')
             ORDER BY created_at DESC
             LIMIT ?
             """,

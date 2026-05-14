@@ -70,6 +70,21 @@ _SENIOR_TERMS = (
 )
 
 
+def _source_error_detail(exc: Exception) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status == 403:
+            return "HTTP 403 blocked by source"
+        if status == 429:
+            return "HTTP 429 rate limited by source"
+        return f"HTTP {status}"
+    if isinstance(exc, httpx.TimeoutException):
+        return "request timed out"
+    if isinstance(exc, httpx.ConnectError):
+        return "connection failed"
+    return str(exc).strip() or type(exc).__name__
+
+
 def _cutoff() -> datetime:
     return datetime.now(timezone.utc) - timedelta(days=_MAX_AGE_DAYS)
 
@@ -523,15 +538,29 @@ def run(
     headed: bool = False,
     min_quality: int = MIN_DEFAULT_QUALITY,
 ) -> list:
+    global LAST_ERRORS, LAST_USAGE
+    LAST_ERRORS = []
     leads = []
     
     # Handle Special Targets (RSS/API)
     all_targets = urls or []
     processed_leads = []
+    LAST_USAGE = {
+        "configured": len(all_targets),
+        "executed": 0,
+        "candidates": 0,
+        "saved": 0,
+        "duplicates": 0,
+        "filtered": 0,
+        "missing_url": 0,
+        "errors": 0,
+        "by_source": {},
+    }
 
     for target in all_targets:
         target = _ensure_scheme(target)
         try:
+            before = len(processed_leads)
             if "news.ycombinator.com" in target or "hn-hiring" in target.lower() or "hackernews" in target.lower():
                 processed_leads.extend(asyncio.run(_scrape_hn_hiring()))
             elif "wellfound.com" in target or "angel.co" in target:
@@ -552,7 +581,13 @@ def run(
             else:
                 # Standard Web Scrape
                 processed_leads.extend(scrape(target, headed=headed))
+            LAST_USAGE["executed"] += 1
+            source_count = len(processed_leads) - before
+            LAST_USAGE["candidates"] += max(0, source_count)
+            LAST_USAGE["by_source"][target] = source_count
         except Exception as _e:
+            LAST_USAGE["errors"] += 1
+            LAST_ERRORS.append(f"{target}: {_source_error_detail(_e)}")
             _log.warning("Skipping %s: %s", target, _e)
 
     # Apify fallback
@@ -569,31 +604,37 @@ def run(
     # Save and Deduplicate
     for item in processed_leads:
         u = item.get("url", "")
-        if not u: continue
+        if not u:
+            LAST_USAGE["missing_url"] += 1
+            continue
         jid = _h(u)
-        if not url_exists(jid):
-            t    = item.get("title", "")
-            co   = item.get("company", "")
-            plat = item.get("platform", "scout")
-            desc = item.get("description", "")
-            source_meta = {
-                "posted_date": item.get("posted_date", ""),
-                "fresh_source": item.get("_fresh_source", ""),
-                "seniority_level": classify_job_seniority(item),
-                "is_fresh": _is_fresh_lead(item),
-            }
-            item = {**item, "source_meta": {**(item.get("source_meta") or {}), **source_meta}}
-            quality = evaluate_lead_quality(item, min_quality=min_quality)
-            item = attach_quality_metadata(item, quality)
-            if not quality.get("accepted"):
-                LAST_ERRORS.append(f"filtered {plat}:{u} - {quality.get('reason', 'quality gate')}")
-                continue
-            source_meta = item["source_meta"]
-            save_lead(jid, t, co, u, plat, desc, source_meta=source_meta)
-            leads.append({
-                "job_id": jid, "title": t, "company": co, "url": u,
-                "platform": plat, "description": desc, "source_meta": source_meta,
-                "seniority_level": source_meta["seniority_level"],
-            })
+        if url_exists(jid):
+            LAST_USAGE["duplicates"] += 1
+            continue
+        t    = item.get("title", "")
+        co   = item.get("company", "")
+        plat = item.get("platform", "scout")
+        desc = item.get("description", "")
+        source_meta = {
+            "posted_date": item.get("posted_date", ""),
+            "fresh_source": item.get("_fresh_source", ""),
+            "seniority_level": classify_job_seniority(item),
+            "is_fresh": _is_fresh_lead(item),
+        }
+        item = {**item, "source_meta": {**(item.get("source_meta") or {}), **source_meta}}
+        quality = evaluate_lead_quality(item, min_quality=min_quality)
+        item = attach_quality_metadata(item, quality)
+        if not quality.get("accepted"):
+            LAST_USAGE["filtered"] += 1
+            LAST_ERRORS.append(f"filtered {plat}:{u} - {quality.get('reason', 'quality gate')}")
+            continue
+        source_meta = item["source_meta"]
+        save_lead(jid, t, co, u, plat, desc, source_meta=source_meta)
+        LAST_USAGE["saved"] += 1
+        leads.append({
+            "job_id": jid, "title": t, "company": co, "url": u,
+            "platform": plat, "description": desc, "source_meta": source_meta,
+            "seniority_level": source_meta["seniority_level"],
+        })
 
     return leads

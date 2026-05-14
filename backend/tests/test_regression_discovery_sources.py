@@ -222,6 +222,38 @@ This role is a great fit for customer-facing technical professionals. Apply here
         self.assertEqual(saved[0][0][3], "https://premium.example/jobs/1")
         self.assertEqual(saved[0][1]["source_meta"]["source"], "custom_connector")
 
+    def test_free_scout_reports_duplicates_and_filtered_candidates(self):
+        from automation import free_scout
+
+        batch = [
+            free_scout._text_lead({
+                "title": "Junior AI Engineer",
+                "company": "PremiumCo",
+                "url": "https://premium.example/jobs/1",
+                "platform": "connector:PremiumCo",
+                "description": "Entry level Python and React role. Remote. Apply this week.",
+                "posted_date": "today",
+            }),
+            free_scout._text_lead({
+                "title": "Unpaid Senior Staff Engineer Trial",
+                "company": "PremiumCo",
+                "url": "https://premium.example/jobs/2",
+                "platform": "connector:PremiumCo",
+                "description": "Senior Staff engineer role requiring 10+ years. Unpaid free trial for exposure with no budget.",
+                "posted_date": "today",
+            }),
+        ]
+
+        with mock.patch.object(free_scout, "_scrape_target", new=mock.AsyncMock(return_value=batch)), \
+             mock.patch.object(free_scout, "url_exists", side_effect=[True, False]), \
+             mock.patch.object(free_scout, "save_lead"):
+            leads = free_scout.run(targets=["noop"], max_requests=1, min_signal_score=40)
+
+        self.assertEqual(leads, [])
+        self.assertEqual(free_scout.LAST_USAGE["candidates"], 2)
+        self.assertEqual(free_scout.LAST_USAGE["duplicates"], 1)
+        self.assertEqual(free_scout.LAST_USAGE["filtered"], 1)
+
     def test_custom_connector_headers_are_sensitive_settings(self):
         from api.routers.settings import sensitive_keys
 

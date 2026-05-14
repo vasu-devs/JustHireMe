@@ -7,9 +7,11 @@ type GraphPayload = NonNullable<GraphStats["graph"]>;
 type GraphNodePayload = GraphPayload["nodes"][number];
 type GraphEdgePayload = GraphPayload["edges"][number];
 type EmbeddingPoint = NonNullable<GraphStats["embedding"]>["points"][number];
+type AtlasView = "ribbons" | "gravity";
 type GraphMode = "curated" | "evidence" | "correlation" | "all";
 type CameraMode = "orbit" | "front" | "top";
 type SpatialCamera = { yaw: number; pitch: number; zoom: number };
+type AtlasPoint = EmbeddingPoint & { hasVector: boolean };
 
 type SkillGrade = {
   node: GraphNodePayload;
@@ -39,8 +41,29 @@ type AtlasEdge = {
   kind: "evidence" | "correlation";
 };
 
+type ForceNode = GraphNodePayload & {
+  x: number;
+  y: number;
+  anchorX: number;
+  anchorY: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  labelW: number;
+  labelH: number;
+  collisionRadius: number;
+  tone: string;
+  degree: number;
+};
+
+type ForceEdge = GraphEdgePayload & {
+  weight: number;
+};
+
 const MAX_ATLAS_SKILLS = 24;
-const ATLAS_VIEWPORT_WIDTH = 1000;
+const ATLAS_VIEWPORT_WIDTH = 1180;
+const GRAVITY_WIDTH = 1500;
+const GRAVITY_HEIGHT = 900;
 
 const PROFILE_EDGE_TYPES = new Set([
   "HAS_SKILL",
@@ -92,6 +115,18 @@ function truncate(text: string, max = 24) {
   return clean.length > max ? `${clean.slice(0, max - 1)}...` : clean;
 }
 
+function isBadVectorLabel(value: string) {
+  const lower = String(value || "").trim().toLowerCase();
+  return !lower
+    || lower.includes("404:")
+    || lower.includes("not_found")
+    || lower.includes("not found")
+    || lower.includes("error code")
+    || lower.includes("failed to fetch")
+    || lower.includes("server returned")
+    || lower.includes("traceback");
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -105,6 +140,239 @@ function normalizeAngle(value: number) {
 
 function edgeLabel(type: string) {
   return EDGE_COPY[type] || type.replace(/_/g, " ").toLowerCase();
+}
+
+function seededUnit(seed: string, salt: number) {
+  let hash = 2166136261 ^ salt;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return ((hash >>> 0) % 10000) / 10000;
+}
+
+function buildGravityGraph(allNodes: GraphNodePayload[], allEdges: GraphEdgePayload[]) {
+  const sourceNodes = allNodes
+    .filter(node => !["JobLead", "Candidate", "Profile"].includes(node.type))
+    .sort((a, b) => a.type.localeCompare(b.type) || a.label.localeCompare(b.label))
+    .slice(0, 140);
+  const nodeIds = new Set(sourceNodes.map(node => node.id));
+  const sourceEdges = allEdges
+    .filter(edge => PROFILE_EDGE_TYPES.has(edge.type) && nodeIds.has(edge.source) && nodeIds.has(edge.target))
+    .slice(0, 320);
+  const degree = new Map<string, number>();
+  sourceEdges.forEach(edge => {
+    degree.set(edge.source, (degree.get(edge.source) || 0) + 1);
+    degree.set(edge.target, (degree.get(edge.target) || 0) + 1);
+  });
+  const typeCenters: Record<string, { x: number; y: number }> = {
+    Project: { x: GRAVITY_WIDTH * 0.30, y: GRAVITY_HEIGHT * 0.56 },
+    Skill: { x: GRAVITY_WIDTH * 0.72, y: GRAVITY_HEIGHT * 0.46 },
+    Experience: { x: GRAVITY_WIDTH * 0.43, y: GRAVITY_HEIGHT * 0.22 },
+    Credential: { x: GRAVITY_WIDTH * 0.62, y: GRAVITY_HEIGHT * 0.78 },
+    Certification: { x: GRAVITY_WIDTH * 0.62, y: GRAVITY_HEIGHT * 0.78 },
+    Education: { x: GRAVITY_WIDTH * 0.74, y: GRAVITY_HEIGHT * 0.76 },
+    Achievement: { x: GRAVITY_WIDTH * 0.50, y: GRAVITY_HEIGHT * 0.82 },
+  };
+  const edgeWeight = (type: string) => {
+    if (type === "PROJ_UTILIZES") return 1.42;
+    if (type === "HAS_SKILL") return 0.55;
+    if (type === "BUILT" || type === "WORKED_AS") return 1.2;
+    if (CROSS_EDGE_TYPES.has(type)) return 0.38;
+    return 1;
+  };
+  const verticalOffsetByType: Record<string, number> = {
+    Skill: -145,
+    Experience: -245,
+    Credential: 165,
+    Certification: 165,
+    Education: 230,
+    Achievement: 250,
+  };
+  const typeIndex = new Map<string, number>();
+  const visibleNodes = sourceNodes.filter(node => (degree.get(node.id) || 0) > 0);
+  const projectCount = visibleNodes.filter(node => node.type === "Project").length;
+  const projectStep = projectCount <= 1 ? 0 : Math.min(230, Math.max(150, (GRAVITY_WIDTH - 300) / (projectCount - 1)));
+  let projectLaneIndex = 0;
+  const projectAnchors = new Map<string, { x: number; y: number }>();
+  visibleNodes.filter(node => node.type === "Project").forEach(node => {
+    const projectIndex = projectLaneIndex++;
+    projectAnchors.set(node.id, {
+      x: projectCount <= 1 ? typeCenters.Project.x : 150 + projectIndex * projectStep,
+      y: GRAVITY_HEIGHT * 0.56,
+    });
+  });
+  const directProjectAnchors = (nodeId: string) => sourceEdges
+    .map(edge => {
+      if (edge.source === nodeId && projectAnchors.has(edge.target)) return { anchor: projectAnchors.get(edge.target)!, weight: edgeWeight(edge.type) };
+      if (edge.target === nodeId && projectAnchors.has(edge.source)) return { anchor: projectAnchors.get(edge.source)!, weight: edgeWeight(edge.type) };
+      return null;
+    })
+    .filter((item): item is { anchor: { x: number; y: number }; weight: number } => Boolean(item));
+  const weightedAnchorFor = (node: GraphNodePayload, index: number) => {
+    const directProjects = directProjectAnchors(node.id);
+    if (!directProjects.length) {
+      const center = typeCenters[node.type] || { x: GRAVITY_WIDTH * 0.5, y: GRAVITY_HEIGHT * 0.5 };
+      const ring = Math.floor(index / 7);
+      const angle = index * 2.399963229728653 + ring * 0.35;
+      const distance = 72 + ring * 92 + (index % 7) * 8;
+      return {
+        x: center.x + Math.cos(angle) * distance,
+        y: center.y + Math.sin(angle) * distance * 0.72,
+      };
+    }
+    const total = directProjects.reduce((sum, item) => sum + item.weight, 0) || 1;
+    const x = directProjects.reduce((sum, item) => sum + item.anchor.x * item.weight, 0) / total;
+    const y = directProjects.reduce((sum, item) => sum + item.anchor.y * item.weight, 0) / total;
+    const side = seededUnit(node.id, 17) > 0.5 ? 1 : -1;
+    const spread = (seededUnit(node.id, 23) - 0.5) * 84;
+    return {
+      x: clamp(x + spread, 68, GRAVITY_WIDTH - 68),
+      y: clamp(y + (verticalOffsetByType[node.type] ?? side * 170) + (seededUnit(node.id, 29) - 0.5) * 70, 70, GRAVITY_HEIGHT - 70),
+    };
+  };
+  const nodes: ForceNode[] = visibleNodes.map(node => {
+    const d = degree.get(node.id) || 0;
+    const index = typeIndex.get(node.type) || 0;
+    typeIndex.set(node.type, index + 1);
+    const anchor = node.type === "Project" ? projectAnchors.get(node.id)! : weightedAnchorFor(node, index);
+    const label = truncate(node.label, 28);
+    const labelW = clamp(56 + label.length * 7.2, 92, 260);
+    const labelH = 32;
+    return {
+      ...node,
+      x: anchor.x,
+      y: anchor.y,
+      anchorX: anchor.x,
+      anchorY: anchor.y,
+      vx: 0,
+      vy: 0,
+      radius: clamp(7 + Math.sqrt(d + 1) * 2.2, 10, 20),
+      labelW,
+      labelH,
+      collisionRadius: clamp(7 + Math.sqrt(d + 1) * 2.2, 10, 20) + 44,
+      tone: TONES[node.type] || "orange",
+      degree: d,
+    };
+  });
+  const lookup = new Map(nodes.map(node => [node.id, node]));
+  const visibleNodeIds = new Set(nodes.map(node => node.id));
+  const candidateEdges: ForceEdge[] = sourceEdges
+    .filter(edge => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target))
+    .map(edge => ({ ...edge, weight: edgeWeight(edge.type) }));
+  const edgeLimitByNode = new Map<string, number>();
+  const edges: ForceEdge[] = [];
+  candidateEdges
+    .filter(edge => edge.type !== "HAS_SKILL" || (degree.get(edge.target) || degree.get(edge.source) || 0) <= 7)
+    .sort((a, b) => b.weight - a.weight)
+    .forEach(edge => {
+      const sourceCount = edgeLimitByNode.get(edge.source) || 0;
+      const targetCount = edgeLimitByNode.get(edge.target) || 0;
+      const maxEdges = edge.type === "PROJ_UTILIZES" ? 7 : 3;
+      if (sourceCount >= maxEdges || targetCount >= maxEdges) return;
+      edges.push(edge);
+      edgeLimitByNode.set(edge.source, sourceCount + 1);
+      edgeLimitByNode.set(edge.target, targetCount + 1);
+    });
+
+  for (let tick = 0; tick < 360; tick += 1) {
+    const alpha = 1 - tick / 360;
+    for (let i = 0; i < nodes.length; i += 1) {
+      const a = nodes[i];
+      const anchorPull = a.type === "Project" ? 0.0044 : 0.0019;
+      a.vx += (a.anchorX - a.x) * anchorPull * alpha;
+      a.vy += (a.anchorY - a.y) * anchorPull * alpha;
+      for (let j = i + 1; j < nodes.length; j += 1) {
+        const b = nodes[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let dist2 = dx * dx + dy * dy;
+        if (dist2 < 0.01) {
+          dx = seededUnit(`${a.id}:${b.id}`, 3) - 0.5;
+          dy = seededUnit(`${b.id}:${a.id}`, 5) - 0.5;
+          dist2 = dx * dx + dy * dy || 0.01;
+        }
+        const dist = Math.sqrt(dist2);
+        const minDist = a.collisionRadius + b.collisionRadius + 22;
+        const repel = Math.min(9.4, ((minDist * minDist) / dist2) * 0.92 * alpha);
+        const nx = dx / dist;
+        const ny = dy / dist;
+        a.vx -= nx * repel;
+        a.vy -= ny * repel;
+        b.vx += nx * repel;
+        b.vy += ny * repel;
+        if (dist < minDist) {
+          const push = (minDist - dist) * 0.16;
+          a.vx -= nx * push;
+          a.vy -= ny * push;
+          b.vx += nx * push;
+          b.vy += ny * push;
+        }
+      }
+    }
+    edges.forEach(edge => {
+      const a = lookup.get(edge.source);
+      const b = lookup.get(edge.target);
+      if (!a || !b) return;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const target = 176 + (a.type === b.type ? 50 : 24) - edge.weight * 22;
+      const force = (dist - target) * 0.0068 * edge.weight * alpha;
+      const nx = dx / dist;
+      const ny = dy / dist;
+      a.vx += nx * force;
+      a.vy += ny * force;
+      b.vx -= nx * force;
+      b.vy -= ny * force;
+    });
+    nodes.forEach(node => {
+      node.vx *= 0.72;
+      node.vy *= 0.72;
+      node.x = clamp(node.x + node.vx, 34, GRAVITY_WIDTH - 34);
+      node.y = clamp(node.y + node.vy, 34, GRAVITY_HEIGHT - 34);
+    });
+  }
+  return { nodes, edges, lookup };
+}
+
+function resolveGravityCollisions(nodes: ForceNode[], offsets: Record<string, { x: number; y: number }>) {
+  const next: Record<string, { x: number; y: number }> = { ...offsets };
+  const placed = nodes.map(node => {
+    const offset = next[node.id] || { x: 0, y: 0 };
+    return { node, x: node.x + offset.x, y: node.y + offset.y };
+  });
+  for (let pass = 0; pass < 3; pass += 1) {
+    for (let i = 0; i < placed.length; i += 1) {
+      for (let j = i + 1; j < placed.length; j += 1) {
+        const a = placed[i];
+        const b = placed[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < 0.001) {
+          const angle = seededUnit(`${a.node.id}:${b.node.id}`, pass + 101) * Math.PI * 2;
+          dx = Math.cos(angle);
+          dy = Math.sin(angle);
+          distance = 1;
+        }
+        const minDistance = a.node.collisionRadius + b.node.collisionRadius + 12;
+        if (distance >= minDistance) continue;
+        const push = (minDistance - distance) / 2;
+        const nx = dx / distance;
+        const ny = dy / distance;
+        const aOffset = next[a.node.id] || { x: 0, y: 0 };
+        const bOffset = next[b.node.id] || { x: 0, y: 0 };
+        next[a.node.id] = { x: aOffset.x - nx * push, y: aOffset.y - ny * push };
+        next[b.node.id] = { x: bOffset.x + nx * push, y: bOffset.y + ny * push };
+        a.x -= nx * push;
+        a.y -= ny * push;
+        b.x += nx * push;
+        b.y += ny * push;
+      }
+    }
+  }
+  return next;
 }
 
 function nodeSupport(nodeId: string, edges: GraphEdgePayload[]) {
@@ -185,18 +453,18 @@ function buildRelationAtlas(allNodes: GraphNodePayload[], allEdges: GraphEdgePay
   const skillStart = height / 2 - ((clusterRows - 1) * skillGap) / 2;
   const projectNodes: AtlasNode[] = projects.map((project, index) => ({
     ...project,
-    x: 150 + (index % 2) * 86,
+    x: 180 + (index % 2) * 92,
     y: projectStart + index * projectGap,
-    w: 210,
+    w: 220,
     h: 42,
     tone: "pink",
     support: nodeSupport(project.id, graphEdges),
   }));
   const skillNodes: AtlasNode[] = grades.map((grade, index) => ({
     ...grade.node,
-    x: 760 + (index % 2) * 150,
+    x: 820 + (index % 2) * 235,
     y: skillStart + Math.floor(index / 2) * skillGap,
-    w: 190,
+    w: 210,
     h: 38,
     tone: "orange",
     support: grade.relationCount,
@@ -208,9 +476,9 @@ function buildRelationAtlas(allNodes: GraphNodePayload[], allEdges: GraphEdgePay
     label: group.label,
     type: group.type,
     subtitle: `${group.items.length} grouped skills`,
-    x: 835,
+    x: 940,
     y: skillStart + (Math.ceil(grades.length / 2) + index) * skillGap,
-    w: 210,
+    w: 240,
     h: 38,
     tone: "blue",
     support: group.items.reduce((sum, item) => sum + item.relationCount, 0),
@@ -260,7 +528,326 @@ function relationPath(source: AtlasNode, target: AtlasNode, kind: AtlasEdge["kin
   return `M ${startX} ${source.y} C ${c1} ${source.y}, ${c2} ${target.y}, ${endX} ${target.y}`;
 }
 
+function GravityRelationGraph({ stats }: { stats: GraphStats }) {
+  const [selectedId, setSelectedId] = useState("");
+  const [zoom, setZoom] = useState(0.82);
+  const [pan, setPan] = useState({ x: -120, y: -80 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [draggingId, setDraggingId] = useState("");
+  const [nodeOffsets, setNodeOffsets] = useState<Record<string, { x: number; y: number }>>({});
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const panRef = useRef({ active: false, x: 0, y: 0, panX: 0, panY: 0 });
+  const offsetsRef = useRef<Record<string, { x: number; y: number }>>({});
+  const velocitiesRef = useRef<Record<string, { x: number; y: number }>>({});
+  const dragRef = useRef({
+    active: false,
+    id: "",
+    startX: 0,
+    startY: 0,
+    targetX: 0,
+    targetY: 0,
+    moved: false,
+    offsets: {} as Record<string, { x: number; y: number }>,
+  });
+  const springRef = useRef<number | null>(null);
+  const liquidFrameRef = useRef<number | null>(null);
+  const graph = useMemo(() => buildGravityGraph(stats.graph?.nodes || [], stats.graph?.edges || []), [stats.graph?.nodes, stats.graph?.edges]);
+  useEffect(() => {
+    setNodeOffsets({});
+    offsetsRef.current = {};
+    velocitiesRef.current = {};
+    setSelectedId("");
+  }, [graph]);
+  useEffect(() => () => {
+    if (springRef.current !== null) cancelAnimationFrame(springRef.current);
+    if (liquidFrameRef.current !== null) cancelAnimationFrame(liquidFrameRef.current);
+  }, []);
+  const displayNodes = useMemo<ForceNode[]>(() => graph.nodes.map(node => {
+    const offset = nodeOffsets[node.id] || { x: 0, y: 0 };
+    return { ...node, x: node.x + offset.x, y: node.y + offset.y };
+  }), [graph.nodes, nodeOffsets]);
+  const displayLookup = useMemo(() => new Map(displayNodes.map(node => [node.id, node])), [displayNodes]);
+  const selected = selectedId ? displayLookup.get(selectedId) : undefined;
+  const selectedEdges = selected ? graph.edges.filter(edge => edge.source === selected.id || edge.target === selected.id) : [];
+  const focusId = draggingId || selected?.id || "";
+  const focusEdges = focusId ? graph.edges.filter(edge => edge.source === focusId || edge.target === focusId) : [];
+  const focused = new Set(focusId ? [focusId, ...focusEdges.flatMap(edge => [edge.source, edge.target])] : graph.nodes.map(node => node.id));
+  const related = selected ? selectedEdges.map(edge => displayLookup.get(edge.source === selected.id ? edge.target : edge.source)).filter((node): node is ForceNode => Boolean(node)) : [...displayNodes].sort((a, b) => b.degree - a.degree).slice(0, 8);
+  const counts = graph.nodes.reduce<Record<string, number>>((acc, node) => {
+    acc[node.type] = (acc[node.type] || 0) + 1;
+    return acc;
+  }, {});
+  const clientToGraph = (clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const rect = svg.getBoundingClientRect();
+    return {
+      x: (((clientX - rect.left) / rect.width) * GRAVITY_WIDTH - pan.x) / zoom,
+      y: (((clientY - rect.top) / rect.height) * GRAVITY_HEIGHT - pan.y) / zoom,
+    };
+  };
+  const runLiquidFrame = () => {
+    liquidFrameRef.current = null;
+    const drag = dragRef.current;
+    const currentOffsets = offsetsRef.current;
+    const currentVelocities = velocitiesRef.current;
+    const targets: Record<string, { x: number; y: number; stiffness: number }> = {};
+    if (drag.active) {
+      const dx = drag.targetX - drag.startX;
+      const dy = drag.targetY - drag.startY;
+      targets[drag.id] = {
+        x: (drag.offsets[drag.id]?.x || 0) + dx,
+        y: (drag.offsets[drag.id]?.y || 0) + dy,
+        stiffness: 0.17,
+      };
+      graph.edges
+        .filter(edge => edge.source === drag.id || edge.target === drag.id)
+        .forEach(edge => {
+          const otherId = edge.source === drag.id ? edge.target : edge.source;
+          const strength = clamp(0.22 + edge.weight * 0.08, 0.18, 0.42);
+          targets[otherId] = {
+            x: (drag.offsets[otherId]?.x || 0) + dx * strength,
+            y: (drag.offsets[otherId]?.y || 0) + dy * strength,
+            stiffness: 0.060,
+          };
+        });
+    } else {
+      Object.keys(currentOffsets).forEach(id => {
+        targets[id] = { x: 0, y: 0, stiffness: 0.024 };
+      });
+    }
+    const ids = new Set([...Object.keys(currentOffsets), ...Object.keys(targets)]);
+    const nextOffsets: Record<string, { x: number; y: number }> = {};
+    const nextVelocities: Record<string, { x: number; y: number }> = {};
+    let active = drag.active;
+    ids.forEach(id => {
+      const offset = currentOffsets[id] || { x: 0, y: 0 };
+      const velocity = currentVelocities[id] || { x: 0, y: 0 };
+      const target = targets[id] || { x: 0, y: 0, stiffness: 0.018 };
+      const damping = drag.active ? (id === drag.id ? 0.64 : 0.74) : 0.58;
+      const vx = velocity.x * damping + (target.x - offset.x) * target.stiffness;
+      const vy = velocity.y * damping + (target.y - offset.y) * target.stiffness;
+      const x = offset.x + vx;
+      const y = offset.y + vy;
+      if (Math.abs(x) > 0.35 || Math.abs(y) > 0.35 || Math.abs(vx) > 0.06 || Math.abs(vy) > 0.06 || drag.active) {
+        nextOffsets[id] = { x, y };
+        nextVelocities[id] = { x: vx, y: vy };
+        active = true;
+      }
+    });
+    const separatedOffsets = resolveGravityCollisions(graph.nodes, nextOffsets);
+    offsetsRef.current = separatedOffsets;
+    velocitiesRef.current = nextVelocities;
+    setNodeOffsets(separatedOffsets);
+    if (active) liquidFrameRef.current = requestAnimationFrame(runLiquidFrame);
+  };
+  const ensureLiquidLoop = () => {
+    if (liquidFrameRef.current === null) liquidFrameRef.current = requestAnimationFrame(runLiquidFrame);
+  };
+  const springHome = () => {
+    const tick = () => {
+      ensureLiquidLoop();
+      springRef.current = null;
+    };
+    springRef.current = requestAnimationFrame(tick);
+  };
+  const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const nextZoom = clamp(Number((zoom - event.deltaY * 0.001).toFixed(2)), 0.45, 1.8);
+    setZoom(nextZoom);
+  };
+  const handlePanStart = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if ((event.target as Element).closest(".gravity-node")) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    panRef.current = { active: true, x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y };
+    setIsPanning(true);
+  };
+  const handlePanMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!panRef.current.active) return;
+    event.preventDefault();
+    setPan({
+      x: panRef.current.panX + event.clientX - panRef.current.x,
+      y: panRef.current.panY + event.clientY - panRef.current.y,
+    });
+  };
+  const stopPan = (event?: PointerEvent<HTMLDivElement>) => {
+    if (event?.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    panRef.current.active = false;
+    setIsPanning(false);
+  };
+  const handleNodeDragStart = (event: PointerEvent<SVGGElement>, node: ForceNode) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (springRef.current !== null) cancelAnimationFrame(springRef.current);
+    const start = clientToGraph(event.clientX, event.clientY);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { active: true, id: node.id, startX: start.x, startY: start.y, targetX: start.x, targetY: start.y, moved: false, offsets: offsetsRef.current };
+    setDraggingId(node.id);
+    setSelectedId(node.id);
+    ensureLiquidLoop();
+  };
+  const handleNodeDragMove = (event: PointerEvent<SVGGElement>) => {
+    const drag = dragRef.current;
+    if (!drag.active) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const current = clientToGraph(event.clientX, event.clientY);
+    drag.targetX = current.x;
+    drag.targetY = current.y;
+    if (Math.abs(current.x - drag.startX) + Math.abs(current.y - drag.startY) > 3) drag.moved = true;
+    ensureLiquidLoop();
+  };
+  const handleNodeDragEnd = (event: PointerEvent<SVGGElement>, node: ForceNode) => {
+    const drag = dragRef.current;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    dragRef.current = { ...dragRef.current, active: false };
+    setDraggingId("");
+    if (!drag.moved) setSelectedId(selectedId === node.id ? "" : node.id);
+    springHome();
+  };
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return undefined;
+    const stopNativeWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    stage.addEventListener("wheel", stopNativeWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", stopNativeWheel);
+  }, []);
+
+  return (
+    <div className="gravity-graph-layout">
+      <div
+        ref={stageRef}
+        className={`gravity-graph-stage ${isPanning ? "panning" : ""}`}
+        onWheel={handleWheel}
+        onPointerDown={handlePanStart}
+        onPointerMove={handlePanMove}
+        onPointerUp={stopPan}
+        onPointerCancel={stopPan}
+      >
+        <svg ref={svgRef} viewBox={`0 0 ${GRAVITY_WIDTH} ${GRAVITY_HEIGHT}`} className="gravity-graph-svg" role="img" aria-label="Weighted gravitational entity graph">
+          <defs>
+            <linearGradient id="gravityEdge" x1="0" x2="1">
+              <stop offset="0%" stopColor="rgba(91, 140, 68, 0.30)" />
+              <stop offset="100%" stopColor="rgba(199, 100, 66, 0.44)" />
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" width={GRAVITY_WIDTH} height={GRAVITY_HEIGHT} rx="28" className="gravity-graph-bg" />
+          <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
+          <g className="gravity-edges">
+            {graph.edges.map((edge, index) => {
+              const source = displayLookup.get(edge.source);
+              const target = displayLookup.get(edge.target);
+              if (!source || !target) return null;
+              const active = !focusId || edge.source === focusId || edge.target === focusId;
+              const curve = Math.min(80, Math.max(24, Math.abs(source.y - target.y) * 0.18));
+              const midX = (source.x + target.x) / 2;
+              const midY = (source.y + target.y) / 2;
+              const path = `M ${source.x} ${source.y} Q ${midX} ${midY - curve} ${target.x} ${target.y}`;
+              return (
+                <path
+                  key={`${edge.source}-${edge.target}-${index}`}
+                  d={path}
+                  strokeWidth={clamp(0.7 + edge.weight * 0.85, 0.8, 3.8)}
+                  className={active ? "active" : "dimmed"}
+                />
+              );
+            })}
+          </g>
+          <g className="gravity-nodes">
+            {displayNodes.map(node => {
+              const active = selected?.id === node.id;
+              const dimmed = !focused.has(node.id);
+              return (
+                <g
+                  key={node.id}
+                  className={`gravity-node ${active ? "active" : ""} ${dimmed ? "dimmed" : ""} ${draggingId === node.id ? "dragging" : ""}`}
+                  transform={`translate(${node.x},${node.y})`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${node.type} ${node.label}`}
+                  onPointerDown={event => handleNodeDragStart(event, node)}
+                  onPointerMove={handleNodeDragMove}
+                  onPointerUp={event => handleNodeDragEnd(event, node)}
+                  onPointerCancel={event => handleNodeDragEnd(event, node)}
+                  onKeyDown={event => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedId(active ? "" : node.id);
+                    }
+                  }}
+                >
+                  <circle r={node.radius + 11} className="gravity-node-aura" fill={`var(--${node.tone}-soft)`} />
+                  <circle r={node.radius} fill={`var(--${node.tone})`} stroke={`var(--${node.tone}-ink)`} />
+                  <g transform={`translate(${-node.labelW / 2},${-node.radius - 38})`}>
+                    <rect width={node.labelW} height={node.labelH} rx="14" className="gravity-label-pill floating" />
+                    <text x={node.labelW / 2} y="20" textAnchor="middle" className="gravity-node-label">{truncate(node.label, 28)}</text>
+                  </g>
+                  {active && <circle r={node.radius + 7} className="gravity-node-focus-ring" />}
+                  <title>{`${node.label} (${node.type}) - ${node.degree} links`}</title>
+                </g>
+              );
+            })}
+          </g>
+          </g>
+          {graph.nodes.length === 0 && (
+            <g>
+              <text x={GRAVITY_WIDTH / 2} y={GRAVITY_HEIGHT / 2 - 8} textAnchor="middle" className="graph-empty-svg">No entity graph yet</text>
+              <text x={GRAVITY_WIDTH / 2} y={GRAVITY_HEIGHT / 2 + 22} textAnchor="middle" className="graph-empty-svg-sub">Add profile projects and skills, then refresh the graph.</text>
+            </g>
+          )}
+        </svg>
+      </div>
+      <aside className="graph-studio-inspector gravity-inspector">
+        <div className="graph-board-subhead">
+          <span className="eyebrow">Gravity focus</span>
+          <span className="pill mono">{graph.edges.length} edges</span>
+        </div>
+        <h4>{selected ? selected.label : "Weighted entity field"}</h4>
+        <p>
+          {selected
+            ? `${selected.type} node with ${selected.degree} weighted relations. Nearby nodes are pulled by shared evidence and pushed apart by collision spacing.`
+            : "A force-style view of all profile entities. Strong relationships pull nodes together while unrelated entities repel into natural clusters."}
+        </p>
+        <div className="graph-mini-label">View controls</div>
+        <div className="graph-zoom-controls gravity-controls" aria-label="Gravity graph zoom controls">
+          <button onClick={() => setZoom(value => clamp(Number((value - 0.12).toFixed(2)), 0.45, 1.8))}>-</button>
+          <input aria-label="Gravity graph zoom" type="range" min="0.45" max="1.8" step="0.03" value={zoom} onChange={event => setZoom(Number(event.target.value))} />
+          <button onClick={() => setZoom(value => clamp(Number((value + 0.12).toFixed(2)), 0.45, 1.8))}>+</button>
+          <button onClick={() => { setZoom(0.82); setPan({ x: -120, y: -80 }); }}>Reset</button>
+          <span>{Math.round(zoom * 100)}%</span>
+        </div>
+        <div className="graph-mini-label">Connected entities</div>
+        <div className="graph-node-pick-list compact">
+          {related.slice(0, 10).map(node => (
+            <button key={node.id} className="graph-node-pick" onClick={() => setSelectedId(node.id)}>
+              <span>{truncate(node.label, 26)}</span>
+              <small>{node.type}</small>
+            </button>
+          ))}
+        </div>
+        <div className="graph-mini-label">Groups</div>
+        <div className="graph-legend stacked">
+          {Object.entries(counts).map(([type, count]) => (
+            <span key={type}><i className={`legend-dot ${type.toLowerCase()}`} /> {type}<b>{count}</b></span>
+          ))}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 function KnowledgeRelationAtlas({ stats }: { stats: GraphStats }) {
+  const [view, setView] = useState<AtlasView>("ribbons");
   const [mode, setMode] = useState<GraphMode>("curated");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(18);
@@ -484,6 +1071,16 @@ function KnowledgeRelationAtlas({ stats }: { stats: GraphStats }) {
         </div>
       </div>
       <div className="graph-studio-toolbar">
+        <div className="graph-filter-bar graph-view-switch" aria-label="Knowledge atlas view">
+          {[
+            ["ribbons", "Relation atlas"],
+            ["gravity", "Gravity graph"],
+          ].map(([id, label]) => (
+            <button key={id} className={view === id ? "active" : ""} onClick={() => setView(id as AtlasView)}>{label}</button>
+          ))}
+        </div>
+        {view === "ribbons" && (
+          <>
         <div className="graph-filter-bar" aria-label="Relation atlas mode">
           {[
             ["curated", "Curated"],
@@ -526,7 +1123,13 @@ function KnowledgeRelationAtlas({ stats }: { stats: GraphStats }) {
           }}>Reset</button>
           <span>{Math.round(zoom * 100)}%</span>
         </div>
+          </>
+        )}
       </div>
+      {view === "gravity" ? (
+        <GravityRelationGraph stats={stats} />
+      ) : (
+      <>
       <div className="graph-studio-metrics" aria-label="Knowledge graph summary">
         <div>
           <span>{visibleEdges.length}</span>
@@ -578,8 +1181,8 @@ function KnowledgeRelationAtlas({ stats }: { stats: GraphStats }) {
               </linearGradient>
             </defs>
             <text x="170" y="48" textAnchor="middle" className="graph-lane-label">Proof projects</text>
-            <text x="500" y="48" textAnchor="middle" className="graph-lane-label">Weighted relationships</text>
-            <text x="835" y="48" textAnchor="middle" className="graph-lane-label">Skills and clusters</text>
+            <text x="560" y="48" textAnchor="middle" className="graph-lane-label">Weighted relationships</text>
+            <text x="940" y="48" textAnchor="middle" className="graph-lane-label">Skills and clusters</text>
             {visibleEdges.map((edge, index) => {
               const source = atlas.nodeLookup.get(edge.source);
               const target = atlas.nodeLookup.get(edge.target);
@@ -666,12 +1269,46 @@ function KnowledgeRelationAtlas({ stats }: { stats: GraphStats }) {
           {related.length === 0 && <span className="graph-chip muted">No visible neighbors in this filter</span>}
         </aside>
       </div>
+      </>
+      )}
     </section>
   );
 }
 
 function vectorTone(type: string) {
   return TONES[type] || "orange";
+}
+
+function graphNodePoint(node: GraphNodePayload, index: number): AtlasPoint {
+  const typeSalt = node.type.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const angle = seededUnit(node.id, 211 + typeSalt) * Math.PI * 2;
+  const ring = 0.22 + seededUnit(node.id, 307 + index) * 0.72;
+  const vertical = (seededUnit(node.id, 419 + typeSalt) - 0.5) * 1.7;
+  return {
+    id: node.id,
+    label: node.label,
+    type: node.type,
+    x: clamp(Math.cos(angle) * ring, -1, 1),
+    y: clamp(Math.sin(angle) * ring * 0.74 + vertical * 0.18, -1, 1),
+    z: clamp(vertical, -1, 1),
+    hasVector: false,
+  };
+}
+
+function profileAtlasPoints(stats: GraphStats): AtlasPoint[] {
+  const vectorPoints: AtlasPoint[] = (stats.embedding?.points || [])
+    .filter(point => !isBadVectorLabel(point.label))
+    .map(point => ({ ...point, hasVector: true }));
+  const vectorKeys = new Set(vectorPoints.flatMap(point => [
+    point.id,
+    `${point.type}:${point.label}`.toLowerCase(),
+  ]));
+  const graphNodes = (stats.graph?.nodes || [])
+    .filter(node => node.type !== "JobLead" && !isBadVectorLabel(node.label));
+  const fallbackPoints = graphNodes
+    .filter(node => !vectorKeys.has(node.id) && !vectorKeys.has(`${node.type}:${node.label}`.toLowerCase()))
+    .map((node, index) => graphNodePoint(node, index));
+  return [...vectorPoints, ...fallbackPoints].slice(0, 220);
 }
 
 function projectPoint(point: EmbeddingPoint, index: number, mode: CameraMode, camera: SpatialCamera) {
@@ -699,7 +1336,9 @@ function EmbeddingAtlas({ stats }: { stats: GraphStats }) {
   const [camera, setCamera] = useState<SpatialCamera>({ yaw: -38, pitch: 24, zoom: 1 });
   const embeddingStageRef = useRef<HTMLDivElement | null>(null);
   const embeddingPinchRef = useRef({ active: false, distance: 0, zoom: 1 });
-  const points = (stats.embedding?.points || []).slice(0, 110);
+  const points = profileAtlasPoints(stats);
+  const vectorRows = points.filter(point => point.hasVector).length;
+  const graphRows = (stats.graph?.nodes || []).filter(node => node.type !== "JobLead").length;
   const selected = points.find(point => point.id === selectedId);
   const projected = points
     .map((point, index) => ({ point, projected: projectPoint(point, index, mode, camera) }))
@@ -784,12 +1423,13 @@ function EmbeddingAtlas({ stats }: { stats: GraphStats }) {
     <section className="card graph-embedding-atlas-card" aria-labelledby="embedding-atlas-title">
       <div className="graph-card-head graph-studio-head">
         <div>
-          <span className="eyebrow">LanceDB embedding atlas</span>
-          <h3 id="embedding-atlas-title">Vector space</h3>
-          <p>Local vectors are projected with x/y/z depth, sized by distance, and colored by graph entity type.</p>
+          <span className="eyebrow">Profile atlas</span>
+          <h3 id="embedding-atlas-title">Profile space</h3>
+          <p>Every profile graph entity is shown. Items with vectors use embedding coordinates; missing vectors get stable graph positions.</p>
         </div>
         <div className="graph-head-pills">
-          <span className="pill mono">{points.length} rows</span>
+          <span className="pill mono">{points.length} items</span>
+          <span className="pill mono">{vectorRows} vectors</span>
           <span className="pill mono">{mode}</span>
         </div>
       </div>
@@ -834,19 +1474,19 @@ function EmbeddingAtlas({ stats }: { stats: GraphStats }) {
       <div className="graph-studio-metrics" aria-label="Embedding summary">
         <div>
           <span>{points.length}</span>
-          <small>vector rows</small>
+          <small>profile items</small>
+        </div>
+        <div>
+          <span>{vectorRows}</span>
+          <small>vector-backed</small>
         </div>
         <div>
           <span>{Object.keys(counts).length}</span>
           <small>entity groups</small>
         </div>
         <div>
-          <span>{mode === "orbit" ? "3D" : "2D"}</span>
-          <small>projection mode</small>
-        </div>
-        <div>
-          <span>{selected ? truncate(selected.type, 10) : "none"}</span>
-          <small>selected vector</small>
+          <span>{graphRows}</span>
+          <small>graph rows</small>
         </div>
       </div>
       <div className="graph-embedding-atlas-layout">
@@ -860,7 +1500,7 @@ function EmbeddingAtlas({ stats }: { stats: GraphStats }) {
           onTouchCancel={handleEmbeddingTouchEnd}
         >
           {points.length > 0 ? (
-            <svg viewBox="0 0 920 520" className="graph-embedding-atlas-svg" role="img" aria-label="3D embedding vector projection">
+            <svg viewBox="0 0 920 520" className="graph-embedding-atlas-svg" role="img" aria-label="Profile graph and vector projection">
               <defs>
                 <radialGradient id="embeddingGlow">
                   <stop offset="0%" stopColor="rgba(255,255,255,0.95)" />
@@ -882,11 +1522,11 @@ function EmbeddingAtlas({ stats }: { stats: GraphStats }) {
                 return (
                   <g
                     key={`${point.type}-${point.id}`}
-                    className={`graph-embedding-point ${active ? "active" : ""}`}
+                    className={`graph-embedding-point ${active ? "active" : ""} ${point.hasVector ? "vector-backed" : "graph-backed"}`}
                     transform={`translate(${px},${py})`}
                     role="button"
                     tabIndex={0}
-                    aria-label={`${point.type} vector ${point.label}`}
+                    aria-label={`${point.type} ${point.hasVector ? "vector" : "profile item"} ${point.label}`}
                     onClick={() => setSelectedId(active ? "" : point.id)}
                     onKeyDown={event => {
                       if (event.key === "Enter" || event.key === " ") {
@@ -902,7 +1542,7 @@ function EmbeddingAtlas({ stats }: { stats: GraphStats }) {
                       stroke={`var(--${tone}-ink)`}
                       strokeWidth={active ? 2.6 : 1.4}
                     >
-                      <title>{`${point.label} (${point.type})`}</title>
+                      <title>{`${point.label} (${point.type}${point.hasVector ? ", vector-backed" : ", graph-only"})`}</title>
                     </circle>
                     {active && (
                       <>
@@ -918,23 +1558,23 @@ function EmbeddingAtlas({ stats }: { stats: GraphStats }) {
           ) : (
             <div className="graph-vector-empty compact">
               <strong>No vector rows yet</strong>
-              <span>Run profile ingestion or graph repair to populate LanceDB vectors.</span>
+              <span>No profile graph items are available yet. Add profile context or run graph repair.</span>
             </div>
           )}
         </div>
         <aside className="graph-studio-inspector">
           <div className="graph-board-subhead">
-            <span className="eyebrow">Vector focus</span>
+            <span className="eyebrow">Profile focus</span>
             <span className="pill mono">{Object.keys(counts).length} groups</span>
           </div>
-          <h4>{selected ? selected.label : "Embedding atlas"}</h4>
-          <p>{selected ? `${selected.type} vector row from LanceDB. Nearby points represent semantic proximity in the projected local embedding space.` : points.length ? "Select a point to inspect its semantic neighbors and vector group." : "No vectors are available yet."}</p>
-          <div className="graph-mini-label">Nearest visible vectors</div>
+          <h4>{selected ? selected.label : "Profile atlas"}</h4>
+          <p>{selected ? `${selected.type} profile item${selected.hasVector ? " with a local vector row." : " without a vector yet, placed from the graph."}` : points.length ? "Select a point to inspect nearby visible profile evidence and entity group." : "No profile graph items are available yet."}</p>
+          <div className="graph-mini-label">Nearest visible profile items</div>
           <div className="graph-node-pick-list compact">
             {nearest.map(({ point }) => (
               <button key={point.id} className="graph-node-pick" onClick={() => setSelectedId(point.id)}>
                 <span>{truncate(point.label, 26)}</span>
-                <small>{point.type}</small>
+                <small>{point.hasVector ? point.type : `${point.type} · graph`}</small>
               </button>
             ))}
           </div>

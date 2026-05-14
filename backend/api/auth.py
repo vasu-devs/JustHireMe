@@ -18,7 +18,7 @@ def create_api_token() -> str:
 
 
 async def require_http_token(request: Request, call_next, token_getter: Callable[[], str]):
-    if request.method == "OPTIONS" or request.url.path == "/health":
+    if request.method == "OPTIONS" or request.url.path == "/health" or request.url.path.startswith("/internal/"):
         return await call_next(request)
 
     creds = await _bearer(request)

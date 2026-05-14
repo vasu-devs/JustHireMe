@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import os
@@ -9,15 +10,16 @@ from fastapi import APIRouter, HTTPException
 from fastapi import Depends
 from fastapi.responses import FileResponse, StreamingResponse
 
-from api.dependencies import get_ranking_service, get_repository
+from api.dependencies import get_generation_service, get_job_runner, get_ranking_service, get_repository
 from api.rate_limit import RateLimiter, require_rate_limit
 from core.types import FeedbackBody, FollowupBody, ManualLeadBody, StatusBody
 from data.repository import Repository
-from ranking.service import RankingService
+
+MANUAL_FEEDBACK_TIMEOUT_SECONDS = 8
 
 
 def annotate_job_lead(lead: dict) -> dict:
-    from discovery.normalizer import classify_job_seniority
+    from gateway.lead_adapters import classify_job_seniority
 
     meta = dict(lead.get("source_meta") or {})
     level = str(meta.get("seniority_level") or lead.get("seniority_level") or "").strip().lower()
@@ -189,16 +191,24 @@ def create_router(manager) -> APIRouter:
     async def create_manual_lead(
         body: ManualLeadBody,
         repo: Repository = Depends(get_repository),
-        ranking_service: RankingService = Depends(get_ranking_service),
+        ranking_service=Depends(get_ranking_service),
     ):
         require_rate_limit(manual_limiter)
         if not body.text.strip() and not body.url.strip():
             raise HTTPException(status_code=400, detail="Paste lead text or a URL")
-        from discovery.lead_intel import manual_lead_from_text
+        from gateway.lead_adapters import manual_lead_from_text
 
         raw_lead = manual_lead_from_text(body.text, body.url, "job")
         examples = repo.feedback.get_feedback_training_examples()
-        lead = await ranking_service.apply_feedback(raw_lead, examples)
+        try:
+            lead = await asyncio.wait_for(
+                ranking_service.apply_feedback(raw_lead, examples),
+                timeout=MANUAL_FEEDBACK_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            meta = dict(raw_lead.get("source_meta") or {})
+            meta["feedback_learning_error"] = str(exc) or "timed out"
+            lead = {**raw_lead, "source_meta": meta}
         if lead.get("kind") != "job":
             raise HTTPException(status_code=422, detail="Only job leads are accepted right now")
         lead = annotate_job_lead(lead)
@@ -206,6 +216,51 @@ def create_router(manager) -> APIRouter:
         saved = repo.leads.get_lead_by_id(lead["job_id"]) or lead
         await manager.broadcast({"type": "LEAD_UPDATED", "data": saved})
         return saved
+
+    @router.post("/leads/manual/generate/start")
+    async def create_manual_lead_and_start_generation(
+        body: ManualLeadBody,
+        repo: Repository = Depends(get_repository),
+        service=Depends(get_generation_service),
+        job_store=Depends(get_job_runner),
+    ):
+        require_rate_limit(manual_limiter)
+        if not body.text.strip() and not body.url.strip():
+            raise HTTPException(status_code=400, detail="Paste lead text or a URL")
+        from api.routers.generation import generate_one
+        from gateway.lead_adapters import manual_lead_from_text
+
+        raw_lead = manual_lead_from_text(body.text, body.url, "job")
+        if raw_lead.get("kind") != "job":
+            raise HTTPException(status_code=422, detail="Only job leads are accepted right now")
+        lead = annotate_job_lead(raw_lead)
+        queued_lead = {**lead, "status": "tailoring"}
+
+        async def _run():
+            try:
+                await asyncio.to_thread(repo.leads.save_lead, lead)
+                try:
+                    await asyncio.to_thread(repo.leads.update_lead_status, lead["job_id"], "tailoring")
+                except Exception:
+                    pass
+                saved = await asyncio.to_thread(repo.leads.get_lead_by_id, lead["job_id"])
+                await manager.broadcast({"type": "LEAD_UPDATED", "data": saved or queued_lead})
+                await generate_one(lead["job_id"], manager, repo=repo, service=service, job_store=job_store)
+            except Exception as exc:
+                failed = {**queued_lead, "status": "discovered"}
+                meta = dict(failed.get("source_meta") or {})
+                meta["generation_error"] = str(exc)
+                failed["source_meta"] = meta
+                await manager.broadcast({"type": "LEAD_UPDATED", "data": failed})
+                await manager.broadcast({
+                    "type": "agent",
+                    "event": "gen_error",
+                    "msg": f"Generation failed for {lead.get('title','?')}: {exc}",
+                })
+
+        asyncio.create_task(_run())
+        await manager.broadcast({"type": "LEAD_UPDATED", "data": queued_lead})
+        return {"status": "started", "job_id": lead["job_id"], "lead": queued_lead}
 
     @router.get("/followups/due")
     async def due_followups(limit: int = 25, repo: Repository = Depends(get_repository)):

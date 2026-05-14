@@ -24,7 +24,9 @@ GRAPH_PATH = os.path.join(BASE_DIR, "graph.kuzu")
 
 _GRAPH_ERROR = ""
 _GRAPH_DIR_READY = False
-_graph_lock = threading.Lock()
+_graph_lock = threading.RLock()
+db = None
+conn = None
 
 try:
     os.makedirs(BASE_DIR, exist_ok=True)
@@ -33,21 +35,36 @@ except Exception as exc:
     _GRAPH_ERROR = str(exc)
     _log.warning("graph store path unavailable: %s", exc)
 
-try:
-    if not _GRAPH_DIR_READY:
-        raise RuntimeError(_GRAPH_ERROR or "Graph directory is not available")
-    if kuzu is None:
-        raise RuntimeError(_KUZU_IMPORT_ERROR or "Kuzu is not available")
-    db = kuzu.Database(GRAPH_PATH)
-    conn = kuzu.Connection(db)
-except Exception as exc:
-    db = None
-    conn = None
-    _GRAPH_ERROR = str(exc)
-    _log.warning("graph store disabled: %s", exc)
+def _ensure_connection() -> bool:
+    global db, conn, _GRAPH_ERROR
+    if db is not None and conn is not None:
+        return True
+    with _graph_lock:
+        if db is not None and conn is not None:
+            return True
+        try:
+            if not _GRAPH_DIR_READY:
+                raise RuntimeError(_GRAPH_ERROR or "Graph directory is not available")
+            if kuzu is None:
+                raise RuntimeError(_KUZU_IMPORT_ERROR or "Kuzu is not available")
+            db = kuzu.Database(GRAPH_PATH)
+            conn = kuzu.Connection(db)
+            _GRAPH_ERROR = ""
+            _init_graph_unlocked()
+            return True
+        except Exception as exc:
+            db = None
+            conn = None
+            _GRAPH_ERROR = str(exc)
+            _log.warning("graph store disabled: %s", exc)
+            return False
 
 
 def init_graph() -> None:
+    _ensure_connection()
+
+
+def _init_graph_unlocked() -> None:
     if conn is None:
         return
     for statement in [
@@ -79,7 +96,7 @@ def init_graph() -> None:
 
 
 def execute_query(query: str, params: dict | None = None):
-    if conn is None:
+    if not _ensure_connection() or conn is None:
         return None
     with _graph_lock:
         if params:
@@ -87,11 +104,8 @@ def execute_query(query: str, params: dict | None = None):
         return conn.execute(query)
 
 
-init_graph()
-
-
 def graph_available() -> bool:
-    return db is not None and conn is not None
+    return _ensure_connection() and db is not None and conn is not None
 
 
 def graph_error() -> str:
@@ -112,7 +126,7 @@ def friendly_graph_error(error: str) -> str:
 
 def graph_counts() -> dict:
     out = {key: 0 for key in ["candidate", "skill", "project", "experience", "joblead"]}
-    if conn is None:
+    if not _ensure_connection() or conn is None:
         return out
     for table in ["Candidate", "Skill", "Project", "Experience", "JobLead"]:
         try:
@@ -124,7 +138,7 @@ def graph_counts() -> dict:
 
 
 def sync_profile_relationships() -> dict:
-    if conn is None:
+    if not _ensure_connection() or conn is None:
         return {"status": "disabled", "linked": 0, "error": graph_error()}
     linked = 0
     try:
@@ -311,7 +325,7 @@ def _skill_ids_in_text(text: str, skills_by_name: dict[str, str]) -> set[str]:
 
 
 def sync_job_leads(leads: list[dict]) -> dict:
-    if conn is None:
+    if not _ensure_connection() or conn is None:
         return {"status": "disabled", "synced": 0, "error": graph_error()}
     job_leads = [lead for lead in leads if (lead.get("kind") or "job") == "job"]
     try:
@@ -398,7 +412,7 @@ def _query_rows(query: str, params: dict | None = None) -> list[list]:
 def graph_snapshot(limit: int = 140) -> dict:
     nodes: list[dict] = []
     edges: list[dict] = []
-    if conn is None:
+    if not _ensure_connection() or conn is None:
         return {"nodes": nodes, "edges": edges, "available": False, "error": graph_error()}
 
     def add_node(node_id: str, label: str, node_type: str, subtitle: str = "") -> None:

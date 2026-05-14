@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 from unittest import mock
 
 from discovery.service import DiscoveryService
@@ -83,3 +84,93 @@ def test_discovery_service_scans_job_boards():
     assert result.leads == [fake_lead]
     assert result.usage == {"targets": 1}
     scan.assert_called_once_with(["site:jobs.example Python"], {"apify_token": "tok"})
+
+
+def test_run_scan_continues_when_board_scan_batch_fails():
+    from api.routers import discovery
+
+    broadcasts = []
+
+    class Manager:
+        async def broadcast(self, payload):
+            broadcasts.append(payload)
+
+    class JobStore:
+        def create(self, *_args, **_kwargs):
+            return SimpleNamespace(job_id="scan-1")
+
+        def update(self, *_args, **_kwargs):
+            return None
+
+    repo = SimpleNamespace(
+        settings=SimpleNamespace(
+            get_settings=lambda: {
+                "job_boards": "site:jobs.example\nsite:slow.example",
+                "free_sources_enabled": "false",
+                "board_scan_batch_size": "1",
+            },
+            save_settings=lambda _settings: None,
+        ),
+        profile=SimpleNamespace(get_profile=lambda: {"s": "Python engineer"}),
+        leads=SimpleNamespace(get_discovered_leads=lambda: [{
+            "job_id": "job-1",
+            "title": "Junior AI Engineer",
+            "company": "Acme",
+            "url": "https://example.com/job",
+            "platform": "manual",
+            "description": "Python role",
+        }], update_lead_score=lambda *_args, **_kwargs: None),
+    )
+    service = SimpleNamespace(
+        scan_x=mock.AsyncMock(return_value=SimpleNamespace(leads=[], usage={}, errors=[])),
+        scan_free_sources=mock.AsyncMock(return_value=SimpleNamespace(leads=[], usage={}, errors=[])),
+        plan_board_targets=mock.AsyncMock(return_value=["site:jobs.example", "site:slow.example"]),
+        scan_job_boards=mock.AsyncMock(side_effect=RuntimeError("discovery service timed out")),
+    )
+    ranking = SimpleNamespace(evaluate_lead=mock.AsyncMock(return_value={
+        "score": 82,
+        "reason": "good match",
+        "match_points": [],
+        "gaps": [],
+    }))
+
+    with mock.patch.object(discovery, "get_job_runner", return_value=JobStore()):
+        asyncio.run(discovery.run_scan(
+            Manager(),
+            repo=repo,
+            discovery_service=service,
+            ranking_service=ranking,
+        ))
+
+    assert ranking.evaluate_lead.await_count == 1
+    messages = [payload["msg"] for payload in broadcasts if payload.get("event") in {"scout_source_detail", "eval_done"}]
+    assert any("discovery service timed out" in msg for msg in messages)
+    assert messages[-1] == "Evaluation cycle complete"
+
+
+def test_cleanup_bad_leads_skips_already_discarded_rows():
+    from data.sqlite.leads import cleanup_bad_leads
+
+    queries = []
+
+    class Cursor:
+        def fetchall(self):
+            return []
+
+    class Conn:
+        def execute(self, query, *_args):
+            queries.append(query)
+            return Cursor()
+
+        def commit(self):
+            return None
+
+        def close(self):
+            return None
+
+    with mock.patch("data.sqlite.leads.connect", return_value=Conn()):
+        cleanup_bad_leads()
+
+    cleanup_query = queries[0]
+    assert "status NOT IN" in cleanup_query
+    assert "'discarded'" in cleanup_query

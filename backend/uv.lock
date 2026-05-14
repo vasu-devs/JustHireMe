@@ -172,7 +172,7 @@ wheels = [
 
 [[package]]
 name = "backend"
-version = "0.1.25"
+version = "0.1.30"
 source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
@@ -186,6 +186,7 @@ dependencies = [
     { name = "lancedb" },
     { name = "langchain-core" },
     { name = "langgraph" },
+    { name = "langsmith" },
     { name = "markdown" },
     { name = "openai" },
     { name = "playwright" },
@@ -193,6 +194,7 @@ dependencies = [
     { name = "python-multipart" },
     { name = "sentence-transformers" },
     { name = "tenacity" },
+    { name = "urllib3" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "websockets" },
 ]
@@ -216,6 +218,7 @@ requires-dist = [
     { name = "lancedb", specifier = ">=0.17.0" },
     { name = "langchain-core", specifier = ">=1.3.3" },
     { name = "langgraph", specifier = ">=0.2.0" },
+    { name = "langsmith", specifier = ">=0.8.0" },
     { name = "markdown", specifier = ">=3.6" },
     { name = "openai", specifier = ">=1.30.0" },
     { name = "playwright", specifier = ">=1.44.0" },
@@ -223,6 +226,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.27" },
     { name = "sentence-transformers", specifier = ">=3.0.0" },
     { name = "tenacity", specifier = ">=9.1.4" },
+    { name = "urllib3", specifier = ">=2.7.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.46.0" },
     { name = "websockets", specifier = ">=16.0" },
 ]
@@ -1028,7 +1032,7 @@ wheels = [
 
 [[package]]
 name = "langsmith"
-version = "0.7.36"
+version = "0.8.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -1041,9 +1045,9 @@ dependencies = [
     { name = "xxhash" },
     { name = "zstandard" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8d/4c/5f20508000ee0559bfa713b85c431b1cdc95d2913247ff9eb318e7fdff7b/langsmith-0.7.36.tar.gz", hash = "sha256:d18ef34819e0a252cf52c74ce6e9bd5de6deea4f85a3aef50abc9f48d8c5f8b8", size = 4402322, upload-time = "2026-04-24T16:58:06.681Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d4/e9/4ceeba766bae47de1a6ecdaa4024d10eff63eed936796b77005742399e8d/langsmith-0.8.4.tar.gz", hash = "sha256:989b387f6ff92ec5f9d14c0edb333e2579590cad5a1ca07042d924b0ec43cd10", size = 4460243, upload-time = "2026-05-13T21:00:59.338Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f3/8d/3ca31ae3a4a437191243ad6d9061ede9367440bb7dc9a0da1ecc2c2a4865/langsmith-0.7.36-py3-none-any.whl", hash = "sha256:e1657a795f3f1982bb8d34c98b143b630ca3eee9de2c10e670c9105233b54654", size = 381808, upload-time = "2026-04-24T16:58:04.572Z" },
+    { url = "https://files.pythonhosted.org/packages/db/94/8b872959ea529ecfbbe2c3f91d9ebf98cb8dbd9e3f7487bc134740d3d235/langsmith-0.8.4-py3-none-any.whl", hash = "sha256:4e334ab223d10129c9943c461d95fa9089523638ea29cd048045a7f99b973f50", size = 398701, upload-time = "2026-05-13T21:00:57.393Z" },
 ]
 
 [[package]]
@@ -2458,11 +2462,11 @@ wheels = [
 
 [[package]]
 name = "urllib3"
-version = "2.6.3"
+version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c7/24/5f1b3bdffd70275f6661c76461e25f024d5a38a46f04aaca912426a2b1d3/urllib3-2.6.3.tar.gz", hash = "sha256:1b62b6884944a57dbe321509ab94fd4d3b307075e0c2eae991ac71ee15ad38ed", size = 435556, upload-time = "2026-01-07T16:24:43.925Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602, upload-time = "2026-05-07T16:13:18.596Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/39/08/aaaad47bc4e9dc8c725e68f9d04865dbcb2052843ff09c97b08904852d84/urllib3-2.6.3-py3-none-any.whl", hash = "sha256:bf272323e553dfb2e87d9bfd225ca7b0f467b919d7bbd355436d3fd37cb0acd4", size = 131584, upload-time = "2026-01-07T16:24:42.685Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087, upload-time = "2026-05-07T16:13:17.151Z" },
 ]
 
 [[package]]
