@@ -31,6 +31,18 @@
 
 ---
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=vasu-devs%2FJustHireMe&type=timeline&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=vasu-devs/JustHireMe&type=timeline&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=vasu-devs/JustHireMe&type=timeline&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=vasu-devs/JustHireMe&type=timeline&legend=top-left" />
+ </picture>
+</a>
+
+---
+
 ## The Short Version
 
 JustHireMe is an AGPL-licensed, local-first desktop workbench for people who are tired of noisy job boards and black-box AI apply tools.
@@ -589,18 +601,6 @@ Near-term priorities:
 - Windows installer polish
 - contributor-friendly source plugin boundaries
 - OS keychain support for API keys
-
----
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=vasu-devs%2FJustHireMe&type=timeline&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=vasu-devs/JustHireMe&type=timeline&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=vasu-devs/JustHireMe&type=timeline&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=vasu-devs/JustHireMe&type=timeline&legend=top-left" />
- </picture>
-</a>
 
 ---
 
