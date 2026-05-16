@@ -118,7 +118,71 @@ def mark_failed(notification_id: int, error: str, db_path: str = DEFAULT_DB_PATH
         conn.close()
 
 
-def get_notification_stats(db_path: str = DEFAULT_DB_PATH) -> dict:
+def get_all_notifications(
+    status: str = "all",
+    limit: int = 50,
+    offset: int = 0,
+    db_path: str = DEFAULT_DB_PATH,
+) -> tuple[list[dict], int]:
+    """Fetch notifications with optional status filter and pagination. Returns (items, total)."""
+    conn = connect(db_path)
+    try:
+        create_notifications_table(conn)
+        # Determine status filter
+        if status == "pending":
+            where_clause = "WHERE sent_at IS NULL AND error IS NULL"
+        elif status == "sent":
+            where_clause = "WHERE sent_at IS NOT NULL AND error IS NULL"
+        elif status == "failed":
+            where_clause = "WHERE error IS NOT NULL"
+        else:
+            where_clause = ""
+
+        # Total count
+        total_sql = f"SELECT COUNT(*) FROM notifications_queue {where_clause}"
+        total = conn.execute(total_sql).fetchone()[0]
+
+        # Items
+        sql = f"""
+            SELECT id, channel, recipient, subject, message, created_at, sent_at, error
+            FROM notifications_queue
+            {where_clause}
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+        """
+        rows = conn.execute(sql, (max(1, limit), max(0, offset))).fetchall()
+    finally:
+        conn.close()
+
+    items = [
+        {
+            "id": row[0],
+            "channel": row[1],
+            "recipient": row[2],
+            "subject": row[3] or "",
+            "message": row[4][:200] + "..." if len(row[4]) > 200 else row[4],
+            "created_at": row[5] or "",
+            "sent_at": row[6] or None,
+            "error": row[7] or None,
+        }
+        for row in rows
+    ]
+    return items, total
+
+
+def reset_notification(notification_id: int, db_path: str = DEFAULT_DB_PATH) -> bool:
+    """Reset a failed notification so it can be retried."""
+    conn = connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE notifications_queue SET sent_at = NULL, error = NULL WHERE id = ? AND error IS NOT NULL",
+            (notification_id,),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
     conn = connect(db_path)
     try:
         create_notifications_table(conn)
