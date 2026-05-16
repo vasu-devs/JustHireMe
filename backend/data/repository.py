@@ -23,6 +23,10 @@ class Repository:
         return import_module("data.sqlite.leads")
 
     @property
+    def notifications(self):
+        return import_module("data.sqlite.notifications")
+
+    @property
     def profile(self):
         return import_module("data.graph.profile")
 

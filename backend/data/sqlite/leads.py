@@ -634,9 +634,20 @@ def update_lead_program_status(job_id: str, status: str, meta: dict | None = Non
     conn = connect(db_path)
     try:
         if meta is not None:
+            meta = dict(meta)
+            meta["program_status"] = status
             conn.execute(
                 "UPDATE leads SET source_meta=? WHERE job_id=?",
                 (json.dumps(meta, ensure_ascii=False), job_id),
+            )
+        else:
+            # read existing, mutate, write back
+            row = conn.execute("SELECT source_meta FROM leads WHERE job_id=?", (job_id,)).fetchone()
+            existing = json_dict(row[0] if row else "{}")
+            existing["program_status"] = status
+            conn.execute(
+                "UPDATE leads SET source_meta=? WHERE job_id=?",
+                (json.dumps(existing, ensure_ascii=False), job_id),
             )
         conn.commit()
     finally:

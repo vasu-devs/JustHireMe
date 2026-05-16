@@ -105,6 +105,16 @@ async def generate_one(
             "event": "gen_done",
             "msg": f"Resume and cover letter ready: {lead.get('title','?')}",
         })
+
+        # Queue generation notification
+        try:
+            from notifications.manager import NotificationManager
+            notifier = NotificationManager()
+            notifier.queue_generation_notification(enriched_lead)
+            notifier.queue_generation_email(enriched_lead)
+        except Exception as exc:
+            await manager.broadcast({"type": "agent", "event": "notify_error", "msg": f"Gen notification queue error: {exc}"})
+
         try:
             job_store.update(job.job_id, status="succeeded", progress=100, result={"lead": enriched_lead})
         except Exception:
