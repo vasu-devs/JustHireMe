@@ -5,11 +5,30 @@ from collections.abc import Callable
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import FileResponse
+
 from api.auth import LOCAL_ORIGIN_RE, require_http_token
 from api.dependencies import get_event_bus
 from api.routers import automation, discovery, events, generation, health, ingestion, internal, leads, misc, profile, settings
 from api.websocket import register_websocket
 from core.telemetry import record_exception
+import os
+
+
+class SPAStaticFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404:
+                return await super().get_response("index.html", scope)
+            raise
+
+
+DASHBOARD_DIST = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "dashboard", "dist"))
+
 
 
 def _wire_event_bus(connection_manager) -> None:
@@ -51,6 +70,9 @@ def create_app(
     @app.middleware("http")
     async def require_http_token_middleware(request: Request, call_next):
         request_id = request.headers.get("x-request-id", "")
+        path = request.url.path
+        if path.startswith("/dashboard") or path == "/":
+            return await call_next(request)
         try:
             response = await require_http_token(request, call_next, token_getter)
             if request_id:
@@ -86,5 +108,12 @@ def create_app(
             started_at=started_at,
             logger=logger,
         )
+
+    if os.path.isdir(DASHBOARD_DIST):
+        app.mount("/dashboard", SPAStaticFiles(directory=DASHBOARD_DIST, html=True), name="dashboard")
+
+    @app.get("/")
+    async def root_redirect():
+        return FileResponse(os.path.join(DASHBOARD_DIST, "index.html"))
 
     return app
