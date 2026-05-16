@@ -135,6 +135,8 @@ async def run_scan(
     discovery_service=None,
     ranking_service=None,
 ) -> None:
+    from notifications.manager import NotificationManager
+
     repo = repo or get_repository()
     discovery_service = discovery_service or get_discovery_service()
     ranking_service = ranking_service or get_ranking_service()
@@ -184,6 +186,13 @@ async def run_scan(
             detail = str(exc).strip() or type(exc).__name__
             scout_errors.append(f"board batch {batch_index}/{len(batches)} skipped ({len(batch)} targets): {detail}")
 
+    # Apply alternance post-scrape filter to board-scan leads
+    from gateway.discovery_sources.alternance_filter import filter_leads
+    filtered_leads = filter_leads(leads)
+    if len(filtered_leads) != len(leads):
+        scout_usage["filtered"] = scout_usage.get("filtered", 0) + (len(leads) - len(filtered_leads))
+        leads = filtered_leads
+
     await manager.broadcast({
         "type": "agent",
         "event": "scout_done",
@@ -220,6 +229,7 @@ async def run_scan(
             await manager.broadcast({"type": "agent", "event": "eval_error", "msg": f"Eval failed for {lead.get('title','')}: {exc}"})
 
     # Education Matcher — pair high-scoring leads with Master programs
+    matched_leads_for_notify: list[dict] = []
     try:
         from education.matcher import EducationMatcher
         matcher = EducationMatcher()
@@ -241,6 +251,7 @@ async def run_scan(
                 saved = await asyncio.to_thread(repo.leads.get_lead_by_id, lead["job_id"])
                 if saved:
                     saved["program_status"] = "matched"
+                    matched_leads_for_notify.append(saved)
                     await manager.broadcast({"type": "LEAD_UPDATED", "data": saved})
                     await manager.broadcast({
                         "type": "agent",
@@ -251,6 +262,21 @@ async def run_scan(
         await manager.broadcast({"type": "agent", "event": "matcher_error", "msg": f"Education Matcher error: {exc}"})
 
     await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Evaluation cycle complete"})
+
+    # Queue notifications for newly matched program leads
+    if matched_leads_for_notify:
+        try:
+            notifier = NotificationManager()
+            notifier.queue_scan_notification(matched_leads_for_notify)
+            notifier.queue_scan_email(matched_leads_for_notify)
+            await manager.broadcast({
+                "type": "agent",
+                "event": "notifications_queued",
+                "msg": f"Queued {len(matched_leads_for_notify)} scan notification(s)",
+            })
+        except Exception as exc:
+            await manager.broadcast({"type": "agent", "event": "notify_error", "msg": f"Notification queue error: {exc}"})
+
     await asyncio.to_thread(repo.settings.save_settings, {"last_scan_finished_at": datetime.now(timezone.utc).isoformat()})
     job_store.update(job.job_id, status="succeeded", progress=100)
 

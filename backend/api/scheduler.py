@@ -30,6 +30,24 @@ def ensure_ghost_job(scheduler: AsyncIOScheduler, ghost_tick) -> None:
         scheduler.add_job(ghost_tick, "interval", hours=6, id="ghost")
 
 
+def ensure_mon_master_sync_job(scheduler: AsyncIOScheduler) -> None:
+    """Schedule a weekly sync of the Mon Master catalog to local SQLite cache."""
+    if not scheduler.get_job("mon_master_sync"):
+        async def _sync():
+            from education.cache import MonMasterCache
+            cache = MonMasterCache()
+            try:
+                count = await asyncio.to_thread(cache.sync)
+                logger = get_repository().settings.get_settings().get("logger")
+                if logger:
+                    logger.info("Mon Master weekly sync complete: %s programs", count)
+            except Exception as exc:
+                logger = get_repository().settings.get_settings().get("logger")
+                if logger:
+                    logger.warning("Mon Master weekly sync failed: %s", exc)
+        scheduler.add_job(_sync, "cron", day_of_week="sun", hour=3, minute=0, id="mon_master_sync")
+
+
 def create_ghost_tick(manager):
     async def ghost_tick():
         repo = get_repository()
@@ -173,6 +191,7 @@ def create_lifespan(scheduler: AsyncIOScheduler, ghost_tick, logger, service_sup
             app.state.service_registry = registry
             app.state.service_supervisor = service_supervisor
         ensure_ghost_job(scheduler, ghost_tick)
+        ensure_mon_master_sync_job(scheduler)
         log_startup_warnings(get_repository(), logger)
         scheduler.start()
         logger.info("FastAPI live.")

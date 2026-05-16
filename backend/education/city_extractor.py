@@ -5,45 +5,51 @@ import re
 
 # Common aliases — map input city → list of search terms
 _CITY_ALIASES: dict[str, list[str]] = {
-    "paris": ["PARIS"],
-    "lyon": ["LYON", "VILLEURBANNE"],
-    "lille": ["LILLE"],
-    "rennes": ["RENNES"],
-    "nantes": ["NANTES"],
+    "paris": ["PARIS", "PARIS CEDEX", "PARIS CEDEX 01", "PARIS CEDEX 02", "PARIS CEDEX 03",
+              "PARIS CEDEX 04", "PARIS CEDEX 05", "PARIS CEDEX 06", "PARIS CEDEX 07",
+              "PARIS CEDEX 08", "PARIS CEDEX 09", "PARIS CEDEX 10", "PARIS CEDEX 11",
+              "PARIS CEDEX 12", "PARIS CEDEX 13", "PARIS CEDEX 14", "PARIS CEDEX 15",
+              "PARIS CEDEX 16", "PARIS CEDEX 17", "PARIS CEDEX 18", "PARIS CEDEX 19",
+              "PARIS CEDEX 20"],
+    "lyon": ["LYON", "LYON CEDEX 02", "LYON CEDEX 07", "VILLEURBANNE", "VILLEURBANNE CEDEX"],
+    "lille": ["LILLE", "LILLE CEDEX", "VILLENEUVE D ASCQ", "VILLENEUVE D ASCQ CEDEX"],
+    "rennes": ["RENNES", "RENNES CEDEX", "RENNES CEDEX 7"],
+    "nantes": ["NANTES", "NANTES CEDEX 2", "NANTES CEDEX 3"],
     "bordeaux": ["BORDEAUX"],
-    "toulouse": ["TOULOUSE"],
-    "strasbourg": ["STRASBOURG"],
-    "montpellier": ["MONTPELLIER"],
-    "nice": ["NICE"],
-    "grenoble": ["GRENOBLE", "SAINT-MARTIN-D'HERES"],
-    "aix-en-provence": ["AIX-EN-PROVENCE"],
-    "marseille": ["MARSEILLE"],
-    "toulon": ["TOULON"],
-    "clermont-ferrand": ["CLERMONT-FERRAND"],
-    "dijon": ["DIJON"],
-    "rouen": ["ROUEN"],
-    "reims": ["REIMS"],
-    "tours": ["TOURS"],
-    "orleans": ["ORLEANS"],
-    "nancy": ["NANCY", "VANDOEUVRE-LES-NANCY"],
-    "metz": ["METZ"],
-    "amiens": ["AMIENS"],
-    "besancon": ["BESANCON"],
-    "caen": ["CAEN"],
-    "limoges": ["LIMOGES"],
-    "poitiers": ["POITIERS"],
-    "saint-etienne": ["SAINT-ETIENNE"],
-    "brest": ["BREST"],
-    "le mans": ["LE MANS"],
-    "angers": ["ANGERS"],
-    "perpignan": ["PERPIGNAN"],
-    "cergy": ["CERGY", "CERGY-PONTOISE"],
-    "pontoise": ["CERGY-PONTOISE", "PONTOISE"],
-    "evry": ["EVRY", "EVRY-COURCOURONNES"],
-    "courcouronnes": ["EVRY-COURCOURONNES"],
-    "versailles": ["VERSAILLES"],
-    "creteil": ["CRETEIL", "VITRY-SUR-SEINE"],
-    "vitry-sur-seine": ["VITRY-SUR-SEINE"],
+    "toulouse": ["TOULOUSE", "TOULOUSE CEDEX 3", "TOULOUSE CEDEX 4", "TOULOUSE CEDEX 9"],
+    "strasbourg": ["STRASBOURG", "STRASBOURG CEDEX"],
+    "montpellier": ["MONTPELLIER", "MONTPELLIER CEDEX 2", "MONTPELLIER cedex 5"],
+    "nice": ["NICE", "NICE CEDEX 2"],
+    "grenoble": ["GRENOBLE", "GRENOBLE CEDEX 1", "GRENOBLE CEDEX 2", "GRENOBLE CEDEX 9",
+                  "ST MARTIN D HERES"],
+    "aix-en-provence": ["AIX-EN-PROVENCE", "AIX EN PROVENCE"],
+    "marseille": ["MARSEILLE", "MARSEILLE CEDEX 07", "MARSEILLE CEDEX 13"],
+    "toulon": ["TOULON", "TOULON CEDEX"],
+    "clermont-ferrand": ["CLERMONT-FERRAND", "CLERMONT FERRAND", "CLERMONT-FERRAND CEDEX"],
+    "dijon": ["DIJON", "DIJON CEDEX"],
+    "rouen": ["ROUEN", "ROUEN CEDEX"],
+    "reims": ["REIMS", "REIMS CEDEX"],
+    "tours": ["TOURS", "TOURS CEDEX"],
+    "orleans": ["ORLEANS", "ORLEANS CEDEX", "ORLEANS CEDEX 2"],
+    "nancy": ["NANCY", "VANDOEUVRE-LES-NANCY", "VANDOEUVRE LES NANCY", "NANCY CEDEX"],
+    "metz": ["METZ", "METZ CEDEX"],
+    "amiens": ["AMIENS", "AMIENS CEDEX 1", "AMIENS CEDEX"],
+    "besancon": ["BESANCON", "BESANCON CEDEX"],
+    "caen": ["CAEN", "CAEN CEDEX"],
+    "limoges": ["LIMOGES", "LIMOGES CEDEX"],
+    "poitiers": ["POITIERS", "POITIERS CEDEX"],
+    "saint-etienne": ["SAINT-ETIENNE", "SAINT ETIENNE", "SAINT-ETIENNE CEDEX"],
+    "brest": ["BREST", "BREST CEDEX"],
+    "le-mans": ["LE MANS", "LE MANS CEDEX"],
+    "angers": ["ANGERS", "ANGERS CEDEX"],
+    "perpignan": ["PERPIGNAN", "PERPIGNAN CEDEX"],
+    "cergy": ["CERGY", "CERGY PONTOISE", "CERGY PONTOISE CEDEX", "CERGY-PONTOISE"],
+    "pontoise": ["CERGY PONTOISE", "CERGY PONTOISE CEDEX", "PONTOISE", "PONTOISE CEDEX", "CERGY-PONTOISE"],
+    "evry": ["EVRY", "EVRY CEDEX", "EVRY COURCOURONNES", "EVRY-COURCOURONNES"],
+    "courcouronnes": ["EVRY COURCOURONNES", "COURCOURONNES", "EVRY-COURCOURONNES"],
+    "versailles": ["VERSAILLES", "VERSAILLES CEDEX"],
+    "creteil": ["CRETEIL", "VITRY SUR SEINE", "CRETEIL CEDEX", "VITRY-SUR-SEINE"],
+    "vitry-sur-seine": ["VITRY-SUR-SEINE", "VITRY SUR SEINE"],
 }
 
 # Postal code → city mapping (common ones)
@@ -91,6 +97,58 @@ _CEDEX_RE = re.compile(r"\bCEDEX\b.*", re.IGNORECASE)
 _CED_RE = re.compile(r"\bCED\b.*", re.IGNORECASE)
 _POSTAL_RE = re.compile(r"\b\d{5}\b")
 _POSTAL_PREFIX_RE = re.compile(r"\b(\d{2})\d{3}\b")
+
+
+def normalize_city(city: str) -> str:
+    """Normalize a raw city string to its canonical name.
+
+    Steps:
+    1. Uppercase input.
+    2. Strip CEDEX, CED, and postal codes (5-digit numbers).
+    3. Look up in known aliases.
+    4. Return lowercase canonical name (e.g. 'paris').
+
+    Args:
+        city: Raw city string from job location or description.
+
+    Returns:
+        Canonical lowercase city name, or original cleaned string if unknown.
+    """
+    text = city.upper()
+    text = _CEDEX_RE.sub("", text)
+    text = _CED_RE.sub("", text)
+    text = _POSTAL_RE.sub("", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = text.replace("-", " ")
+
+    # Reverse lookup: which alias list contains this cleaned text?
+    for canonical, aliases in _CITY_ALIASES.items():
+        if text in aliases:
+            return canonical
+        # Also check loose containment
+        if any(text in alias for alias in aliases):
+            return canonical
+        if any(alias in text for alias in aliases if len(alias) > 3):
+            return canonical
+
+    return text.lower().replace(" ", "-")
+
+
+def expand_city(city: str) -> list[str]:
+    """Return all known search synonyms for a canonical city.
+
+    Args:
+        city: Canonical lowercase city name (e.g. 'paris').
+
+    Returns:
+        List of uppercase search terms suitable for API queries.
+    """
+    normalized = city.lower().strip().replace(" ", "-")
+    aliases = _CITY_ALIASES.get(normalized)
+    if aliases:
+        return aliases
+    return [city.upper()]
+
 
 
 def _strip_postal_and_cedex(text: str) -> str:
@@ -149,9 +207,6 @@ def extract_city(location: str, description: str = "") -> str:
 
 
 def get_city_search_terms(city: str) -> list[str]:
-    """Get all search variants for a city."""
-    normalized = city.lower().strip()
-    aliases = _CITY_ALIASES.get(normalized)
-    if aliases:
-        return aliases
-    return [city.upper()]
+    """Get all search variants for a city, using synonym expansion."""
+    canonical = normalize_city(city)
+    return expand_city(canonical)
