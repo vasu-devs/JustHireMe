@@ -187,6 +187,17 @@ def _ensure_core_tables(conn) -> None:
             key TEXT PRIMARY KEY,
             val TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS notifications_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel TEXT NOT NULL,
+            recipient TEXT NOT NULL,
+            subject TEXT DEFAULT '',
+            message TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            sent_at TEXT,
+            error TEXT
+        );
         """
     )
 

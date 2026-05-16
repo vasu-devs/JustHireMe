@@ -1,0 +1,67 @@
+{
+  "n": "Adnane Saber",
+  "s": "Fullstack Developer seeking alternance in France. Passionate about building scalable web applications and AI-powered tools. Experienced with React, Next.js, Node.js, Python, and modern cloud infrastructure. Looking for a 12-24 month apprenticeship in software development.",
+  "skills": [
+    {"n": "JavaScript/TypeScript", "cat": "frontend"},
+    {"n": "React / Next.js", "cat": "frontend"},
+    {"n": "Node.js", "cat": "backend"},
+    {"n": "Python", "cat": "backend"},
+    {"n": "MongoDB / PostgreSQL", "cat": "database"},
+    {"n": "Docker", "cat": "devops"},
+    {"n": "Git / CI/CD", "cat": "tools"},
+    {"n": "Tailwind CSS", "cat": "frontend"},
+    {"n": "FastAPI", "cat": "backend"},
+    {"n": "Vercel", "cat": "devops"},
+    {"n": "AI Integration", "cat": "backend"},
+    {"n": "Stripe", "cat": "backend"}
+  ],
+  "exp": [
+    {
+      "role": "Développeur Fullstack",
+      "co": "Questify / Freelance",
+      "period": "2024 - Present",
+      "d": "Built an educational quest platform with Next.js, MongoDB, and AI evaluation. 58 quests, 10 domains. Deployed on Vercel with CI/CD.",
+      "s": ["Next.js", "MongoDB", "AI Integration", "Vercel", "Tailwind CSS"]
+    }
+  ],
+  "projects": [
+    {
+      "title": "Questify",
+      "stack": ["Next.js", "MongoDB", "Tailwind CSS", "Vercel", "OpenAI"],
+      "repo": "https://github.com/AdnaneSaber/questify",
+      "impact": "Educational platform with 58 quests across 10 domains, AI-powered evaluation and gamified learning",
+      "s": ["Fullstack", "Education", "AI", "SaaS"]
+    },
+    {
+      "title": "Qwik E-commerce",
+      "stack": ["Next.js", "Stripe", "MongoDB", "Tailwind CSS"],
+      "repo": null,
+      "impact": "Full e-commerce platform with payment integration, product catalog, and order management",
+      "s": ["E-commerce", "Payments", "Fullstack", "SaaS"]
+    },
+    {
+      "title": "JustHireMe",
+      "stack": ["Python", "FastAPI", "LangGraph", "Kuzu", "LanceDB"],
+      "repo": "https://github.com/AdnaneSaber/justhireme-alternance",
+      "impact": "AI-powered job intelligence workbench with discovery, ranking, and automated application generation",
+      "s": ["AI", "Automation", "Python", "Graph DB"]
+    }
+  ],
+  "certifications": [],
+  "education": [
+    "Bachelor in Computer Science — Fullstack Development track",
+    "Recherche alternance en France — Master / Ingénieur en développement logiciel"
+  ],
+  "achievements": [
+    "Built and deployed 3 production-grade web applications",
+    "Open-source contributor to job-intelligence tooling"
+  ],
+  "identity": {
+    "email": "adnanesaber15@gmail.com",
+    "phone": "+212696879642",
+    "linkedin_url": "",
+    "github_url": "https://github.com/AdnaneSaber",
+    "website_url": "https://qwik.ma",
+    "city": "Rabat, Morocco"
+  }
+}

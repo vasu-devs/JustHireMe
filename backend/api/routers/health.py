@@ -85,6 +85,14 @@ async def _check_profile_service(repo: Repository) -> dict:
     return _check_profile(repo)
 
 
+def _check_notifications(repo: Repository) -> dict:
+    try:
+        stats = repo.notifications.get_notification_stats()
+        return {"status": "ok", "stats": stats}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
 def _check_llm(repo: Repository) -> dict:
     try:
         from llm import _ENV_NAMES, _KEY_NAMES, resolve_config
@@ -126,6 +134,7 @@ def create_router(started_at: float) -> APIRouter:
             "vector": _check_vector(repo),
             "profile": await _check_profile_service(repo),
             "llm": _check_llm(repo),
+            "notifications": _check_notifications(repo),
         }
         status = "alive" if checks["sqlite"]["status"] == "ok" and checks["graph"]["status"] == "ok" else "degraded"
         return {
