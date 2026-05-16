@@ -219,6 +219,37 @@ async def run_scan(
         except Exception as exc:
             await manager.broadcast({"type": "agent", "event": "eval_error", "msg": f"Eval failed for {lead.get('title','')}: {exc}"})
 
+    # Education Matcher — pair high-scoring leads with Master programs
+    try:
+        from education.matcher import EducationMatcher
+        matcher = EducationMatcher()
+        for lead in discovered:
+            if SCAN_STOP.is_set():
+                break
+            if lead.get("score", 0) < 50:
+                continue
+            matched = await asyncio.to_thread(matcher.match, lead, profile)
+            if matched:
+                meta = dict(lead.get("source_meta") or {})
+                meta["matched_program"] = matched.model_dump()
+                meta["program_status"] = "matched"
+                await asyncio.to_thread(
+                    repo.leads.update_lead_source_meta,
+                    lead["job_id"],
+                    meta,
+                )
+                saved = await asyncio.to_thread(repo.leads.get_lead_by_id, lead["job_id"])
+                if saved:
+                    saved["program_status"] = "matched"
+                    await manager.broadcast({"type": "LEAD_UPDATED", "data": saved})
+                    await manager.broadcast({
+                        "type": "agent",
+                        "event": "program_matched",
+                        "msg": f"Matched {lead.get('title','')} → {matched.program_title} @ {matched.university}",
+                    })
+    except Exception as exc:
+        await manager.broadcast({"type": "agent", "event": "matcher_error", "msg": f"Education Matcher error: {exc}"})
+
     await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Evaluation cycle complete"})
     await asyncio.to_thread(repo.settings.save_settings, {"last_scan_finished_at": datetime.now(timezone.utc).isoformat()})
     job_store.update(job.job_id, status="succeeded", progress=100)

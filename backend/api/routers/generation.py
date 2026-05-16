@@ -27,6 +27,14 @@ async def generate_one(
         raise HTTPException(status_code=404, detail="Lead not found")
 
     template = repo.settings.get_setting("resume_template", "")
+    meta = lead.get("source_meta", {})
+    if meta.get("program_status") != "approved":
+        await manager.broadcast({
+            "type": "agent", "event": "gen_error",
+            "msg": f"Generation blocked: program not approved for {lead.get('title','?')}",
+        })
+        raise HTTPException(status_code=400, detail="Program must be approved before generating application package")
+
     await manager.broadcast({
         "type": "agent",
         "event": "gen_start",

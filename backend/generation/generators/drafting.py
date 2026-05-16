@@ -7,6 +7,33 @@ from generation.generators.keywords import _extract_jd_keywords, _keyword_covera
 from generation.generators.resume import _profile_payload, _rank_projects
 
 
+def _program_context_block(j: dict) -> str:
+    """Build a prompt block that instructs the LLM to weave the matched Master program into outputs."""
+    matched = j.get("matched_program")
+    if not matched or not isinstance(matched, dict):
+        return ""
+    title = matched.get("program_title", "")
+    university = matched.get("university", "")
+    city = matched.get("city", "")
+    domain = matched.get("domain", "")
+    modalities = matched.get("modalities", [])
+    mod_text = ", ".join(modalities) if modalities else ""
+    return (
+        "\n=== TARGET MASTER PROGRAM (ALTERNANCE) ===\n"
+        f"Program: {title}\n"
+        f"University: {university}\n"
+        f"City: {city}\n"
+        f"Domain: {domain}\n"
+        f"Modalities: {mod_text}\n\n"
+        "INSTRUCTIONS:\n"
+        "1. In the resume EDUCATION section, add a 'Formation visée' entry mentioning this Master program at this university in this city."
+        f"   Example: '**{title}** — {university}, {city} | Modalité : {mod_text}'\n"
+        "2. In the cover letter opening paragraph, explicitly frame the application as an alternance."
+        f"   Mention that you are enrolling in the {title} at {university} in {city} in alternance."
+        "   Explain how the job role aligns with the program curriculum.\n\n"
+    )
+
+
 def _draft_package(profile: dict, proof: str, j: dict, template: str = "") -> _DocPackage:
     from llm import call_llm
     import json
@@ -148,7 +175,8 @@ def _draft_package(profile: dict, proof: str, j: dict, template: str = "") -> _D
         f"FULL CANDIDATE PROFILE:\n{json.dumps(_profile_payload(profile), ensure_ascii=False)}\n\n"
         f"PROOF OF WORK SUMMARY:\n{proof}\n\n"
         f"RESUME TEMPLATE INSTRUCTION: {template_instruction}\n"
-        "OUTPUT CONTRACT:\n"
+        + _program_context_block(j)
+        + "OUTPUT CONTRACT:\n"
         "- resume_markdown: ONLY the resume. 340-460 words max. Standard ATS headings with SUMMARY first.\n"
         "- cover_letter_markdown: ONLY the cover letter. 150-220 words.\n"
         "- founder_message: 3 lines, under 280 chars. Specific to THIS company.\n"
@@ -194,6 +222,7 @@ def _draft(proof: str, j: dict, template: str = "") -> str:
         + (f"JOB DESCRIPTION: {desc}\n" if desc else "") +
         f"\nMATCH POINTS:\n{mp}\n\n"
         f"CANDIDATE PROOF OF WORK:\n{proof}"
+        + _program_context_block(j)
         + template_block
     )
     return call_raw(system, user, step="generator")

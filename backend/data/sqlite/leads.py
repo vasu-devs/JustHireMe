@@ -424,6 +424,7 @@ def update_lead_status(job_id: str, status: str, db_path: str = DEFAULT_DB_PATH)
         "discovered", "evaluating", "tailoring", "approved",
         "applied", "interviewing", "rejected", "accepted", "discarded",
         "matched", "bidding", "proposal_sent", "awarded", "completed",
+        "program_matched", "program_approved",
     }
     if status not in valid:
         raise ValueError(f"Invalid status: {status}")
@@ -615,6 +616,31 @@ def save_lead_feedback(
         conn.close()
     return get_lead_by_id(job_id, db_path)
 
+
+def update_lead_source_meta(job_id: str, meta: dict, db_path: str = DEFAULT_DB_PATH) -> None:
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE leads SET source_meta=? WHERE job_id=?",
+            (json.dumps(meta, ensure_ascii=False), job_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_lead_program_status(job_id: str, status: str, meta: dict | None = None, db_path: str = DEFAULT_DB_PATH) -> None:
+    """Update program_status inside source_meta."""
+    conn = connect(db_path)
+    try:
+        if meta is not None:
+            conn.execute(
+                "UPDATE leads SET source_meta=? WHERE job_id=?",
+                (json.dumps(meta, ensure_ascii=False), job_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 def update_lead_followup(
     job_id: str,

@@ -318,6 +318,22 @@ def _fallback_package(profile: dict, lead: dict, template: str = "") -> _DocPack
     if identity.get("phone"):
         contact_parts.append(f"Phone: {identity['phone']}")
 
+    # Build matched-program education block
+    matched_program = lead.get("matched_program")
+    formation_lines = ""
+    if matched_program and isinstance(matched_program, dict):
+        p_title = matched_program.get("program_title", "")
+        p_univ = matched_program.get("university", "")
+        p_city = matched_program.get("city", "")
+        p_mods = matched_program.get("modalities", [])
+        p_mod_text = ", ".join(p_mods) if p_mods else ""
+        formation_lines = (
+            f"\n## FORMATION VISÉE\n"
+            f"**{p_title}** — {p_univ}, {p_city}\n"
+            f"Modalité : {p_mod_text}\n"
+            f"Cette formation en alternance est directement alignée avec les compétences requises pour le poste.\n"
+        )
+
     resume = f"# {name}\n"
     if contact_parts:
         resume += " | ".join(contact_parts[:4]) + "\n"
@@ -333,9 +349,29 @@ def _fallback_package(profile: dict, lead: dict, template: str = "") -> _DocPack
         resume += f"\n## ACHIEVEMENTS\n{achv_lines}\n"
     if edu_lines:
         resume += f"\n## EDUCATION\n{edu_lines}\n"
+    if formation_lines:
+        resume += formation_lines
 
     all_skills = prioritized_skills
-    cover = f"""Dear {company} team,
+    # Alternance-framed cover letter when matched program exists
+    if matched_program and isinstance(matched_program, dict):
+        p_title = matched_program.get("program_title", "")
+        p_univ = matched_program.get("university", "")
+        p_city = matched_program.get("city", "")
+        p_domain = matched_program.get("domain", "")
+        cover = f"""Dear {company} team,
+
+I am writing to apply for the alternance position of {title} at {company} in {p_city}. In parallel, I am enrolling in the {p_title} at {p_univ} in alternance, which offers a structured academic curriculum in {p_domain} perfectly aligned with this role.
+
+My background in {", ".join(all_skills[:5]) if all_skills else "software engineering"} aligns directly with the requirements outlined in your posting. I have built and shipped {", ".join(p.get('title','Project') for p in selected[:3]) if selected else "production systems"} using technologies central to your stack, demonstrating hands-on experience with the tools and patterns your team uses daily.
+
+I would welcome the opportunity to discuss how this alternance combines professional experience within your team with a rigorous academic program. Thank you for your consideration.
+
+Sincerely,
+{name}
+"""
+    else:
+        cover = f"""Dear {company} team,
 
 I am writing to apply for the {title} position at {company}. My background in {", ".join(all_skills[:5]) if all_skills else "software engineering"} aligns directly with the requirements outlined in your posting.
 

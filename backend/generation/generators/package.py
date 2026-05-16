@@ -70,7 +70,8 @@ def run_package(lead: dict, template: str = "", repo: Repository | None = None) 
     repo = repo or create_repository()
     profile = get_profile(repo)
     proof = _build_proof(profile)
-    lead_with_ctx = {**lead, "candidate_name": profile.get("n", "")}
+    matched_program = lead.get("source_meta", {}).get("matched_program")
+    lead_with_ctx = {**lead, "candidate_name": profile.get("n", ""), "matched_program": matched_program}
 
     try:
         package = _draft_package(profile, proof, lead_with_ctx, template=template)

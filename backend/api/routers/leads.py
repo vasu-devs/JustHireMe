@@ -308,4 +308,47 @@ def create_router(manager) -> APIRouter:
             raise HTTPException(status_code=404, detail=missing)
         return FileResponse(path, media_type="application/pdf", filename=filename)
 
+    @router.post("/leads/{job_id}/match-program")
+    async def match_program_for_lead(job_id: str, repo: Repository = Depends(get_repository)):
+        """Manually trigger Education Matcher for a lead."""
+        job_id = _safe_job_id(job_id)
+        lead = repo.leads.get_lead_by_id(job_id)
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        from education.matcher import EducationMatcher
+        matcher = EducationMatcher()
+        profile = repo.profile.get_profile()
+        matched = matcher.match(lead, profile)
+        if matched:
+            meta = dict(lead.get("source_meta") or {})
+            meta["matched_program"] = matched.model_dump()
+            meta["program_status"] = "matched"
+            repo.leads.update_lead_source_meta(job_id, meta)
+            saved = repo.leads.get_lead_by_id(job_id)
+            if saved:
+                saved["program_status"] = "matched"
+                await manager.broadcast({"type": "LEAD_UPDATED", "data": saved})
+            return {"status": "matched", "program": matched.model_dump()}
+        return {"status": "no_match"}
+
+    @router.post("/leads/{job_id}/approve-program")
+    async def approve_program(job_id: str, repo: Repository = Depends(get_repository)):
+        """User approves the matched program, allowing generation to proceed."""
+        job_id = _safe_job_id(job_id)
+        lead = repo.leads.get_lead_by_id(job_id)
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        meta = dict(lead.get("source_meta") or {})
+        if meta.get("program_status") != "matched":
+            raise HTTPException(status_code=400, detail="No program matched yet")
+        meta["program_status"] = "approved"
+        if isinstance(meta.get("matched_program"), dict):
+            meta["matched_program"]["user_approved"] = True
+        repo.leads.update_lead_source_meta(job_id, meta)
+        repo.leads.update_lead_status(job_id, "tailoring")
+        saved = repo.leads.get_lead_by_id(job_id)
+        if saved:
+            await manager.broadcast({"type": "LEAD_UPDATED", "data": saved})
+        return {"status": "approved"}
+
     return router

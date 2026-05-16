@@ -1,8 +1,16 @@
-JustHireMe
-Copyright (C) 2026 Vasudev Siddh and vasu-devs
+JustHireMe Alternance
+=====================
 
-This software is licensed under the GNU Affero General Public License v3.0
-only. See LICENSE for the full license text.
+This repository is a fork of JustHireMe (https://github.com/vasu-devs/justhireme)
+by Adnane Saber for the purpose of building a server-deployable alternance
+(mandatory internship) job matching system.
 
-Commercial licenses and managed deployment terms are available separately from
-Vasudev Siddh / vasu-devs. See COMMERCIAL_LICENSE.md for details.
+Modifications include:
+- Education Matcher module (Mon Master API integration)
+- French alternance-specific source adapters
+- Generation customization for alternance framing
+- Dockerfile and Docker Compose for server deployment
+- Pipeline gating: program approval required before resume generation
+
+Original work is licensed under AGPL-3.0-only.
+All modifications are released under the same license.

@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  justhireme-api:
+    build: .
+    ports:
+      - "3006:3006"
+    volumes:
+      - ./data:/data/justhireme
+    environment:
+      - JHM_APP_DATA_DIR=/data/justhireme
+    restart: unless-stopped
