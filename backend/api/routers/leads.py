@@ -351,4 +351,13 @@ def create_router(manager) -> APIRouter:
             await manager.broadcast({"type": "LEAD_UPDATED", "data": saved})
         return {"status": "approved"}
 
+    @router.post("/programs/sync")
+    async def sync_mon_master(repo: Repository = Depends(get_repository)):
+        """Trigger a sync of the full Mon Master catalog to local cache."""
+        import asyncio
+        from education.cache import MonMasterCache
+        cache = MonMasterCache()
+        count = await asyncio.to_thread(cache.sync)
+        return {"status": "synced", "programs": count}
+
     return router

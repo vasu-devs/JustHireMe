@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from education.city_extractor import extract_city, get_city_search_terms
+from education.city_extractor import extract_city, expand_city, get_city_search_terms, normalize_city
 from education.domain_classifier import classify_domain
 from education.mon_master_client import query_mon_master
 
@@ -110,41 +110,80 @@ def _rank_programs(programs: list[dict], job_description: str, classified_domain
 class EducationMatcher:
     """Matches a job lead to the best French Master program in the same city."""
 
+    def __init__(self) -> None:
+        self._cache = None
+
+    def _get_cache(self):
+        if self._cache is None:
+            from education.cache import MonMasterCache
+            self._cache = MonMasterCache()
+        return self._cache
+
+    def _query_programs(
+        self,
+        search_terms: list[str],
+        domain: str | None,
+        modalities: list[str] | None,
+    ) -> list[dict]:
+        """Query programs using cache first, fall back to API."""
+        cache = self._get_cache()
+        all_programs: list[dict] = []
+        cache_ok = not cache.is_stale()
+
+        for term in search_terms:
+            if cache_ok:
+                # Cache query uses LIKE, so single term covers variants
+                programs = cache.query(
+                    city=term,
+                    domain=domain,
+                    require_alternance=bool(modalities and "Alternance" in modalities),
+                )
+                all_programs.extend(programs)
+            else:
+                programs = query_mon_master(city=term, domain=domain, modalities=modalities)
+                all_programs.extend(programs)
+
+        return all_programs
+
     def match(self, lead: dict, profile: dict | None = None) -> MatchedProgram | None:
         """Find the best matching Master program for a job lead.
 
         Steps:
         1. Extract city from lead location/description.
-        2. Classify domain from job title/description.
-        3. Query Mon Master API for programs in that city with Alternance.
-        4. If none found, query without Alternance filter.
-        5. Rank by keyword overlap.
-        6. Return best match.
+        2. Normalize city to canonical form and expand synonyms.
+        3. Classify domain from job title/description.
+        4. Query Mon Master cache (or API fallback) for programs in that city with Alternance.
+        5. If none found, query without Alternance filter.
+        6. Rank by keyword overlap.
+        7. Return best match.
         """
         location = lead.get("location") or ""
         description = lead.get("description") or ""
         title = lead.get("title") or ""
 
-        city = extract_city(location, description)
-        if not city:
+        raw_city = extract_city(location, description)
+        if not raw_city:
             return None
 
+        canonical = normalize_city(raw_city)
+        search_terms = expand_city(canonical)
         domain = classify_domain(title, description)
 
         # Primary search: with alternance
-        search_terms = get_city_search_terms(city)
-        all_programs: list[dict] = []
-        for term in search_terms:
-            programs = query_mon_master(city=term, domain=domain, modalities=["Alternance"])
-            all_programs.extend(programs)
+        all_programs = self._query_programs(search_terms, domain, modalities=["Alternance"])
 
         alternance_eligible = True
         if not all_programs:
             # Fallback: search without alternance filter
             alternance_eligible = False
-            for term in search_terms:
-                programs = query_mon_master(city=term, domain=domain)
-                all_programs.extend(programs)
+            all_programs = self._query_programs(search_terms, domain, modalities=None)
+
+            # Also try cache without alternance if we used cache above
+            cache = self._get_cache()
+            if cache.is_stale():
+                for term in search_terms:
+                    programs = query_mon_master(city=term, domain=domain)
+                    all_programs.extend(programs)
 
         if not all_programs:
             return None
