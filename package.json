@@ -19,6 +19,7 @@
     "test": "vitest run",
     "build": "node scripts/build-frontend.mjs",
     "build:sidecar": "node scripts/build-sidecar.mjs",
+    "build:dashboard": "cd dashboard && npm install && npm run build",
     "build:all": "node scripts/run-parallel.mjs build:all",
     "release:verify-updater": "node scripts/verify-updater-release.mjs",
     "version:bump": "node scripts/version.mjs bump",
