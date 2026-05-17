@@ -1,6 +1,6 @@
 [project]
 name = "backend"
-version = "0.1.52"
+version = "0.1.53"
 description = "FastAPI sidecar for JustHireMe's local-first job intelligence workbench"
 readme = "README.md"
 requires-python = ">=3.13"

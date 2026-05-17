@@ -25,6 +25,9 @@ async def graph_stats(repo: Repository = Depends(get_repository), repair: bool =
         return await client.stats(repair=repair)
 
     errors: list[str] = []
+    profile_repo = getattr(repo, "profile", None)
+    if profile_repo and hasattr(profile_repo, "purge_profile_deletion_tombstones"):
+        _safe_graph_step(profile_repo.purge_profile_deletion_tombstones, "profile deletion purge", errors, default={"status": "skipped"})
     if repair:
         sync = _safe_graph_step(lambda: repo.graph.sync_job_leads(repo.leads.get_all_leads()), "lead sync", errors)
         profile_sync = _safe_graph_step(

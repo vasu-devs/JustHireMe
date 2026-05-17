@@ -17,7 +17,9 @@ from graph_service.helpers import is_bad_vector_label
 _log = get_logger(__name__)
 
 PROFILE_SNAPSHOT_KEY = "profile_snapshot_json"
+PROFILE_DELETIONS_KEY = "profile_deleted_items_json"
 IDENTITY_KEYS = ("email", "phone", "linkedin_url", "github_url", "website_url", "city")
+PROFILE_DELETE_KEYS = ("skills", "projects", "exp", "education", "certifications", "achievements")
 _BULK_IMPORT_DEPTH: contextvars.ContextVar[int] = contextvars.ContextVar("profile_bulk_import_depth", default=0)
 _URL_RE = re.compile(r"https?://\S+|www\.\S+", re.I)
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
@@ -132,19 +134,119 @@ def normal_profile(profile: dict | None) -> dict:
     }
 
 
+def _load_profile_deletions(db_path: str | None = None) -> dict[str, list[str]]:
+    try:
+        raw = get_setting(PROFILE_DELETIONS_KEY, "", db_path) if db_path else get_setting(PROFILE_DELETIONS_KEY, "")
+        data = json.loads(raw or "{}")
+    except Exception:
+        data = {}
+    return {
+        key: sorted({
+            _norm_key(token)
+            for token in (data.get(key) if isinstance(data, dict) else []) or []
+            if _norm_key(token)
+        })
+        for key in PROFILE_DELETE_KEYS
+    }
+
+
+def _save_profile_deletions(deletions: dict[str, list[str]], db_path: str | None = None) -> None:
+    clean = {key: sorted({_norm_key(token) for token in deletions.get(key, []) if _norm_key(token)}) for key in PROFILE_DELETE_KEYS}
+    try:
+        payload = {PROFILE_DELETIONS_KEY: json.dumps(clean, ensure_ascii=False)}
+        if db_path:
+            save_settings(payload, db_path)
+        else:
+            save_settings(payload)
+    except Exception:
+        pass
+
+
+def _delete_tokens(*values) -> set[str]:
+    out: set[str] = set()
+    for value in values:
+        if isinstance(value, (list, tuple, set)):
+            out.update(_delete_tokens(*value))
+            continue
+        text = str(value or "").strip()
+        if not text:
+            continue
+        out.add(text)
+        out.add(unquote(text))
+        out.add(hash_id(unquote(text)))
+    return {_norm_key(item) for item in out if _norm_key(item)}
+
+
+def _remember_profile_deletion(key: str, values: Iterable, db_path: str | None = None) -> None:
+    if key not in PROFILE_DELETE_KEYS:
+        return
+    deletions = _load_profile_deletions(db_path)
+    deletions[key] = sorted(set(deletions.get(key, [])) | _delete_tokens(values))
+    _save_profile_deletions(deletions, db_path)
+
+
+def _forget_profile_deletion(key: str, values: Iterable, db_path: str | None = None) -> None:
+    if key not in PROFILE_DELETE_KEYS:
+        return
+    tokens = _delete_tokens(values)
+    if not tokens:
+        return
+    deletions = _load_profile_deletions(db_path)
+    deletions[key] = [token for token in deletions.get(key, []) if token not in tokens]
+    _save_profile_deletions(deletions, db_path)
+
+
+def _is_deleted(key: str, *values, db_path: str | None = None) -> bool:
+    tokens = _delete_tokens(values)
+    if not tokens:
+        return False
+    return bool(tokens.intersection(_load_profile_deletions(db_path).get(key, [])))
+
+
+def apply_profile_deletions(profile: dict | None, db_path: str | None = None) -> dict:
+    profile = normal_profile(profile)
+    profile["skills"] = [
+        item for item in profile.get("skills", [])
+        if not (isinstance(item, dict) and _is_deleted("skills", item.get("id"), item.get("n"), item.get("name"), item.get("title"), db_path=db_path))
+    ]
+    profile["projects"] = [
+        item for item in profile.get("projects", [])
+        if not (isinstance(item, dict) and _is_deleted("projects", item.get("id"), item.get("title"), item.get("name"), db_path=db_path))
+    ]
+    profile["exp"] = [
+        item for item in profile.get("exp", [])
+        if not (
+            isinstance(item, dict)
+            and _is_deleted(
+                "exp",
+                item.get("id"),
+                item.get("role"),
+                item.get("co"),
+                str(item.get("role") or "") + str(item.get("co") or ""),
+                " at ".join(part for part in [item.get("role"), item.get("co")] if part),
+                " - ".join(part for part in [item.get("role"), item.get("co")] if part),
+                db_path=db_path,
+            )
+        )
+    ]
+    for key in ["education", "certifications", "achievements"]:
+        profile[key] = [item for item in profile.get(key, []) if not _is_deleted(key, _entry_text(item), hash_id(_entry_text(item)), db_path=db_path)]
+    return profile
+
+
 def load_profile_snapshot(db_path: str | None = None) -> dict:
     try:
         raw = get_setting(PROFILE_SNAPSHOT_KEY, "", db_path) if db_path else get_setting(PROFILE_SNAPSHOT_KEY)
         if not raw:
             return {}
-        profile = normal_profile(json.loads(raw or "{}"))
+        profile = apply_profile_deletions(json.loads(raw or "{}"), db_path)
         return profile if profile_has_data(profile) else {}
     except Exception:
         return {}
 
 
 def save_profile_snapshot(profile: dict, db_path: str | None = None, *, allow_empty: bool = False) -> None:
-    profile = normal_profile(profile)
+    profile = apply_profile_deletions(profile, db_path)
     if not allow_empty and not profile_has_data(profile):
         return
     try:
@@ -207,7 +309,7 @@ def read_profile_from_graph() -> dict:
                 items.append(text)
         return items
 
-    return {
+    return apply_profile_deletions({
         "n": candidate[1],
         "s": candidate[2],
         "skills": skills,
@@ -217,7 +319,7 @@ def read_profile_from_graph() -> dict:
         "education": read_text_nodes("Education"),
         "achievements": read_text_nodes("Achievement"),
         "identity": {key: get_setting(key, "") for key in IDENTITY_KEYS},
-    }
+    })
 
 
 def get_profile(db_path: str | None = None) -> dict:
@@ -278,7 +380,52 @@ def refresh_profile_snapshot(db_path: str | None = None) -> None:
         pass
 
 
+def purge_profile_deletion_tombstones(db_path: str | None = None) -> dict:
+    deletions = _load_profile_deletions(db_path)
+    purged = 0
+
+    def deleted(key: str, *values) -> bool:
+        tokens = _delete_tokens(values)
+        return bool(tokens.intersection(deletions.get(key, [])))
+
+    for row in _query_rows("MATCH (s:Skill) RETURN s.id, s.n"):
+        node_id, name = str(row[0] or ""), str(row[1] or "")
+        if deleted("skills", node_id, name, hash_id(name)):
+            delete_vec_id_from_all(node_id)
+            _safe_execute("MATCH (s:Skill) WHERE s.id = $id DETACH DELETE s", {"id": node_id})
+            purged += 1
+
+    for row in _query_rows("MATCH (p:Project) RETURN p.id, p.title"):
+        node_id, title = str(row[0] or ""), str(row[1] or "")
+        if deleted("projects", node_id, title, hash_id(title)):
+            delete_vec_id_from_all(node_id)
+            _safe_execute("MATCH (p:Project) WHERE p.id = $id DETACH DELETE p", {"id": node_id})
+            purged += 1
+
+    for row in _query_rows("MATCH (e:Experience) RETURN e.id, e.role, e.co"):
+        node_id = str(row[0] or "")
+        role = str(row[1] or "")
+        company = str(row[2] or "")
+        if deleted("exp", node_id, role, company, role + company, " at ".join(part for part in [role, company] if part), " - ".join(part for part in [role, company] if part)):
+            delete_vec_id_from_all(node_id)
+            _safe_execute("MATCH (e:Experience) WHERE e.id = $id DETACH DELETE e", {"id": node_id})
+            purged += 1
+
+    for label, key in [("Education", "education"), ("Certification", "certifications"), ("Achievement", "achievements")]:
+        for row in _query_rows(f"MATCH (n:{label}) RETURN n.id, n.title"):
+            node_id, title = str(row[0] or ""), str(row[1] or "")
+            if deleted(key, node_id, title, hash_id(title)):
+                delete_vec_id_from_all(node_id)
+                _safe_execute(f"MATCH (n:{label}) WHERE n.id = $id DETACH DELETE n", {"id": node_id})
+                purged += 1
+
+    if purged:
+        refresh_profile_snapshot(db_path)
+    return {"status": "ok", "purged": purged}
+
+
 def sync_vectors_from_graph() -> dict:
+    purge_profile_deletion_tombstones()
     deleted_bad_rows = prune_bad_vector_rows()
     candidates = []
     skills = []
@@ -583,6 +730,7 @@ def add_skill(name: str, category: str, db_path: str | None = None) -> dict:
     name = str(name or "").strip()
     category = str(category or "general").strip() or "general"
     skill_id = hash_id(name)
+    _forget_profile_deletion("skills", [skill_id, name], db_path)
     try:
         execute_query("CREATE (:Skill {id: $id, n: $n, cat: $cat})", {"id": skill_id, "n": name, "cat": category})
     except Exception:
@@ -604,6 +752,7 @@ def add_skill(name: str, category: str, db_path: str | None = None) -> dict:
 def update_skill(skill_id: str, name: str, category: str, db_path: str | None = None) -> dict:
     name = str(name or "").strip()
     category = str(category or "general").strip() or "general"
+    _forget_profile_deletion("skills", [skill_id, name, hash_id(name)], db_path)
     _safe_execute(
         "MATCH (s:Skill) WHERE s.id = $id SET s.n = $n, s.cat = $cat",
         {"id": skill_id, "n": name, "cat": category},
@@ -631,6 +780,7 @@ def update_skill(skill_id: str, name: str, category: str, db_path: str | None = 
 def delete_skill(skill_id: str, db_path: str | None = None) -> None:
     value = unquote(str(skill_id or "")).strip()
     delete_ids = _skill_delete_ids(value)
+    _remember_profile_deletion("skills", [value, *delete_ids], db_path)
     delete_vec_rows("skills", delete_ids)
     for node_id in delete_ids:
         delete_vec_id_from_all(node_id)
@@ -659,6 +809,7 @@ def add_experience(role: str, company: str, period: str, description: str, db_pa
     period = str(period or "").strip()
     description = str(description or "").strip()
     experience_id = hash_id(role + company)
+    _forget_profile_deletion("exp", [experience_id, role, company, role + company, " at ".join(part for part in [role, company] if part)], db_path)
     try:
         execute_query(
             "CREATE (:Experience {id: $id, role: $role, co: $co, period: $period, d: $d})",
@@ -686,6 +837,7 @@ def update_experience(experience_id: str, role: str, company: str, period: str, 
     company = str(company or "").strip()
     period = str(period or "").strip()
     description = str(description or "").strip()
+    _forget_profile_deletion("exp", [experience_id, role, company, role + company, " at ".join(part for part in [role, company] if part)], db_path)
     _safe_execute(
         "MATCH (e:Experience) WHERE e.id = $id SET e.role = $role, e.co = $co, e.period = $period, e.d = $d",
         {"id": experience_id, "role": role, "co": company, "period": period, "d": description},
@@ -710,6 +862,7 @@ def update_experience(experience_id: str, role: str, company: str, period: str, 
 def delete_experience(experience_id: str, db_path: str | None = None) -> None:
     value = unquote(str(experience_id or "")).strip()
     delete_ids = _experience_delete_ids(value)
+    _remember_profile_deletion("exp", [value, *delete_ids], db_path)
     delete_vec_rows("experiences", delete_ids)
     for node_id in delete_ids:
         delete_vec_id_from_all(node_id)
@@ -738,6 +891,7 @@ def add_project(title: str, stack: str, repo: str, impact: str, db_path: str | N
     repo = str(repo or "").strip()
     impact = str(impact or "").strip()
     project_id = hash_id(title)
+    _forget_profile_deletion("projects", [project_id, title], db_path)
     try:
         execute_query(
             "CREATE (:Project {id: $id, title: $title, stack: $stack, repo: $repo, impact: $impact})",
@@ -765,6 +919,7 @@ def update_project(project_id: str, title: str, stack: str, repo: str, impact: s
     stack = str(stack or "").strip()
     repo = str(repo or "").strip()
     impact = str(impact or "").strip()
+    _forget_profile_deletion("projects", [project_id, title, hash_id(title)], db_path)
     _safe_execute(
         "MATCH (p:Project) WHERE p.id = $id SET p.title = $title, p.stack = $stack, p.repo = $repo, p.impact = $impact",
         {"id": project_id, "title": title, "stack": stack, "repo": repo, "impact": impact},
@@ -789,6 +944,7 @@ def update_project(project_id: str, title: str, stack: str, repo: str, impact: s
 def delete_project(project_id: str, db_path: str | None = None) -> None:
     value = unquote(str(project_id or "")).strip()
     delete_ids = _project_delete_ids(value)
+    _remember_profile_deletion("projects", [value, *delete_ids], db_path)
     delete_vec_rows("projects", delete_ids)
     for node_id in delete_ids:
         delete_vec_id_from_all(node_id)
@@ -814,6 +970,13 @@ def delete_project(project_id: str, db_path: str | None = None) -> None:
 def _add_text_node(label: str, rel: str, title: str, db_path: str | None = None) -> dict:
     title = str(title or "").strip()
     node_id = hash_id(title)
+    key = {
+        "Education": "education",
+        "Certification": "certifications",
+        "Achievement": "achievements",
+    }.get(label)
+    if key:
+        _forget_profile_deletion(key, [node_id, title], db_path)
     try:
         execute_query(f"CREATE (:{label} {{id: $id, title: $title}})", {"id": node_id, "title": title})
     except Exception:
@@ -825,11 +988,6 @@ def _add_text_node(label: str, rel: str, title: str, db_path: str | None = None)
         except Exception:
             pass
     _refresh_after_write(db_path)
-    key = {
-        "Education": "education",
-        "Certification": "certifications",
-        "Achievement": "achievements",
-    }.get(label)
     if key:
         _save_profile_patch({key: [title]}, db_path)
     return {"id": node_id, "title": title}
@@ -927,6 +1085,7 @@ def _delete_text_node(label: str, profile_key: str, entry: str, db_path: str | N
     if not entry:
         return
     delete_ids = _text_node_ids(label, entry)
+    _remember_profile_deletion(profile_key, [entry, *delete_ids], db_path)
     for node_id in delete_ids:
         delete_vec_id_from_all(node_id)
         _safe_execute(f"MATCH (n:{label}) WHERE n.id = $id DETACH DELETE n", {"id": node_id})

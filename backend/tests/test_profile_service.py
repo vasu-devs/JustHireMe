@@ -374,6 +374,31 @@ def test_graph_profile_delete_project_accepts_title_when_id_is_missing(monkeypat
     assert [item["title"] for item in saved["projects"]] == ["Ops Console"]
 
 
+def test_graph_profile_deleted_project_does_not_rehydrate_from_graph(monkeypatch):
+    from data.graph import profile as graph_profile
+
+    deleted_payload = {"projects": [graph_profile.hash_id("Hiring Agent"), "Hiring Agent"]}
+
+    def fake_get_setting(key, default="", *_args):
+        if key == graph_profile.PROFILE_DELETIONS_KEY:
+            import json
+
+            return json.dumps(deleted_payload)
+        return default
+
+    def fake_query_rows(query, _params=None):
+        if "Project" in query:
+            return [[graph_profile.hash_id("Hiring Agent"), "Hiring Agent", "Python", "", "Built it"]]
+        return []
+
+    monkeypatch.setattr(graph_profile, "get_setting", fake_get_setting)
+    monkeypatch.setattr(graph_profile, "_query_rows", fake_query_rows)
+
+    profile = graph_profile.read_profile_from_graph()
+
+    assert profile["projects"] == []
+
+
 def test_graph_profile_delete_experience_accepts_role_company_label_when_id_is_missing(monkeypatch):
     from data.graph import profile as graph_profile
 

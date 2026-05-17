@@ -70,6 +70,7 @@ export function ProfileView({ api, setView }: { api: ApiFetch; setView: (v: View
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.detail || `Delete failed (${res.status})`);
       setProfileErr(null);
+      await fetchProfile({ errorPrefix: "Deleted, but profile refresh failed" });
       window.dispatchEvent(new CustomEvent("graph-refresh"));
     } catch (err: any) {
       console.error("Delete error:", err);

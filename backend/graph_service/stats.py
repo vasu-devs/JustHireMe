@@ -108,6 +108,9 @@ def _merge_graphs(primary: dict, fallback: dict) -> dict:
 def graph_stats_payload(*, repair: bool = False) -> dict:
     repo = create_repository()
     errors: list[str] = []
+    profile_repo = getattr(repo, "profile", None)
+    if profile_repo and hasattr(profile_repo, "purge_profile_deletion_tombstones"):
+        safe_graph_step(profile_repo.purge_profile_deletion_tombstones, "profile deletion purge", errors, default={"status": "skipped"})
     if repair:
         sync = safe_graph_step(lambda: repo.graph.sync_job_leads(repo.leads.get_all_leads()), "lead sync", errors)
         profile_sync = safe_graph_step(

@@ -205,7 +205,15 @@ def _strip_md(text: str) -> str:
     text = re.sub(r"\*([^*]+)\*", r"\1", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
     text = text.replace("\u2192", "->").replace("\u00b7", "-")
-    return re.sub(r"\s+", " ", text).strip(" -")
+    text = re.sub(r"^\s*[-*•]\s*", "", text)
+    text = _repair_pdf_spacing(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _repair_pdf_spacing(text: str) -> str:
+    text = re.sub(r"\b([A-Z]\.[A-Z])\s+([a-z]{2,})\b", r"\1\2", text or "")
+    text = re.sub(r"\b([A-Z])\.\s+([A-Za-z]{2,})\b", r"\1.\2", text or "")
+    return re.sub(r"\b([BFV])\s+([a-z]{2,})\b", r"\1\2", text)
 
 
 def _split_csv(value: str) -> list[str]:
@@ -618,6 +626,7 @@ def _projects_from_resume_lines(lines: list[str], skills: list) -> list:
 
     raw_projects: list[dict] = []
     current: dict | None = None
+    known_skill_names = [skill.n for skill in skills]
 
     def flush():
         nonlocal current
@@ -625,36 +634,54 @@ def _projects_from_resume_lines(lines: list[str], skills: list) -> list:
             raw_projects.append(current)
             current = None
 
+    def append_impact(detail: str) -> None:
+        if current is None:
+            return
+        detail = _strip_md(detail)
+        if not detail:
+            return
+        existing = str(current.get("impact") or "").strip()
+        if existing and existing.endswith("-") and detail[:1].islower():
+            current["impact"] = f"{existing[:-1]}{detail}".strip()
+            return
+        separator = " " if existing and detail[:1].islower() else "\n"
+        current["impact"] = f"{existing}{separator}{detail}".strip()
+
     for raw_line in lines:
         line = _strip_md(raw_line)
+        if raw_line.rstrip().endswith("-") and not line.endswith("-"):
+            line = f"{line}-"
         if not line:
+            continue
+        header = _resume_project_header(line, known_skill_names)
+        if header:
+            flush()
+            current = header
+            continue
+        if _first_url(line) and not re.search(r"(?i)\b(github|repo|link|live|demo)\s*:", line):
+            flush()
+            title, detail = _split_project_title_detail(line)
+            current = {"title": title, "impact": detail, "repo": _first_url(line), "stack": ""}
+            continue
+        if current is None:
+            if _resume_standalone_project_title(line, known_skill_names):
+                title, detail = _split_project_title_detail(line)
+                current = {"title": title, "impact": detail, "repo": _first_url(line), "stack": ""}
             continue
         lower = line.lower()
         repo = _first_url(line)
-        stack = normalize_stack(line) if re.search(r"(?i)\b(tech stack|stack|built with|using)\b", line) else []
-        looks_like_bullet = bool(re.match(r"(?i)^(built|created|developed|designed|engineered|implemented|integrated|launched|shipped|automated|features?|supports?)\b", line))
-        looks_like_title = (
-            not looks_like_bullet
-            and not re.search(r"(?i)\b(tech stack|stack|github|repo|link|live|demo)\s*:", line)
-            and len(line.split()) <= 10
-        )
-        if looks_like_title:
-            flush()
-            title, detail = _split_project_title_detail(line)
-            current = {"title": title, "impact": detail, "repo": repo, "stack": ""}
-            continue
-        if current is None:
-            continue
+        stack = normalize_stack(line) if re.search(r"(?i)\b(tech stack|stack|built with)\b", line) else []
         if repo and not current.get("repo"):
             current["repo"] = repo
+        if not stack and _resume_stack_only_line(line, known_skill_names):
+            stack = normalize_stack(line)
         if stack:
             current["stack"] = ", ".join(normalize_stack(current.get("stack", "")) + stack)
         elif "stack" not in lower and "github" not in lower and "repo" not in lower:
-            current["impact"] = "\n".join(part for part in [current.get("impact", ""), line] if part)
+            append_impact(line)
     flush()
 
-    known_skills = [skill.n for skill in skills]
-    clean_projects = normalize_projects(raw_projects, known_skills=known_skills)
+    clean_projects = normalize_projects(raw_projects, known_skills=known_skill_names)
     return [
         P(
             title=item["title"],
@@ -665,6 +692,103 @@ def _projects_from_resume_lines(lines: list[str], skills: list) -> list:
         )
         for item in clean_projects[:8]
     ]
+
+
+def _resume_project_header(line: str, known_skills: list[str]) -> dict | None:
+    clean = _strip_md(line)
+    if not clean or re.search(r"(?i)^\s*(tech stack|stack|github|repo|link|live|demo)\s*:", clean):
+        return None
+    split_title, split_detail = _split_project_title_detail(clean)
+    if split_detail and len(split_title.split()) <= 8 and _first_skill_position(split_title, known_skills) != 0 and not _resume_line_is_detail(split_title):
+        return {"title": split_title, "impact": split_detail, "repo": _first_url(clean), "stack": ""}
+    if _resume_line_is_detail(clean):
+        return None
+    repo = _first_url(clean) or _site_from_parentheses(clean)
+    title = ""
+    stack_text = ""
+    paren = re.match(r"^(.{2,80}?)\s*\(([^)]{2,120})\)\s*(.*)$", clean)
+    if paren:
+        title = paren.group(1)
+        stack_text = paren.group(3)
+    else:
+        skill_position = _first_skill_position(clean, known_skills)
+        if skill_position is not None and 1 <= len(clean[:skill_position].split()) <= 4:
+            title = clean[:skill_position]
+            stack_text = clean[skill_position:]
+    if not title:
+        return None
+    title = _strip_md(title).strip(" :-|.,")
+    stack = _resume_stack_terms(stack_text, known_skills)
+    if not stack and not repo:
+        return None
+    return {"title": title, "impact": "", "repo": repo, "stack": ", ".join(stack)}
+
+
+def _resume_standalone_project_title(line: str, known_skills: list[str]) -> bool:
+    clean = _strip_md(line)
+    if not clean or _resume_line_is_detail(clean) or _resume_stack_only_line(clean, known_skills):
+        return False
+    title, _detail = _split_project_title_detail(clean)
+    if _first_skill_position(title, known_skills) == 0:
+        return False
+    return len(title.split()) <= 7 and not re.search(r"(?i)\b(tech stack|stack|github|repo|link|live|demo)\s*:", clean)
+
+
+def _resume_line_is_detail(line: str) -> bool:
+    clean = _strip_md(line)
+    return bool(
+        re.match(
+            r"(?i)^(built|created|developed|designed|engineered|implemented|integrated|launched|shipped|automated|features?|supports?|modeled|streamed|edit|and|or|with)\b",
+            clean,
+        )
+        or clean[:1].islower()
+        or clean.endswith(".")
+    )
+
+
+def _resume_stack_only_line(line: str, known_skills: list[str]) -> bool:
+    clean = _strip_md(line)
+    if not clean:
+        return False
+    if _resume_line_is_detail(clean):
+        return False
+    hits = _resume_stack_terms(clean, known_skills)
+    if not hits:
+        return False
+    words = clean.split()
+    if len(words) > 5 and not re.search(r"[,|;/]", clean):
+        return False
+    return len(hits) >= 2 or (len(words) <= 3 and clean.lower() in {skill.lower() for skill in known_skills})
+
+
+def _resume_stack_terms(text: str, known_skills: list[str]) -> list[str]:
+    from profile.normalization import normalize_stack
+
+    stack = normalize_stack(text)
+    known = {skill.lower() for skill in known_skills}
+    return _dedupe([item for item in stack if item.lower() in known or len(item.split()) <= 3])
+
+
+def _site_from_parentheses(line: str) -> str:
+    match = re.search(r"\(([^)]*(?:\.[a-z]{2,}|github)[^)]*)\)", line, re.I)
+    if not match:
+        return ""
+    value = match.group(1).strip()
+    if value.lower() == "github":
+        return ""
+    return value if value.startswith(("http://", "https://")) else f"https://{value}"
+
+
+def _first_skill_position(line: str, known_skills: list[str]) -> int | None:
+    positions = []
+    lower = line.lower()
+    for skill in known_skills:
+        if not skill:
+            continue
+        match = re.search(r"(?<![a-z0-9+#.-])" + re.escape(skill.lower()) + r"(?![a-z0-9+#.-])", lower)
+        if match:
+            positions.append(match.start())
+    return min(positions) if positions else None
 
 
 def _split_project_title_detail(line: str) -> tuple[str, str]:

@@ -551,7 +551,7 @@ def _valid_project_title(title: str, known_skills: set[str]) -> bool:
 
 
 def _projectish_title(title: str) -> bool:
-    return bool(re.search(r"\b(app|agent|api|dashboard|platform|pipeline|system|tool|workbench)\b", title, re.I))
+    return bool(re.search(r"\b(app|agent|api|dashboard|engine|framework|interface|interviewer|platform|pipeline|system|tool|workbench)\b", title, re.I))
 
 
 def _looks_like_project_detail(title: str) -> bool:
@@ -559,6 +559,10 @@ def _looks_like_project_detail(title: str) -> bool:
     if not clean:
         return False
     if ACTION_SENTENCE_RE.search(clean):
+        return True
+    if clean[:1].islower() and not _projectish_title(clean):
+        return True
+    if re.match(r"(?i)^(and|or|with|without|while|history|tion|negotiation,|repetition\b)\b", clean):
         return True
     if clean.startswith(("-", "*", "•")):
         return True
@@ -737,6 +741,9 @@ def _clean_text(value: str) -> str:
     value = re.sub(r"\*([^*]+)\*", r"\1", value)
     value = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", value)
     value = re.sub(r"^\s*[-*•]\s*", "", value)
+    value = re.sub(r"\b([A-Z]\.[A-Z])\s+([a-z]{2,})\b", r"\1\2", value)
+    value = re.sub(r"\b([A-Z])\.\s+([A-Za-z]{2,})\b", r"\1.\2", value)
+    value = re.sub(r"\b([BFV])\s+([a-z]{2,})\b", r"\1\2", value)
     return re.sub(r"\s+", " ", value).strip()
 
 

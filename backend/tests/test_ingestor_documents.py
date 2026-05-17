@@ -109,3 +109,48 @@ NPTEL -- Certificate Link
     assert "conditioning" not in {title.lower() for title in titles}
     assert "apis" not in {title.lower() for title in titles}
     assert profile.certifications == ["Social Networks - NPTEL Jan 2025 - Apr 2025"]
+
+
+def test_resume_parser_stitches_pdf_project_headers_and_continuations():
+    profile = ingestor._parse_resume_heuristic(
+        """
+Vasudev Siddh
+Full Stack AI Engineer
+
+Technical Skills
+Languages: Python, TypeScript, JavaScript
+Frontend: React, Next.js
+Backend: FastAPI, Docker
+Databases: PostgreSQL, MongoDB, SQLite
+AI / LLM: Groq, LangChain, LangGraph
+Voice & Realtime: LiveKit, Deepgram, SIP
+
+Projects
+BranchGPT (branchgpt.vasudev.live) Next.js 16, TypeScript, Drizzle, Neon PG, Groq
+Git-styled DAG Chat Interface for LLM Context Optimization
+• Modeled conversations as a Directed Acyclic Graph.
+• Implemented LLM-summarized merges via Llama 3.3 that retain insight without transcript bloat – merge logic filters shared
+history, appending only new content.
+V aani(GitHub) Python, FastAPI, LiveKit, Deepgram, Groq, SIP, Docker
+Voice-Native Debt Collection Platform with Real-Time Risk Analysis
+• Engineered two tuned personas dispatched by debtor archetype, with real-time interrup-
+tion handling.
+Odeon (GitHub) FastAPI, WebSockets, LangChain, Groq, React 19
+Self-Improving Voice Agent Optimization Framework
+• Built a measurable prompt-tuning loop.
+Socratis (GitHub) Next.js 14, Python, LiveKit, Deepgram, Groq, MongoDB
+Real-Time AI Technical Interviewer with Live Code Awareness
+• Built post-interview forensic analysis: Big-O evaluation.
+
+Education
+B.T ech in Computer Science Engineering, Lovely Professional University
+CGPA: 8.59
+"""
+    )
+
+    titles = [project.title for project in profile.projects]
+
+    assert titles == ["BranchGPT", "Vaani", "Odeon", "Socratis"]
+    assert "history, appending only new content" in profile.projects[0].impact
+    assert "interruption handling" in profile.projects[1].impact
+    assert all(title not in {"history, appending only new content", "tion handling"} for title in titles)
