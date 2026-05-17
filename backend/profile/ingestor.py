@@ -806,6 +806,32 @@ def _education_from_resume_lines(lines: list[str]) -> list[str]:
     return normalize_education_entries(lines)
 
 
+def _merge_candidate_data(primary: C, fallback: C) -> C:
+    from models.schema import C
+
+    def merge_by(items, key_fn):
+        seen: set[str] = set()
+        out = []
+        for item in items:
+            key = re.sub(r"[^a-z0-9]+", "", key_fn(item).lower())
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append(item)
+        return out
+
+    return C(
+        n=primary.n if primary.n and primary.n.lower() not in {"candidate", "unknown"} else fallback.n,
+        s=primary.s or fallback.s,
+        skills=merge_by([*primary.skills, *fallback.skills], lambda item: item.n),
+        exp=merge_by([*primary.exp, *fallback.exp], lambda item: f"{item.role} {item.co}"),
+        projects=merge_by([*primary.projects, *fallback.projects], lambda item: item.title),
+        certifications=merge_by([*primary.certifications, *fallback.certifications], str),
+        education=merge_by([*primary.education, *fallback.education], str),
+        achievements=merge_by([*primary.achievements, *fallback.achievements], str),
+    )
+
+
 def run(raw: str = "", pdf: str | None = None) -> C:
     from llm import call_llm, resolve_config
 
@@ -858,6 +884,16 @@ def ingest(raw: str = "", pdf: str | None = None) -> C:
         _log.warning("No usable text for extraction - returning empty profile")
         return C(n="Unknown", s="")
     p = run(txt)
+    try:
+        deterministic = _parse_local(txt)
+        if (
+            len(deterministic.projects) > len(p.projects)
+            or len(deterministic.exp) > len(p.exp)
+            or len(deterministic.skills) > len(p.skills)
+        ):
+            p = _merge_candidate_data(p, deterministic)
+    except Exception as exc:
+        _log.warning("deterministic resume merge skipped: %s", exc)
     from profile.normalization import normalize_candidate_model
 
     p = normalize_candidate_model(p)

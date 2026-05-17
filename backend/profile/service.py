@@ -72,13 +72,15 @@ class ProfileService:
         result = await asyncio.to_thread(ingest, raw, pdf_path)
         snapshot = _profile_snapshot_from_resume(result, await asyncio.to_thread(self.get_profile))
         if graph_profile.profile_has_data(snapshot):
+            await asyncio.to_thread(graph_profile.forget_profile_deletions_for_profile, snapshot)
             await asyncio.to_thread(graph_profile.save_profile_snapshot, snapshot)
         await asyncio.to_thread(self.refresh_profile_snapshot)
         if graph_profile.profile_has_data(snapshot):
-            current = await asyncio.to_thread(self.get_profile)
-            if not graph_profile.profile_has_data(current):
-                await asyncio.to_thread(graph_profile.save_profile_snapshot, snapshot)
-        await asyncio.to_thread(graph_profile.sync_vectors_from_graph)
+            await asyncio.to_thread(graph_profile.save_profile_snapshot, snapshot)
+        try:
+            asyncio.get_running_loop().create_task(asyncio.to_thread(graph_profile.sync_vectors_from_graph))
+        except Exception:
+            pass
         return result
 
     async def ingest_linkedin(self, zip_bytes: bytes) -> dict:
@@ -210,6 +212,9 @@ class ProfileService:
         stats = {key: 0 for key in ["skills", "experience", "projects", "education", "certifications", "achievements"]}
         existing_snapshot = await asyncio.to_thread(self.get_profile)
         imported_snapshot = _profile_snapshot_from_import(data, existing_snapshot)
+        if graph_profile.profile_has_data(imported_snapshot):
+            await asyncio.to_thread(graph_profile.forget_profile_deletions_for_profile, imported_snapshot)
+            await asyncio.to_thread(graph_profile.save_profile_snapshot, imported_snapshot)
 
         with graph_profile.bulk_profile_import():
             candidate = _as_dict(data.get("candidate") or {})

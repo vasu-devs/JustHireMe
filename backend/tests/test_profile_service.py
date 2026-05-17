@@ -206,6 +206,29 @@ def test_profile_service_ingest_resume_saves_snapshot_fallback(monkeypatch):
     assert saved["projects"][0]["title"] == "Hiring Agent"
 
 
+def test_profile_service_ingest_resume_preserves_projects_after_graph_refresh(monkeypatch):
+    service = ProfileService()
+    saved_profiles = []
+    parsed = C(
+        n="Jane Doe",
+        s="Applied AI engineer",
+        skills=[S(n="Python", cat="technical")],
+        projects=[P(title="Hiring Agent", stack=["FastAPI", "React"], repo="", impact="Automated matching")],
+    )
+
+    monkeypatch.setattr("profile.ingestor.ingest", lambda _raw, _path: parsed)
+    monkeypatch.setattr(service, "get_profile", lambda: {"n": "Jane Doe", "s": "Applied AI engineer", "skills": [{"id": "python", "n": "Python"}], "projects": [], "exp": []})
+    monkeypatch.setattr(service, "refresh_profile_snapshot", lambda: None)
+    monkeypatch.setattr("profile.service.graph_profile.forget_profile_deletions_for_profile", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("profile.service.graph_profile.save_profile_snapshot", lambda profile: saved_profiles.append(profile))
+    monkeypatch.setattr("profile.service.graph_profile.sync_vectors_from_graph", lambda: {"status": "ok"})
+
+    result = asyncio.run(service.ingest_resume("resume text", None))
+
+    assert result.projects[0].title == "Hiring Agent"
+    assert saved_profiles[-1]["projects"][0]["title"] == "Hiring Agent"
+
+
 def test_graph_profile_get_profile_merges_snapshot_with_existing_graph(monkeypatch):
     from data.graph import profile as graph_profile
 

@@ -201,7 +201,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-        timeoutMs: 120000,
+        timeoutMs: 300000,
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {

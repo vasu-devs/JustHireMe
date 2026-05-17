@@ -49,6 +49,8 @@ def _refresh_after_write(db_path: str | None = None) -> None:
 
 
 def _save_profile_patch(patch: dict, db_path: str | None = None) -> None:
+    if _bulk_import_active():
+        return
     try:
         base = load_profile_snapshot(db_path)
         try:
@@ -194,6 +196,25 @@ def _forget_profile_deletion(key: str, values: Iterable, db_path: str | None = N
     deletions = _load_profile_deletions(db_path)
     deletions[key] = [token for token in deletions.get(key, []) if token not in tokens]
     _save_profile_deletions(deletions, db_path)
+
+
+def forget_profile_deletions_for_profile(profile: dict | None, db_path: str | None = None) -> None:
+    profile = normal_profile(profile)
+    for item in profile.get("skills", []) or []:
+        if isinstance(item, dict):
+            _forget_profile_deletion("skills", [item.get("id"), item.get("n"), item.get("name"), item.get("title")], db_path)
+    for item in profile.get("projects", []) or []:
+        if isinstance(item, dict):
+            _forget_profile_deletion("projects", [item.get("id"), item.get("title"), item.get("name")], db_path)
+    for item in profile.get("exp", []) or []:
+        if isinstance(item, dict):
+            role = str(item.get("role") or "")
+            company = str(item.get("co") or item.get("company") or "")
+            _forget_profile_deletion("exp", [item.get("id"), role, company, role + company, " at ".join(part for part in [role, company] if part)], db_path)
+    for key in ["education", "certifications", "achievements"]:
+        for item in profile.get(key, []) or []:
+            text = _entry_text(item)
+            _forget_profile_deletion(key, [text, hash_id(text)], db_path)
 
 
 def _is_deleted(key: str, *values, db_path: str | None = None) -> bool:
