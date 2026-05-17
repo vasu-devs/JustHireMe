@@ -1,13 +1,65 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import type { ConnSt, Lead, LogLine } from "../../types";
+import type { ConnSt, Lead, LogLine, OperationProgress } from "../../types";
 import type { WSMessage } from "../../api/types";
 
 const READY_RETRY_MS = 180;
 const READY_ATTEMPTS = 60;
 
 const delay = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
+
+const emptyProgress = (): OperationProgress => ({
+  active: false,
+  mode: null,
+  total: 0,
+  completed: 0,
+  current: "",
+  updatedAt: Date.now(),
+});
+
+function firstNumber(value: string | undefined) {
+  const match = String(value || "").match(/\b(\d+)\b/);
+  return match ? Number(match[1]) : 0;
+}
+
+function prevTotalFromMessage(value: string | undefined) {
+  const match = String(value || "").match(/\[(\d+)\/(\d+)\]/);
+  return match ? Number(match[2]) : 0;
+}
+
+export function nextProgressFromAgentEvent(
+  previous: OperationProgress,
+  event: string | undefined,
+  message: string | undefined,
+  now = Date.now(),
+): OperationProgress {
+  if (event === "eval_start") {
+    return { active: true, mode: "scan", total: firstNumber(message), completed: 0, current: "", updatedAt: now };
+  }
+  if (event === "eval_scored") {
+    return { active: true, mode: "scan", total: previous.total, completed: previous.completed + 1, current: message ?? "", updatedAt: now };
+  }
+  if (event === "reeval_start") {
+    return { active: true, mode: "reevaluate", total: firstNumber(message), completed: 0, current: "", updatedAt: now };
+  }
+  if (event === "reeval_scored") {
+    return {
+      active: true,
+      mode: "reevaluate",
+      total: previous.total || prevTotalFromMessage(message),
+      completed: previous.completed + 1,
+      current: message ?? "",
+      updatedAt: now,
+    };
+  }
+  if (event === "eval_done" || event === "reeval_done" || event === "cleanup_done") {
+    return { active: false, mode: null, total: 0, completed: 0, current: "", updatedAt: now };
+  }
+  return previous;
+}
+
+export const __wsTest = { emptyProgress, firstNumber, prevTotalFromMessage };
 
 async function waitForBackendReady(port: number, isCurrent: () => boolean) {
   for (let attempt = 0; attempt < READY_ATTEMPTS; attempt += 1) {
@@ -30,6 +82,7 @@ export function useWS() {
   const [sidecarError, setSidecarError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [beat, setBeat] = useState(0);
+  const [progress, setProgress] = useState<OperationProgress>(() => emptyProgress());
   const wsRef = useRef<WebSocket | null>(null);
   const wsEndpointRef = useRef("");
   const idRef = useRef(0);
@@ -60,11 +113,28 @@ export function useWS() {
     const ws = new WebSocket(`ws://127.0.0.1:${p}/ws?token=${encodeURIComponent(token)}`);
     wsRef.current = ws;
     wsEndpointRef.current = endpoint;
+    const reconcileBackendStatus = () => {
+      fetch(`http://127.0.0.1:${p}/api/v1/status`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(response => response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`)))
+        .then(status => {
+          if (!status?.scanning && !status?.reevaluating) setProgress(emptyProgress());
+          window.dispatchEvent(new CustomEvent("backend-status", { detail: status }));
+        })
+        .catch(error => {
+          const msg = error instanceof Error ? error.message : String(error);
+          addLog(`Status reconciliation failed: ${msg}`, "system", "ws");
+        });
+    };
     ws.onopen    = () => {
       if (wsRef.current !== ws) return;
+      const wasReconnect = retryRef.current > 0;
       setConn("connected");
       retryRef.current = 0;
       addLog("WebSocket connected", "system", "ws");
+      if (wasReconnect) reconcileBackendStatus();
     };
     ws.onmessage = (e) => {
       if (wsRef.current !== ws) return;
@@ -76,12 +146,23 @@ export function useWS() {
             addLog(`Heartbeat #${d.beat} - uptime ${d.uptime_seconds.toFixed(0)}s`, "heartbeat", "hb");
         } else if (d.type === "agent") {
           addLog(d.msg ?? d.event ?? "agent", "agent", d.event ?? "agent");
-          if (d.event === "eval_done") window.dispatchEvent(new CustomEvent("scan-done"));
+          if (d.event === "eval_start" || d.event === "eval_scored") {
+            setProgress(prev => nextProgressFromAgentEvent(prev, d.event, d.msg));
+          }
+          if (d.event === "eval_done") {
+            setProgress(prev => nextProgressFromAgentEvent(prev, d.event, d.msg));
+            window.dispatchEvent(new CustomEvent("scan-done"));
+          }
+          if (d.event === "reeval_start" || d.event === "reeval_scored") {
+            setProgress(prev => nextProgressFromAgentEvent(prev, d.event, d.msg));
+          }
           if (d.event === "reeval_done") {
+            setProgress(prev => nextProgressFromAgentEvent(prev, d.event, d.msg));
             window.dispatchEvent(new CustomEvent("reevaluate-done"));
             window.dispatchEvent(new CustomEvent("leads-refresh"));
           }
           if (d.event === "cleanup_done") {
+            setProgress(prev => nextProgressFromAgentEvent(prev, d.event, d.msg));
             window.dispatchEvent(new CustomEvent("cleanup-done"));
             window.dispatchEvent(new CustomEvent("leads-refresh"));
           }
@@ -95,7 +176,11 @@ export function useWS() {
             new Notification("Hot X lead", { body: `${lead.company}: ${lead.title}` });
           }
         }
-      } catch { /* ignore */ }
+      } catch (err) {
+        const preview = typeof e.data === "string" ? e.data.slice(0, 200) : "";
+        console.warn("[WS] Failed to parse message:", err, preview);
+        addLog(`Message parse error: ${err}`, "system", "ws");
+      }
     };
     ws.onclose = () => {
       if (wsRef.current !== ws) return;
@@ -200,6 +285,8 @@ export function useWS() {
           setPort(null);
           setApiToken(null);
           setConn("disconnected");
+          setProgress(emptyProgress());
+          window.dispatchEvent(new CustomEvent("backend-status", { detail: { scanning: false, reevaluating: false } }));
           addLog("Backend sidecar terminated", "system", "sidecar");
         });
         const prevUnlisten = unlisten;
@@ -222,5 +309,5 @@ export function useWS() {
     };
   }, [connect]);
 
-  return { conn, port, apiToken, sidecarError, logs, beat, addLog };
+  return { conn, port, apiToken, sidecarError, logs, beat, addLog, progress };
 }

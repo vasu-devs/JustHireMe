@@ -7,6 +7,7 @@ import time
 import traceback
 from pathlib import Path
 from collections.abc import Mapping
+from importlib import import_module
 
 
 SENSITIVE_KEY_RE = re.compile(
@@ -116,3 +117,79 @@ def log_error(exc: BaseException | str, context: dict | None = None) -> None:
         _rotate_error_log()
     except Exception:
         return
+
+
+def record_error(error_type: str, message: str = "", source: str = "") -> None:
+    try:
+        connection = import_module("data.sqlite.connection")
+        connection.init_sql()
+        conn = connection.get_connection()
+        error_type = redact_text(error_type, max_len=120)[:120] or "unknown"
+        source = redact_text(source, max_len=200)[:200]
+        message = redact_text(message, max_len=1000)[:1000]
+        row = conn.execute(
+            """
+            SELECT id FROM error_log
+            WHERE error_type=? AND source=? AND last_seen >= datetime('now', '-1 hour')
+            ORDER BY last_seen DESC
+            LIMIT 1
+            """,
+            (error_type, source),
+        ).fetchone()
+        if row:
+            conn.execute(
+                "UPDATE error_log SET count=count+1, error_message=?, last_seen=datetime('now') WHERE id=?",
+                (message, row["id"] if hasattr(row, "keys") else row[0]),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO error_log(error_type,error_message,source) VALUES(?,?,?)",
+                (error_type, message, source),
+            )
+        conn.commit()
+    except Exception:
+        return
+
+
+def get_top_errors(limit: int = 10, days: int = 7) -> list[dict]:
+    try:
+        connection = import_module("data.sqlite.connection")
+        connection.init_sql()
+        conn = connection.get_connection()
+        rows = conn.execute(
+            """
+            SELECT error_type,error_message,source,count,first_seen,last_seen
+            FROM error_log
+            WHERE last_seen >= datetime('now', ?)
+            ORDER BY count DESC, last_seen DESC
+            LIMIT ?
+            """,
+            (f"-{max(1, int(days))} days", max(1, min(int(limit or 10), 100))),
+        ).fetchall()
+        return [
+            {
+                "error_type": row["error_type"],
+                "error_message": row["error_message"] or "",
+                "source": row["source"] or "",
+                "count": row["count"] or 0,
+                "first_seen": row["first_seen"] or "",
+                "last_seen": row["last_seen"] or "",
+            }
+            for row in rows
+        ]
+    except Exception:
+        return []
+
+
+def get_error_count(hours: int = 24) -> int:
+    try:
+        connection = import_module("data.sqlite.connection")
+        connection.init_sql()
+        conn = connection.get_connection()
+        row = conn.execute(
+            "SELECT COALESCE(SUM(count), 0) AS total FROM error_log WHERE last_seen >= datetime('now', ?)",
+            (f"-{max(1, int(hours))} hours",),
+        ).fetchone()
+        return int((row["total"] if hasattr(row, "keys") else row[0]) or 0)
+    except Exception:
+        return 0

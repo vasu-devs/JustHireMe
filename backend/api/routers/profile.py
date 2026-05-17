@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.dependencies import get_profile_service
 from core.types import CandidateBody, ExperienceBody, IdentityBody, ProfileEntryBody, ProjectBody, SkillBody
+from data.graph.connection import run_graph
 
 
 router = APIRouter(prefix="/api/v1", tags=["profile"])
@@ -131,7 +131,7 @@ async def delete_achievement_endpoint(entry: str, service=Depends(get_profile_se
 async def _call_service(method, *args, **kwargs):
     if inspect.iscoroutinefunction(method):
         return await method(*args, **kwargs)
-    result = await asyncio.to_thread(method, *args, **kwargs)
+    result = await run_graph(method, *args, **kwargs)
     if inspect.isawaitable(result):
         return await result
     return result

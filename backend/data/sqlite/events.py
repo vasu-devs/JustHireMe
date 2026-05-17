@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from data.sqlite.connection import DEFAULT_DB_PATH, connect
+from data.sqlite.connection import DEFAULT_DB_PATH, get_connection
 
 
 def record_event(job_id: str | None, action: str, db_path: str = DEFAULT_DB_PATH) -> None:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         conn.execute(
             "INSERT INTO events(job_id,action) VALUES(?,?)",
@@ -16,7 +16,7 @@ def record_event(job_id: str | None, action: str, db_path: str = DEFAULT_DB_PATH
 
 
 def get_events(limit: int = 50, job_id: str | None = None, db_path: str = DEFAULT_DB_PATH) -> list[dict]:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         if job_id:
             rows = conn.execute(
@@ -30,4 +30,4 @@ def get_events(limit: int = 50, job_id: str | None = None, db_path: str = DEFAUL
             ).fetchall()
     finally:
         conn.close()
-    return [{"job_id": row[0], "action": row[1], "ts": row[2]} for row in rows]
+    return [{"job_id": row["job_id"], "action": row["action"], "ts": row["ts"]} for row in rows]

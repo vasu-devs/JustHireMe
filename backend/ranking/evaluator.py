@@ -13,6 +13,7 @@ from typing import List
 
 from pydantic import BaseModel, Field
 from core.logging import get_logger
+from core.telemetry import record_error
 
 from ranking.scoring_engine import (
     build_proof_text,
@@ -313,10 +314,16 @@ def score(jd: str, candidate_data: dict, settings: dict | None = None) -> dict:
     """
     baseline = score_job_lead(jd, candidate_data).as_dict()
     if not _evaluator_llm_requested(settings):
+        baseline["scored_by"] = "deterministic"
         return baseline
     try:
-        return _score_with_llm(jd, candidate_data, baseline)
-    except Exception:
+        result = _score_with_llm(jd, candidate_data, baseline)
+        result["scored_by"] = "llm"
+        return result
+    except Exception as exc:
+        _log.warning("LLM evaluator failed, using deterministic fallback: %s", exc)
+        record_error("llm_evaluator_failed", str(exc), "ranking.evaluator")
+        baseline["scored_by"] = "deterministic_fallback"
         return baseline
 
 

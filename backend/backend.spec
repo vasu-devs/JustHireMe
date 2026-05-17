@@ -51,9 +51,8 @@ hidden = [
     "gateway", "gateway.clients", "gateway.supervisor",
     "services", "services.apps", "services.auth",
     "graph_service", "graph_service.stats", "graph_service.helpers",
-    "db.client",
     "llm", "logger",
-] + collect_submodules("contracts") + collect_submodules("gateway") + collect_submodules("services") + collect_submodules("graph_service")
+] + collect_submodules("contracts") + collect_submodules("data") + collect_submodules("gateway") + collect_submodules("services") + collect_submodules("graph_service")
 
 if include_graph:
     hidden += ["kuzu"]

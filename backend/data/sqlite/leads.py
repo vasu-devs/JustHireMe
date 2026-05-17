@@ -4,7 +4,11 @@ import json
 import html
 import re
 
-from data.sqlite.connection import DEFAULT_DB_PATH, connect
+from data.sqlite.connection import DEFAULT_DB_PATH, get_connection
+
+# Compatibility for older tests and integrations that monkeypatch this module's
+# connection factory. Runtime code uses get_connection directly.
+connect = get_connection
 
 
 LEAD_SELECT_COLUMNS = (
@@ -15,6 +19,17 @@ LEAD_SELECT_COLUMNS = (
     "fit_bullets,followup_sequence,proof_snippet,tech_stack,location,urgency,"
     "base_signal_score,learning_delta,learning_reason,created_at,resume_version"
 )
+LEAD_COLUMN_NAMES = tuple(part.strip() for part in LEAD_SELECT_COLUMNS.split(","))
+
+
+def row_get(row, key: str, default=None):
+    try:
+        return row[key]
+    except Exception:
+        try:
+            return row[LEAD_COLUMN_NAMES.index(key)]
+        except Exception:
+            return default
 
 
 def json_list(value: str | list) -> list:
@@ -57,52 +72,53 @@ def json_dumps_list(items: list | str | None) -> str:
 
 
 def lead_row_dict(row) -> dict:
-    source_meta = json_dict(row[21] or "{}")
+    source_meta = json_dict(row_get(row, "source_meta") or "{}")
+    asset_path = row_get(row, "asset_path") or ""
     return {
-        "job_id": row[0], "title": row[1], "company": row[2], "url": row[3],
-        "platform": row[4], "status": row[5], "score": row[6] or 0,
-        "reason": row[7] or "",
-        "match_points": json_list(row[8] or "[]"),
-        "asset": row[9] or "",
-        "description": row[10] or "",
-        "gaps": json_list(row[11] or "[]"),
-        "resume_asset": row[9] or "",
-        "cover_letter_asset": row[12] or "",
-        "selected_projects": json_list(row[13] or "[]"),
-        "kind": row[14] or "job",
-        "budget": row[15] or "",
-        "signal_score": row[16] or 0,
-        "signal_reason": row[17] or "",
-        "signal_tags": json_list(row[18] or "[]"),
-        "outreach_reply": row[19] or "",
-        "outreach_dm": row[20] or "",
+        "job_id": row_get(row, "job_id"), "title": row_get(row, "title"), "company": row_get(row, "company"), "url": row_get(row, "url"),
+        "platform": row_get(row, "platform"), "status": row_get(row, "status"), "score": row_get(row, "score") or 0,
+        "reason": row_get(row, "reason") or "",
+        "match_points": json_list(row_get(row, "match_points") or "[]"),
+        "asset": asset_path,
+        "description": row_get(row, "description") or "",
+        "gaps": json_list(row_get(row, "gaps") or "[]"),
+        "resume_asset": asset_path,
+        "cover_letter_asset": row_get(row, "cover_letter_path") or "",
+        "selected_projects": json_list(row_get(row, "selected_projects") or "[]"),
+        "kind": row_get(row, "kind") or "job",
+        "budget": row_get(row, "budget") or "",
+        "signal_score": row_get(row, "signal_score") or 0,
+        "signal_reason": row_get(row, "signal_reason") or "",
+        "signal_tags": json_list(row_get(row, "signal_tags") or "[]"),
+        "outreach_reply": row_get(row, "outreach_reply") or "",
+        "outreach_dm": row_get(row, "outreach_dm") or "",
         "source_meta": source_meta,
         "lead_quality_score": source_meta.get("lead_quality_score") or 0,
         "lead_quality_reason": source_meta.get("lead_quality_reason") or "",
         "keyword_coverage": source_meta.get("keyword_coverage") or {},
         "contact_lookup": source_meta.get("contact_lookup") or {},
-        "feedback": row[22] or "",
-        "feedback_note": row[23] or "",
-        "followup_due_at": row[24] or "",
-        "last_contacted_at": row[25] or "",
-        "outreach_email": row[26] or "",
-        "proposal_draft": row[27] or "",
-        "fit_bullets": json_list(row[28] or "[]"),
-        "followup_sequence": json_list(row[29] or "[]"),
-        "proof_snippet": row[30] or "",
-        "tech_stack": json_list(row[31] or "[]"),
-        "location": row[32] or "",
-        "urgency": row[33] or "",
-        "base_signal_score": row[34] or 0,
-        "learning_delta": row[35] or 0,
-        "learning_reason": row[36] or "",
-        "created_at": row[37] or "",
-        "resume_version": row[38] or 0,
+        "feedback": row_get(row, "feedback") or "",
+        "feedback_note": row_get(row, "feedback_note") or "",
+        "followup_due_at": row_get(row, "followup_due_at") or "",
+        "last_contacted_at": row_get(row, "last_contacted_at") or "",
+        "outreach_email": row_get(row, "outreach_email") or "",
+        "proposal_draft": row_get(row, "proposal_draft") or "",
+        "fit_bullets": json_list(row_get(row, "fit_bullets") or "[]"),
+        "followup_sequence": json_list(row_get(row, "followup_sequence") or "[]"),
+        "proof_snippet": row_get(row, "proof_snippet") or "",
+        "tech_stack": json_list(row_get(row, "tech_stack") or "[]"),
+        "location": row_get(row, "location") or "",
+        "urgency": row_get(row, "urgency") or "",
+        "base_signal_score": row_get(row, "base_signal_score") or 0,
+        "learning_delta": row_get(row, "learning_delta") or 0,
+        "learning_reason": row_get(row, "learning_reason") or "",
+        "created_at": row_get(row, "created_at") or "",
+        "resume_version": row_get(row, "resume_version") or 0,
     }
 
 
 def url_exists(job_id: str, db_path: str = DEFAULT_DB_PATH) -> bool:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         row = conn.execute("SELECT 1 FROM leads WHERE job_id=?", (job_id,)).fetchone()
     finally:
@@ -111,7 +127,7 @@ def url_exists(job_id: str, db_path: str = DEFAULT_DB_PATH) -> bool:
 
 
 def save_lead(lead: dict, db_path: str = DEFAULT_DB_PATH) -> None:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         conn.execute(
             """
@@ -157,7 +173,7 @@ def save_lead(lead: dict, db_path: str = DEFAULT_DB_PATH) -> None:
 
 
 def get_all_leads(db_path: str = DEFAULT_DB_PATH) -> list:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         rows = conn.execute(
             f"SELECT {LEAD_SELECT_COLUMNS} FROM leads ORDER BY created_at DESC"
@@ -168,7 +184,7 @@ def get_all_leads(db_path: str = DEFAULT_DB_PATH) -> list:
 
 
 def get_feedback_training_examples(limit: int = 300, db_path: str = DEFAULT_DB_PATH) -> list[dict]:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         rows = conn.execute(
             """
@@ -185,25 +201,25 @@ def get_feedback_training_examples(limit: int = 300, db_path: str = DEFAULT_DB_P
         conn.close()
     return [
         {
-            "feedback": row[0] or "",
-            "platform": row[1] or "",
-            "company": row[2] or "",
-            "kind": row[3] or "job",
-            "signal_tags": json_list(row[4] or "[]"),
-            "tech_stack": json_list(row[5] or "[]"),
-            "source_meta": json_dict(row[6] or "{}"),
-            "location": row[7] or "",
-            "urgency": row[8] or "",
-            "budget": row[9] or "",
-            "title": row[10] or "",
-            "description": row[11] or "",
+            "feedback": row["feedback"] or "",
+            "platform": row["platform"] or "",
+            "company": row["company"] or "",
+            "kind": row["kind"] or "job",
+            "signal_tags": json_list(row["signal_tags"] or "[]"),
+            "tech_stack": json_list(row["tech_stack"] or "[]"),
+            "source_meta": json_dict(row["source_meta"] or "{}"),
+            "location": row["location"] or "",
+            "urgency": row["urgency"] or "",
+            "budget": row["budget"] or "",
+            "title": row["title"] or "",
+            "description": row["description"] or "",
         }
         for row in rows
     ]
 
 
 def get_leads_for_learning(limit: int = 500, db_path: str = DEFAULT_DB_PATH) -> list[dict]:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         rows = conn.execute(
             f"""
@@ -221,7 +237,7 @@ def get_leads_for_learning(limit: int = 500, db_path: str = DEFAULT_DB_PATH) -> 
 
 
 def update_learning_score(job_id: str, ranked: dict, base_signal_score: int, db_path: str = DEFAULT_DB_PATH) -> None:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         conn.execute(
             """
@@ -329,7 +345,7 @@ def lead_cleanup_reasons(lead: dict) -> list[str]:
 
 def cleanup_bad_leads(limit: int = 1000, dry_run: bool = False, db_path: str = DEFAULT_DB_PATH) -> dict:
     limit = max(1, min(int(limit or 1000), 5000))
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         rows = conn.execute(
             f"""
@@ -385,13 +401,17 @@ def update_lead_score(
     match_points: list | None = None,
     gaps: list | None = None,
     preserve_status: bool = False,
+    scored_by: str = "",
     db_path: str = DEFAULT_DB_PATH,
 ) -> None:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
-        row = conn.execute("SELECT kind,status FROM leads WHERE job_id=?", (job_id,)).fetchone()
-        kind = row[0] if row else "job"
-        current_status = row[1] if row and row[1] else "discovered"
+        row = conn.execute("SELECT kind,status,source_meta FROM leads WHERE job_id=?", (job_id,)).fetchone()
+        kind = row["kind"] if row else "job"
+        current_status = row["status"] if row and row["status"] else "discovered"
+        source_meta = json_dict(row["source_meta"] if row else "{}")
+        if scored_by:
+            source_meta["scored_by"] = scored_by
 
         if preserve_status:
             status = current_status
@@ -402,13 +422,13 @@ def update_lead_score(
 
         if preserve_status:
             conn.execute(
-                "UPDATE leads SET score=?, reason=?, match_points=?, gaps=? WHERE job_id=?",
-                (score, reason[:500], json_dumps_list(match_points), json_dumps_list(gaps), job_id),
+                "UPDATE leads SET score=?, reason=?, match_points=?, gaps=?, source_meta=? WHERE job_id=?",
+                (score, reason[:500], json_dumps_list(match_points), json_dumps_list(gaps), json.dumps(source_meta, ensure_ascii=False), job_id),
             )
         else:
             conn.execute(
-                "UPDATE leads SET status=?, score=?, reason=?, match_points=?, gaps=? WHERE job_id=?",
-                (status, score, reason[:500], json_dumps_list(match_points), json_dumps_list(gaps), job_id),
+                "UPDATE leads SET status=?, score=?, reason=?, match_points=?, gaps=?, source_meta=? WHERE job_id=?",
+                (status, score, reason[:500], json_dumps_list(match_points), json_dumps_list(gaps), json.dumps(source_meta, ensure_ascii=False), job_id),
             )
         conn.execute(
             "INSERT INTO events(job_id,action) VALUES(?,?)",
@@ -427,7 +447,7 @@ def update_lead_status(job_id: str, status: str, db_path: str = DEFAULT_DB_PATH)
     }
     if status not in valid:
         raise ValueError(f"Invalid status: {status}")
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         cur = conn.execute("UPDATE leads SET status=? WHERE job_id=?", (status, job_id))
         if getattr(cur, "rowcount", 0) == 0:
@@ -442,7 +462,7 @@ def update_lead_status(job_id: str, status: str, db_path: str = DEFAULT_DB_PATH)
 
 
 def save_asset_path(job_id: str, path: str, db_path: str = DEFAULT_DB_PATH) -> None:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         conn.execute(
             "UPDATE leads SET status='approved', asset_path=? WHERE job_id=?",
@@ -465,10 +485,10 @@ def save_asset_package(
     keyword_coverage: dict | None = None,
     db_path: str = DEFAULT_DB_PATH,
 ) -> None:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         meta_row = conn.execute("SELECT source_meta FROM leads WHERE job_id=?", (job_id,)).fetchone()
-        source_meta = json_dict(meta_row[0] if meta_row else "{}")
+        source_meta = json_dict(meta_row["source_meta"] if meta_row else "{}")
         if keyword_coverage:
             source_meta["keyword_coverage"] = keyword_coverage
         conn.execute(
@@ -491,12 +511,12 @@ def save_asset_package(
 
 
 def get_resume_version(job_id: str, db_path: str = DEFAULT_DB_PATH) -> int:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         row = conn.execute("SELECT resume_version FROM leads WHERE job_id = ?", (job_id,)).fetchone()
     finally:
         conn.close()
-    return int(row[0] or 0) if row else 0
+    return int(row["resume_version"] or 0) if row else 0
 
 
 def save_generated_asset_version(
@@ -506,7 +526,7 @@ def save_generated_asset_version(
     resume_version: int,
     db_path: str = DEFAULT_DB_PATH,
 ) -> None:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         conn.execute(
             """
@@ -522,10 +542,10 @@ def save_generated_asset_version(
 
 
 def save_contact_lookup(job_id: str, contact_lookup: dict | None, db_path: str = DEFAULT_DB_PATH) -> None:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         row = conn.execute("SELECT source_meta FROM leads WHERE job_id=?", (job_id,)).fetchone()
-        source_meta = json_dict(row[0] if row else "{}")
+        source_meta = json_dict(row["source_meta"] if row else "{}")
         source_meta["contact_lookup"] = contact_lookup or {"status": "empty", "contacts": []}
         conn.execute(
             "UPDATE leads SET source_meta=? WHERE job_id=?",
@@ -545,7 +565,7 @@ def update_outreach_fields(job_id: str, fields: dict[str, str], db_path: str = D
     payload = {key: str(value or "") for key, value in fields.items() if key in allowed}
     if not payload:
         return
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         sets = ", ".join(f"{key}=?" for key in payload)
         vals = list(payload.values()) + [job_id]
@@ -556,7 +576,7 @@ def update_outreach_fields(job_id: str, fields: dict[str, str], db_path: str = D
 
 
 def mark_applied(job_id: str, db_path: str = DEFAULT_DB_PATH) -> None:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         conn.execute("UPDATE leads SET status='applied' WHERE job_id=?", (job_id,))
         conn.execute(
@@ -585,14 +605,14 @@ def save_lead_feedback(
     if feedback not in valid:
         raise ValueError(f"Invalid feedback: {feedback}")
 
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         row = conn.execute("SELECT kind,status FROM leads WHERE job_id=?", (job_id,)).fetchone()
         if not row:
             return {}
 
-        kind = row[0] or "job"
-        status = row[1] or "discovered"
+        kind = row["kind"] or "job"
+        status = row["status"] or "discovered"
         new_status = status
         if feedback in {
             "trash", "too_generic", "not_ai", "not_freelance",
@@ -622,7 +642,7 @@ def update_lead_followup(
     followup_due_at: str,
     db_path: str = DEFAULT_DB_PATH,
 ) -> dict:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         row = conn.execute("SELECT 1 FROM leads WHERE job_id=?", (job_id,)).fetchone()
         if not row:
@@ -642,7 +662,7 @@ def update_lead_followup(
 
 
 def get_all_freelance_leads(db_path: str = DEFAULT_DB_PATH) -> list:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         rows = conn.execute(
             f"SELECT {LEAD_SELECT_COLUMNS} FROM leads WHERE kind='freelance' ORDER BY created_at DESC"
@@ -653,7 +673,7 @@ def get_all_freelance_leads(db_path: str = DEFAULT_DB_PATH) -> list:
 
 
 def get_job_leads_for_evaluation(db_path: str = DEFAULT_DB_PATH) -> list:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         rows = conn.execute(
             f"""
@@ -669,7 +689,7 @@ def get_job_leads_for_evaluation(db_path: str = DEFAULT_DB_PATH) -> list:
 
 
 def get_lead_by_id(job_id: str, db_path: str = DEFAULT_DB_PATH) -> dict:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         row = conn.execute(
             f"SELECT {LEAD_SELECT_COLUMNS} FROM leads WHERE job_id=?",
@@ -684,12 +704,12 @@ def get_lead_by_id(job_id: str, db_path: str = DEFAULT_DB_PATH) -> dict:
     if not row:
         return {}
     lead = lead_row_dict(row)
-    lead["events"] = [{"action": event[0], "ts": event[1]} for event in events]
+    lead["events"] = [{"action": event["action"], "ts": event["ts"]} for event in events]
     return lead
 
 
 def get_lead_for_fire_base(job_id: str, db_path: str = DEFAULT_DB_PATH) -> tuple[dict, str]:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         row = conn.execute(
             "SELECT job_id,title,company,url,platform,status,score,reason,match_points,asset_path,description,gaps,cover_letter_path,selected_projects,kind,budget FROM leads WHERE job_id=?",
@@ -700,23 +720,23 @@ def get_lead_for_fire_base(job_id: str, db_path: str = DEFAULT_DB_PATH) -> tuple
     if not row:
         return {}, ""
 
-    path = row[9] or ""
-    cover_path = row[12] or ""
+    path = row["asset_path"] or ""
+    cover_path = row["cover_letter_path"] or ""
     lead = {
-        "job_id": row[0], "title": row[1], "company": row[2], "url": row[3],
-        "platform": row[4], "status": row[5], "score": row[6] or 0,
-        "reason": row[7] or "",
-        "match_points": json_list(row[8] or "[]"),
+        "job_id": row["job_id"], "title": row["title"], "company": row["company"], "url": row["url"],
+        "platform": row["platform"], "status": row["status"], "score": row["score"] or 0,
+        "reason": row["reason"] or "",
+        "match_points": json_list(row["match_points"] or "[]"),
         "asset": path,
         "resume_asset": path,
         "asset_path": path,
-        "description": row[10] or "",
-        "gaps": json_list(row[11] or "[]"),
+        "description": row["description"] or "",
+        "gaps": json_list(row["gaps"] or "[]"),
         "cover_letter_asset": cover_path,
         "cover_letter_path": cover_path,
-        "selected_projects": json_list(row[13] or "[]"),
-        "kind": row[14] or "job",
-        "budget": row[15] or "",
+        "selected_projects": json_list(row["selected_projects"] or "[]"),
+        "kind": row["kind"] or "job",
+        "budget": row["budget"] or "",
     }
     return lead, path
 
@@ -726,7 +746,7 @@ def get_lead_for_fire(job_id: str, db_path: str = DEFAULT_DB_PATH) -> tuple[dict
 
 
 def delete_lead(job_id: str, db_path: str = DEFAULT_DB_PATH) -> None:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         cur = conn.execute("DELETE FROM leads WHERE job_id=?", (job_id,))
         if getattr(cur, "rowcount", 0) == 0:
@@ -738,7 +758,7 @@ def delete_lead(job_id: str, db_path: str = DEFAULT_DB_PATH) -> None:
 
 
 def get_due_followups(limit: int = 25, now: str = "", db_path: str = DEFAULT_DB_PATH) -> list:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         rows = conn.execute(
             f"""
@@ -756,7 +776,7 @@ def get_due_followups(limit: int = 25, now: str = "", db_path: str = DEFAULT_DB_
 
 
 def get_discovered_leads(db_path: str = DEFAULT_DB_PATH) -> list:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         rows = conn.execute(
             "SELECT job_id,title,company,url,platform,description FROM leads WHERE status='discovered' AND COALESCE(NULLIF(kind, ''), 'job')='job'"
@@ -764,13 +784,20 @@ def get_discovered_leads(db_path: str = DEFAULT_DB_PATH) -> list:
     finally:
         conn.close()
     return [
-        {"job_id": row[0], "title": row[1], "company": row[2], "url": row[3], "platform": row[4], "description": row[5] or ""}
+        {
+            "job_id": row["job_id"],
+            "title": row["title"],
+            "company": row["company"],
+            "url": row["url"],
+            "platform": row["platform"],
+            "description": row["description"] or "",
+        }
         for row in rows
     ]
 
 
 def get_discovered_freelance_leads(db_path: str = DEFAULT_DB_PATH) -> list:
-    conn = connect(db_path)
+    conn = get_connection(db_path)
     try:
         rows = conn.execute(
             "SELECT job_id,title,company,url,platform,description,budget FROM leads WHERE status='discovered' AND kind='freelance'"
@@ -779,13 +806,13 @@ def get_discovered_freelance_leads(db_path: str = DEFAULT_DB_PATH) -> list:
         conn.close()
     return [
         {
-            "job_id": row[0],
-            "title": row[1],
-            "company": row[2],
-            "url": row[3],
-            "platform": row[4],
-            "description": row[5] or "",
-            "budget": row[6] or "",
+            "job_id": row["job_id"],
+            "title": row["title"],
+            "company": row["company"],
+            "url": row["url"],
+            "platform": row["platform"],
+            "description": row["description"] or "",
+            "budget": row["budget"] or "",
         }
         for row in rows
     ]

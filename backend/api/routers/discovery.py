@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 
 from api.dependencies import get_discovery_service, get_job_runner, get_ranking_service, get_repository
 from api.rate_limit import RateLimiter, require_rate_limit
+from core.logging import get_logger
+from core.telemetry import record_error
 from data.repository import Repository
 from gateway.discovery_config import (
     free_sources_enabled,
@@ -20,15 +22,67 @@ from gateway.discovery_config import (
 )
 
 
-SCAN_STOP = asyncio.Event()
-REEVALUATE_STOP = asyncio.Event()
-SCAN_TASK: asyncio.Task | None = None
-REEVALUATE_TASK: asyncio.Task | None = None
-_scan_lock = asyncio.Lock()
-_reevaluate_lock = asyncio.Lock()
 _scan_limiter = RateLimiter(3, 60)
+_log = get_logger(__name__)
 
 REEVALUATION_STATUS_LOCKS = {"approved", "applied", "interviewing", "rejected", "accepted", "discarded"}
+
+
+class TaskRegistry:
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._tasks: dict[str, asyncio.Task] = {}
+        self._stops: dict[str, asyncio.Event] = {}
+
+    async def start(self, name: str, coro_factory, *, mutex_with: list[str] | None = None) -> bool:
+        async with self._lock:
+            for check_name in [name, *(mutex_with or [])]:
+                task = self._tasks.get(check_name)
+                if task and not task.done():
+                    return False
+
+            stop = asyncio.Event()
+            self._stops[name] = stop
+
+            async def _wrapper() -> None:
+                try:
+                    await coro_factory(stop)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    _log.error("background task %s failed: %s", name, exc)
+                finally:
+                    async with self._lock:
+                        if self._tasks.get(name) is task:
+                            self._tasks.pop(name, None)
+                            self._stops.pop(name, None)
+
+            task = asyncio.create_task(_wrapper())
+            self._tasks[name] = task
+            return True
+
+    async def stop(self, name: str) -> bool:
+        async with self._lock:
+            task = self._tasks.get(name)
+            stop = self._stops.get(name)
+            if not task or task.done() or stop is None:
+                return False
+            stop.set()
+            return True
+
+    async def is_running(self, name: str) -> bool:
+        async with self._lock:
+            task = self._tasks.get(name)
+            return bool(task and not task.done())
+
+    async def status(self) -> dict[str, bool]:
+        return {
+            "scanning": await self.is_running("scan"),
+            "reevaluating": await self.is_running("reevaluate"),
+        }
+
+
+TASKS = TaskRegistry()
 
 
 def _merge_scan_usage(total: dict, incoming: dict, target_count: int) -> None:
@@ -122,6 +176,7 @@ async def run_free_source_scan(
         ),
     })
     for msg in result.errors[:4]:
+        record_error("free_source_fetch_failed", msg, "api.discovery")
         await manager.broadcast({"type": "agent", "event": "free_source_error", "msg": f"Free source detail: {msg}"})
     for lead in leads:
         await manager.broadcast({"type": "LEAD_UPDATED", "data": lead})
@@ -134,10 +189,12 @@ async def run_scan(
     repo: Repository | None = None,
     discovery_service=None,
     ranking_service=None,
+    stop_event: asyncio.Event | None = None,
 ) -> None:
     repo = repo or get_repository()
     discovery_service = discovery_service or get_discovery_service()
     ranking_service = ranking_service or get_ranking_service()
+    stop_event = stop_event or asyncio.Event()
     job_store = get_job_runner()
     job = job_store.create("scan", {})
     job_store.update(job.job_id, status="running", progress=5)
@@ -171,7 +228,7 @@ async def run_scan(
     batch_size = int_cfg(cfg, "board_scan_batch_size", 4, 1, 12)
     batches = _target_batches(urls, batch_size)
     for batch_index, batch in enumerate(batches, start=1):
-        if SCAN_STOP.is_set():
+        if stop_event.is_set():
             break
         try:
             scout_result = await discovery_service.scan_job_boards(batch, cfg)
@@ -183,6 +240,7 @@ async def run_scan(
             scout_usage["errors"] += len(batch)
             detail = str(exc).strip() or type(exc).__name__
             scout_errors.append(f"board batch {batch_index}/{len(batches)} skipped ({len(batch)} targets): {detail}")
+            record_error("source_fetch_failed", detail, "api.discovery")
 
     await manager.broadcast({
         "type": "agent",
@@ -194,17 +252,19 @@ async def run_scan(
         ),
     })
     for msg in scout_errors[:5]:
+        record_error("source_fetch_failed", msg, "api.discovery")
         await manager.broadcast({"type": "agent", "event": "scout_source_detail", "msg": f"Scout source detail: {msg}"})
 
-    if SCAN_STOP.is_set():
+    if stop_event.is_set():
         await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Scan stopped after scouting."})
         return
 
     discovered = await asyncio.to_thread(repo.leads.get_discovered_leads)
     await manager.broadcast({"type": "agent", "event": "eval_start", "msg": f"Evaluating {len(discovered)} leads via {cfg.get('llm_provider', 'ollama')}"})
 
+    fallback_count = 0
     for lead in discovered:
-        if SCAN_STOP.is_set():
+        if stop_event.is_set():
             await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Scan stopped during evaluation."})
             return
         try:
@@ -213,12 +273,21 @@ async def run_scan(
                 repo.leads.update_lead_score,
                 lead["job_id"], result["score"], result["reason"],
                 result.get("match_points", []), result.get("gaps", []),
+                False, result.get("scored_by", ""),
             )
+            if result.get("scored_by") == "deterministic_fallback":
+                fallback_count += 1
             await manager.broadcast({"type": "LEAD_UPDATED", "data": {**lead, **result}})
             await manager.broadcast({"type": "agent", "event": "eval_scored", "msg": f"Scored {lead.get('title','')} = {result['score']}/100"})
         except Exception as exc:
             await manager.broadcast({"type": "agent", "event": "eval_error", "msg": f"Eval failed for {lead.get('title','')}: {exc}"})
 
+    if fallback_count > 0:
+        await manager.broadcast({
+            "type": "agent",
+            "event": "eval_fallback_summary",
+            "msg": f"{fallback_count}/{len(discovered)} leads scored by fallback (LLM unavailable)",
+        })
     await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Evaluation cycle complete"})
     await asyncio.to_thread(repo.settings.save_settings, {"last_scan_finished_at": datetime.now(timezone.utc).isoformat()})
     job_store.update(job.job_id, status="succeeded", progress=100)
@@ -231,20 +300,19 @@ async def run_scan_task(
     repo: Repository | None = None,
     discovery_service=None,
     ranking_service=None,
+    stop_event: asyncio.Event | None = None,
 ) -> None:
-    global SCAN_TASK
     try:
         await run_scan(
             manager,
             repo=repo,
             discovery_service=discovery_service,
             ranking_service=ranking_service,
+            stop_event=stop_event,
         )
     except Exception as exc:
         logger.error("scan failed: %s", exc)
         await manager.broadcast({"type": "agent", "event": "eval_done", "msg": f"Scan failed: {exc}"})
-    finally:
-        SCAN_TASK = None
 
 
 async def run_reevaluate_jobs(
@@ -252,9 +320,11 @@ async def run_reevaluate_jobs(
     *,
     repo: Repository | None = None,
     ranking_service=None,
+    stop_event: asyncio.Event | None = None,
 ) -> None:
     repo = repo or get_repository()
     ranking_service = ranking_service or get_ranking_service()
+    stop_event = stop_event or asyncio.Event()
     job_store = get_job_runner()
     job = job_store.create("reevaluate", {})
     job_store.update(job.job_id, status="running", progress=5)
@@ -264,6 +334,7 @@ async def run_reevaluate_jobs(
     total = len(jobs)
     scored = 0
     failed = 0
+    fallback_count = 0
 
     await manager.broadcast({
         "type": "agent",
@@ -272,7 +343,7 @@ async def run_reevaluate_jobs(
     })
 
     for index, lead in enumerate(jobs, start=1):
-        if REEVALUATE_STOP.is_set():
+        if stop_event.is_set():
             await manager.broadcast({
                 "type": "agent",
                 "event": "reeval_done",
@@ -287,8 +358,10 @@ async def run_reevaluate_jobs(
                 repo.leads.update_lead_score,
                 lead["job_id"], result["score"], result["reason"],
                 result.get("match_points", []), result.get("gaps", []),
-                preserve_status,
+                preserve_status, result.get("scored_by", ""),
             )
+            if result.get("scored_by") == "deterministic_fallback":
+                fallback_count += 1
             saved = await asyncio.to_thread(repo.leads.get_lead_by_id, lead["job_id"])
             await manager.broadcast({"type": "LEAD_UPDATED", "data": saved or {**lead, **result}})
             scored += 1
@@ -308,6 +381,8 @@ async def run_reevaluate_jobs(
     summary = f"Re-evaluation complete - {scored}/{total} jobs scored"
     if failed:
         summary += f", {failed} failed"
+    if fallback_count:
+        summary += f", {fallback_count} fallback"
     await manager.broadcast({"type": "agent", "event": "reeval_done", "msg": summary})
     job_store.update(job.job_id, status="succeeded", progress=100, result={"scored": scored, "failed": failed, "total": total})
 
@@ -318,15 +393,13 @@ async def run_reevaluate_jobs_task(
     *,
     repo: Repository | None = None,
     ranking_service=None,
+    stop_event: asyncio.Event | None = None,
 ) -> None:
-    global REEVALUATE_TASK
     try:
-        await run_reevaluate_jobs(manager, repo=repo, ranking_service=ranking_service)
+        await run_reevaluate_jobs(manager, repo=repo, ranking_service=ranking_service, stop_event=stop_event)
     except Exception as exc:
         logger.error("reevaluate failed: %s", exc)
         await manager.broadcast({"type": "agent", "event": "reeval_done", "msg": f"Re-evaluation failed: {exc}"})
-    finally:
-        REEVALUATE_TASK = None
 
 
 def create_router(
@@ -342,32 +415,34 @@ def create_router(
         discovery_service=Depends(get_discovery_service),
         ranking_service=Depends(get_ranking_service),
     ):
-        global SCAN_TASK
         require_rate_limit(_scan_limiter)
-        async with _scan_lock:
-            if SCAN_TASK and not SCAN_TASK.done():
-                raise HTTPException(status_code=409, detail="Scan already running")
-            if REEVALUATE_TASK and not REEVALUATE_TASK.done():
-                raise HTTPException(status_code=409, detail="Re-evaluation already running")
-            SCAN_STOP.clear()
-            SCAN_TASK = asyncio.create_task(
-                run_scan_task(
-                    manager,
-                    logger,
-                    repo=repo,
-                    discovery_service=discovery_service,
-                    ranking_service=ranking_service,
-                )
-            )
+        started = await TASKS.start(
+            "scan",
+            lambda stop: run_scan_task(
+                manager,
+                logger,
+                repo=repo,
+                discovery_service=discovery_service,
+                ranking_service=ranking_service,
+                stop_event=stop,
+            ),
+            mutex_with=["reevaluate"],
+        )
+        if not started:
+            status = await TASKS.status()
+            detail = "Re-evaluation already running" if status["reevaluating"] else "Scan already running"
+            raise HTTPException(status_code=409, detail=detail)
         return {"status": "scanning"}
+
+    @router.get("/status")
+    async def task_status():
+        return await TASKS.status()
 
     @router.post("/scan/stop")
     async def stop_scan():
-        async with _scan_lock:
-            if not SCAN_TASK or SCAN_TASK.done():
-                return {"status": "idle"}
-            SCAN_STOP.set()
-            await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Scan stopped by user."})
+        if not await TASKS.stop("scan"):
+            return {"status": "idle"}
+        await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Scan stopped by user."})
         return {"status": "stopping"}
 
     @router.post("/leads/reevaluate")
@@ -375,23 +450,28 @@ def create_router(
         repo: Repository = Depends(get_repository),
         ranking_service=Depends(get_ranking_service),
     ):
-        global REEVALUATE_TASK
-        async with _reevaluate_lock:
-            if REEVALUATE_TASK and not REEVALUATE_TASK.done():
-                raise HTTPException(status_code=409, detail="Re-evaluation already running")
-            if SCAN_TASK and not SCAN_TASK.done():
-                raise HTTPException(status_code=409, detail="Scan already running")
-            REEVALUATE_STOP.clear()
-            REEVALUATE_TASK = asyncio.create_task(run_reevaluate_jobs_task(manager, logger, repo=repo, ranking_service=ranking_service))
+        started = await TASKS.start(
+            "reevaluate",
+            lambda stop: run_reevaluate_jobs_task(
+                manager,
+                logger,
+                repo=repo,
+                ranking_service=ranking_service,
+                stop_event=stop,
+            ),
+            mutex_with=["scan"],
+        )
+        if not started:
+            status = await TASKS.status()
+            detail = "Scan already running" if status["scanning"] else "Re-evaluation already running"
+            raise HTTPException(status_code=409, detail=detail)
         return {"status": "reevaluating"}
 
     @router.post("/leads/reevaluate/stop")
     async def stop_reevaluate_jobs():
-        async with _reevaluate_lock:
-            if not REEVALUATE_TASK or REEVALUATE_TASK.done():
-                return {"status": "idle"}
-            REEVALUATE_STOP.set()
-            await manager.broadcast({"type": "agent", "event": "reeval_done", "msg": "Re-evaluation stopped by user."})
+        if not await TASKS.stop("reevaluate"):
+            return {"status": "idle"}
+        await manager.broadcast({"type": "agent", "event": "reeval_done", "msg": "Re-evaluation stopped by user."})
         return {"status": "stopping"}
 
     @router.post("/leads/cleanup")

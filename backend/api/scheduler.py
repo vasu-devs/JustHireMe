@@ -18,7 +18,7 @@ from gateway.discovery_config import (
     profile_for_discovery,
 )
 from api.startup_validation import log_startup_warnings
-from data.sqlite.connection import init_sql
+from data.sqlite.connection import close_all, init_sql
 
 
 def create_scheduler() -> AsyncIOScheduler:
@@ -182,6 +182,7 @@ def create_lifespan(scheduler: AsyncIOScheduler, ghost_tick, logger, service_sup
             scheduler.shutdown(wait=False)
             if service_supervisor is not None:
                 await service_supervisor.stop()
+            close_all()
         logger.info("FastAPI shutdown.")
 
     return lifespan

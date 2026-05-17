@@ -85,6 +85,15 @@ export interface LogLine {
   kind: "heartbeat" | "agent" | "system";
 }
 
+export interface OperationProgress {
+  active: boolean;
+  mode: "scan" | "reevaluate" | "cleanup" | null;
+  total: number;
+  completed: number;
+  current: string;
+  updatedAt: number;
+}
+
 export type ApiFetchOptions = RequestInit & {
   timeoutMs?: number;
 };

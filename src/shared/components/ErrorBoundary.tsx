@@ -2,9 +2,9 @@ import React from "react";
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode; label: string; api?: (path: string, opts?: RequestInit) => Promise<Response> },
-  { error: Error | null }
+  { error: Error | null; retryCount: number }
 > {
-  state = { error: null };
+  state = { error: null, retryCount: 0 };
 
   static getDerivedStateFromError(e: Error) {
     return { error: e };
@@ -34,14 +34,14 @@ class ErrorBoundary extends React.Component<
           <p style={{ margin: 0, fontSize: 14 }}>
             {this.props.label} failed to load.
           </p>
-          <button onClick={() => this.setState({ error: null })}
+          <button onClick={() => this.setState(prev => ({ error: null, retryCount: prev.retryCount + 1 }))}
             style={{ fontSize: 12 }}>
             Retry
           </button>
         </div>
       );
     }
-    return this.props.children;
+    return <React.Fragment key={this.state.retryCount}>{this.props.children}</React.Fragment>;
   }
 }
 

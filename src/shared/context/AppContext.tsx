@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import type { Lead, View } from "../../types";
 import { ONBOARDING_KEY } from "../lib/leadUtils";
 
@@ -25,7 +25,7 @@ export function useAppShellState() {
     setShowOnboarding(true);
   }, []);
 
-  return useMemo(() => ({
+  return {
     view,
     setView,
     sel,
@@ -50,9 +50,5 @@ export function useAppShellState() {
     focusApplyView,
     openSettings,
     openSetupGuide,
-  }), [
-    view, sel, showSettings, showOnboarding, applyDraft, applyAutoFocus,
-    scanning, reevaluating, cleaning, scanErr, closeDrawer, focusApplyView,
-    openSettings, openSetupGuide,
-  ]);
+  };
 }

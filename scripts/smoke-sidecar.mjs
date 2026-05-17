@@ -225,6 +225,37 @@ async function readHealth(port, token) {
   throw lastError || new Error("/health did not become available");
 }
 
+async function readApi(port, token, path) {
+  const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error(`${path} returned HTTP ${response.status}: ${await response.text()}`);
+  }
+  return response.json();
+}
+
+async function smokeCoreApi(port, token) {
+  const [settings, leads, profile, diagnostics] = await Promise.all([
+    readApi(port, token, "/api/v1/settings"),
+    readApi(port, token, "/api/v1/leads"),
+    readApi(port, token, "/api/v1/profile"),
+    readApi(port, token, "/api/v1/diagnostics"),
+  ]);
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    fail("/api/v1/settings must return an object");
+  }
+  if (!Array.isArray(leads)) {
+    fail("/api/v1/leads must return an array");
+  }
+  if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+    fail("/api/v1/profile must return an object");
+  }
+  if (!diagnostics || typeof diagnostics !== "object" || !Array.isArray(diagnostics.top_errors)) {
+    fail("/api/v1/diagnostics must return a diagnostics object");
+  }
+}
+
 function requireHealth(health) {
   const components = health.components || health.checks || {};
   const sqlite = components.sqlite?.status;
@@ -232,10 +263,10 @@ function requireHealth(health) {
   const vector = components.vector?.status;
 
   if (sqlite !== "ok") {
-    fail(`SQLite health must be ok, got ${sqlite || "(missing)"}`);
+    fail(`SQLite health must be ok, got ${sqlite || "(missing)"}: ${JSON.stringify(components.sqlite || {})}`);
   }
   if (graph !== "ok") {
-    fail(`Graph health must be ok, got ${graph || "(missing)"}`);
+    fail(`Graph health must be ok, got ${graph || "(missing)"}: ${JSON.stringify(components.graph || {})}`);
   }
   if (!["ok", "disabled"].includes(vector)) {
     fail(`Vector health must be ok or disabled, got ${vector || "(missing)"}`);
@@ -276,6 +307,7 @@ try {
   const handshake = await waitForHandshake(child, stdoutLines, stderrLines);
   const health = await readHealth(handshake.port, handshake.token);
   const summary = requireHealth(health);
+  await smokeCoreApi(handshake.port, handshake.token);
 
   console.log(`Sidecar smoke passed: ${sidecar}`);
   console.log(`- port: ${handshake.port}`);
@@ -283,10 +315,11 @@ try {
   console.log(`- sqlite: ${summary.sqlite}`);
   console.log(`- graph: ${summary.graph}`);
   console.log(`- vector: ${summary.vector}`);
+  console.log("- api: settings, leads, profile, diagnostics");
   passed = true;
 } finally {
   killProcessTree(child);
-  await sleep(500);
+  await sleep(2000);
   remove(appDataDir, { allowFailure: true });
   if (cleanupDir) {
     remove(cleanupDir, { allowFailure: true });

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 from pathlib import Path
 
 from core.logging import get_logger
@@ -21,6 +22,7 @@ def default_db_path() -> str:
 BASE_DIR = default_base_dir()
 DEFAULT_DB_PATH = default_db_path()
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
+_POOL_LOCK = threading.RLock()
 
 _LEGACY_LEAD_COLUMNS = [
     ("score", "INTEGER DEFAULT 0"),
@@ -64,19 +66,99 @@ def _resolve_db_path(db_path: str | None = None) -> str:
     return db_path
 
 
-def connect(db_path: str | None = None):
-    db_path = _resolve_db_path(db_path)
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    return conn
-
-
 def _ensure_parent(db_path: str) -> None:
     parent = os.path.dirname(db_path)
     if parent:
         Path(parent).mkdir(parents=True, exist_ok=True)
+
+
+def _configure_connection(conn) -> None:
+    row_factory = getattr(sqlite3, "Row", None)
+    if row_factory is not None:
+        conn.row_factory = row_factory
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+
+
+def _sqlite_connect(db_path: str, *, pooled: bool = False):
+    kwargs = {"check_same_thread": False}
+    if pooled and hasattr(sqlite3, "Connection"):
+        kwargs["factory"] = _PooledConnection
+    try:
+        return sqlite3.connect(db_path, **kwargs)
+    except TypeError:
+        return sqlite3.connect(db_path)
+
+
+class _PooledConnection(sqlite3.Connection if hasattr(sqlite3, "Connection") else object):
+    def close(self) -> None:  # type: ignore[override]
+        # Repository functions historically call close() in finally blocks.
+        # Pooled connections stay open until close_all() so those calls are no-ops.
+        return None
+
+    def close_for_pool(self) -> None:
+        super().close()
+
+
+def connect(db_path: str | None = None):
+    db_path = _resolve_db_path(db_path)
+    _ensure_parent(db_path)
+    conn = _sqlite_connect(db_path)
+    _configure_connection(conn)
+    return conn
+
+
+class ConnectionPool:
+    """One SQLite connection per thread and database path."""
+
+    def __init__(self) -> None:
+        self._local = threading.local()
+        self._connections: set[object] = set()
+
+    def get_connection(self, db_path: str | None = None):
+        resolved = _resolve_db_path(db_path)
+        _ensure_parent(resolved)
+        connections = getattr(self._local, "connections", None)
+        if connections is None:
+            connections = {}
+            self._local.connections = connections
+        conn = connections.get(resolved)
+        if conn is not None:
+            return conn
+        conn = _sqlite_connect(resolved, pooled=True)
+        _configure_connection(conn)
+        connections[resolved] = conn
+        with _POOL_LOCK:
+            self._connections.add(conn)
+        return conn
+
+    def close_all(self) -> None:
+        with _POOL_LOCK:
+            connections = list(self._connections)
+            self._connections.clear()
+        for conn in connections:
+            try:
+                close_for_pool = getattr(conn, "close_for_pool", None)
+                if callable(close_for_pool):
+                    close_for_pool()
+                else:
+                    conn.close()
+            except Exception as exc:
+                _log.debug("sqlite pooled connection close failed: %s", exc)
+        if hasattr(self._local, "connections"):
+            self._local.connections = {}
+
+
+_POOL = ConnectionPool()
+
+
+def get_connection(db_path: str | None = None):
+    return _POOL.get_connection(db_path)
+
+
+def close_all() -> None:
+    _POOL.close_all()
 
 
 def _migration_files() -> list[Path]:
@@ -140,7 +222,7 @@ def _run_migrations_inner(db_path: str | None = None) -> None:
             """
         )
         rows = conn.execute("SELECT name FROM schema_migrations").fetchall()
-        applied = {row[0] for row in rows}
+        applied = {row["name"] if hasattr(row, "keys") else tuple(row)[0] for row in rows}
 
         for path in _migration_files():
             if path.name in applied:
@@ -186,6 +268,16 @@ def _ensure_core_tables(conn) -> None:
         CREATE TABLE IF NOT EXISTS settings(
             key TEXT PRIMARY KEY,
             val TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS error_log(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            error_type TEXT NOT NULL,
+            error_message TEXT,
+            source TEXT,
+            count INTEGER DEFAULT 1,
+            first_seen TEXT DEFAULT (datetime('now')),
+            last_seen TEXT DEFAULT (datetime('now'))
         );
         """
     )

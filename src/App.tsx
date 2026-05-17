@@ -37,7 +37,7 @@ const PIPELINE_VIEW_TO_TAB: Partial<Record<View, PipelineTab>> = {
 };
 
 export default function App() {
-  const { conn, port, apiToken, sidecarError, logs, addLog: wsAddLog } = useWS();
+  const { conn, port, apiToken, sidecarError, logs, addLog: wsAddLog, progress } = useWS();
   const api = useMemo<ApiFetch | null>(() => {
     if (!port || !apiToken) return null;
     return createApiFetch(port, apiToken);
@@ -65,6 +65,27 @@ export default function App() {
     window.addEventListener("scan-done", h);
     return () => window.removeEventListener("scan-done", h);
   }, []);
+
+  useEffect(() => {
+    const h = (event: Event) => {
+      const detail = (event as CustomEvent<{ scanning?: boolean; reevaluating?: boolean }>).detail || {};
+      setScanning(Boolean(detail.scanning));
+      setReevaluating(Boolean(detail.reevaluating));
+    };
+    window.addEventListener("backend-status", h);
+    return () => window.removeEventListener("backend-status", h);
+  }, []);
+
+  useEffect(() => {
+    if (!scanning) return;
+    const timer = window.setTimeout(() => {
+      setScanning(false);
+      const msg = "Scan indicator cleared after 15 minutes without backend progress.";
+      setScanErr(msg);
+      wsAddLog(msg, "system", "scan");
+    }, 15 * 60 * 1000);
+    return () => window.clearTimeout(timer);
+  }, [scanning, progress.updatedAt, setScanning, setScanErr, wsAddLog]);
 
   useEffect(() => {
     if (api) return;
@@ -210,10 +231,10 @@ export default function App() {
           onSetup={openSetupGuide}
         />
         <div className="app-main">
-          <Topbar view={view} />
+          <Topbar view={view} progress={progress} />
           <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "var(--paper)" }}>
             {view === "apply"     && <ErrorBoundary label="Apply" api={api ?? undefined}><ApplyJobView port={port} api={api} leads={leads} openDrawer={setSel} initialInput={applyDraft} autoFocus={applyAutoFocus} /></ErrorBoundary>}
-            {view === "dashboard" && <ErrorBoundary label="Dashboard" api={api ?? undefined}><DashboardView leads={leads} dueFollowups={dueFollowups} logs={logs} setView={setView} openDrawer={setSel} scanning={scanning} reevaluating={reevaluating} cleaning={cleaning} onScan={onScan} onStopScan={onStopScan} onReevaluate={onReevaluateJobs} onStopReevaluate={onStopReevaluate} onCleanup={onCleanupLeads} scanErr={scanErr} /></ErrorBoundary>}
+            {view === "dashboard" && <ErrorBoundary label="Dashboard" api={api ?? undefined}><DashboardView leads={leads} dueFollowups={dueFollowups} logs={logs} setView={setView} openDrawer={setSel} scanning={scanning} reevaluating={reevaluating} cleaning={cleaning} progress={progress} onScan={onScan} onStopScan={onStopScan} onReevaluate={onReevaluateJobs} onStopReevaluate={onStopReevaluate} onCleanup={onCleanupLeads} scanErr={scanErr} /></ErrorBoundary>}
             {isPipelineView  && <ErrorBoundary label="Pipeline" api={api ?? undefined}><PipelineView leads={leads} openDrawer={setSel} deleteLead={deleteLead} port={port} api={api} scanning={scanning} reevaluating={reevaluating} cleaning={cleaning} onReevaluate={onReevaluateJobs} onStopReevaluate={onStopReevaluate} onCleanup={onCleanupLeads} loading={leadsLoading || !port || !api} error={leadsError} tab={pipelineTab} /></ErrorBoundary>}
             {view === "graph"     && <ErrorBoundary label="Graph" api={api ?? undefined}><GraphView stats={stats} /></ErrorBoundary>}
             {view === "activity"  && <ErrorBoundary label="Activity" api={api ?? undefined}><ActivityView logs={logs} /></ErrorBoundary>}

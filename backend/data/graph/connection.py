@@ -3,6 +3,9 @@ from __future__ import annotations
 import os
 import re
 import threading
+import asyncio
+import concurrent.futures
+import functools
 from datetime import datetime, timezone
 from hashlib import md5
 from itertools import combinations
@@ -34,6 +37,8 @@ GRAPH_PATH = default_graph_path()
 _GRAPH_ERROR = ""
 _GRAPH_DIR_READY = False
 _graph_lock = threading.RLock()
+_GRAPH_LOCK_TIMEOUT_SECONDS = 1.5
+_graph_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="jhm-kuzu")
 db = None
 conn = None
 
@@ -86,6 +91,11 @@ def _ensure_connection() -> bool:
             return False
 
 
+async def run_graph(fn, *args, **kwargs):
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_graph_executor, functools.partial(fn, *args, **kwargs))
+
+
 def init_graph() -> None:
     _ensure_connection()
 
@@ -124,10 +134,15 @@ def _init_graph_unlocked() -> None:
 def execute_query(query: str, params: dict | None = None):
     if not _ensure_connection() or conn is None:
         return None
-    with _graph_lock:
+    if not _graph_lock.acquire(timeout=_GRAPH_LOCK_TIMEOUT_SECONDS):
+        _log.warning("graph lock acquisition timed out")
+        return None
+    try:
         if params:
             return conn.execute(query, params)
         return conn.execute(query)
+    finally:
+        _graph_lock.release()
 
 
 def graph_available() -> bool:
@@ -167,6 +182,9 @@ def sync_profile_relationships() -> dict:
     if not _ensure_connection() or conn is None:
         return {"status": "disabled", "linked": 0, "error": graph_error()}
     linked = 0
+    if not _graph_lock.acquire(timeout=_GRAPH_LOCK_TIMEOUT_SECONDS):
+        _log.warning("graph profile relationship sync skipped after lock timeout")
+        return {"status": "busy", "linked": 0, "error": "graph lock acquisition timed out"}
     try:
         _clear_derived_profile_edges()
         candidates = _query_rows("MATCH (c:Candidate) RETURN c.id LIMIT 1")
@@ -276,6 +294,8 @@ def sync_profile_relationships() -> dict:
     except Exception as exc:
         _log.warning("graph profile relationship sync failed: %s", exc)
         return {"status": "error", "linked": linked, "error": str(exc)}
+    finally:
+        _graph_lock.release()
     return {"status": "ok", "linked": linked}
 
 

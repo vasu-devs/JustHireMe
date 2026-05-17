@@ -269,7 +269,7 @@ def test_cleanup_bad_leads_skips_already_discarded_rows():
         def close(self):
             return None
 
-    with mock.patch("data.sqlite.leads.connect", return_value=Conn()):
+    with mock.patch("data.sqlite.leads.get_connection", return_value=Conn()):
         cleanup_bad_leads()
 
     cleanup_query = queries[0]

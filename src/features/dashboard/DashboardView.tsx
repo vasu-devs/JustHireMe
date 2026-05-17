@@ -1,6 +1,6 @@
 import Icon from "../../shared/components/Icon";
 import type React from "react";
-import type { Lead, LogLine, View } from "../../types";
+import type { Lead, LogLine, OperationProgress, View } from "../../types";
 import { getMark, getTone, leadDisplayHeading, leadSignal } from "../../shared/lib/leadUtils";
 
 const warmSurface = "rgba(255, 255, 255, 0.64)";
@@ -112,10 +112,11 @@ const SecondaryButton = ({ children, onClick, disabled, danger }: { children: Re
 
 export function DashboardView({
   leads, dueFollowups, logs, setView, openDrawer,
-  scanning, reevaluating, cleaning, onScan, onStopScan, onReevaluate, onStopReevaluate, onCleanup, scanErr,
+  scanning, reevaluating, cleaning, progress, onScan, onStopScan, onReevaluate, onStopReevaluate, onCleanup, scanErr,
 }: {
   leads: Lead[]; dueFollowups: Lead[]; logs: LogLine[]; setView: (v: View) => void; openDrawer: (l: Lead) => void;
   scanning: boolean; reevaluating: boolean; cleaning: boolean;
+  progress?: OperationProgress;
   onScan: () => void; onStopScan: () => void; onReevaluate: () => void; onStopReevaluate: () => void; onCleanup: () => void; scanErr: string | null;
 }) {
   const active = leads.filter(l => l.status !== "discarded");
@@ -212,6 +213,28 @@ export function DashboardView({
             <div style={{ marginTop: 8, fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5 }}>
               {busy ? (scanning ? "Scanning configured sources..." : reevaluating ? "Re-scoring saved jobs..." : "Cleaning weak rows...") : "Ready for the next action."}
             </div>
+            {progress?.active && (
+              <div style={{ marginTop: 12 }}>
+                <div className="mono" style={{ fontSize: 10, color: "var(--ink-3)", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <span>{progress.total ? `Evaluating ${Math.min(progress.completed, progress.total)}/${progress.total} leads` : `${progress.completed} leads evaluated`}</span>
+                  <span>{progress.total ? `${Math.min(100, Math.round((progress.completed / progress.total) * 100))}%` : ""}</span>
+                </div>
+                <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.64)", overflow: "hidden", border: `1px solid ${warmBorder}`, marginTop: 6 }}>
+                  <div style={{
+                    width: `${progress.total ? Math.min(100, Math.round((progress.completed / progress.total) * 100)) : 12}%`,
+                    minWidth: progress.completed ? 10 : 0,
+                    height: "100%",
+                    background: "var(--green)",
+                    transition: "width 180ms ease",
+                  }} />
+                </div>
+                {progress.current && (
+                  <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.45, marginTop: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {progress.current}
+                  </div>
+                )}
+              </div>
+            )}
             {latest && (
               <div style={{ marginTop: 12, borderTop: `1px solid ${warmBorder}`, paddingTop: 10 }}>
                 <div className="mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>{latest.ts} / {latest.kind}</div>

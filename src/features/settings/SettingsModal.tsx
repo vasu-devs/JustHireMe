@@ -13,6 +13,7 @@ export default function SettingsModal({ api, onClose }: Props) {
   const [cfg, setCfg]       = useState<Cfg>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     api("/api/v1/settings")
@@ -29,14 +30,21 @@ export default function SettingsModal({ api, onClose }: Props) {
 
   const save = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
-      await api("/api/v1/settings", {
+      const response = await api("/api/v1/settings", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cfg),
       });
+      if (!response.ok) {
+        const detail = await response.json().then(data => data.detail).catch(() => "");
+        throw new Error(detail || "Settings could not be saved");
+      }
       if (cfg.x_enable_notifications === "true" && "Notification" in window && Notification.permission === "default") {
         Notification.requestPermission().catch(() => {});
       }
       setSaved(true); setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
     } finally { setSaving(false); }
   };
 
@@ -64,6 +72,7 @@ export default function SettingsModal({ api, onClose }: Props) {
         </div>
 
         <div style={{ padding: "14px 24px", borderTop: "1px solid var(--line)", background: "var(--paper-2)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          {saveError && <div style={{ marginRight: "auto", alignSelf: "center", color: "var(--bad)", fontSize: 12, fontWeight: 700 }}>{saveError}</div>}
           <button className="btn" onClick={onClose} style={{ padding: "9px 20px", fontSize: 13, borderRadius: 10 }}>Cancel</button>
           <button className="btn btn-accent" onClick={save} disabled={saving} style={{ padding: "9px 26px", fontSize: 13, borderRadius: 10, minWidth: 110 }}>
             {saved ? "? Saved" : saving ? "Saving?" : "Save settings"}

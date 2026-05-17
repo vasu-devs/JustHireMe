@@ -7,6 +7,12 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
+from core.logging import get_logger
+from core.telemetry import record_error
+
+
+_log = get_logger(__name__)
+
 
 def agent_event_action(msg: dict) -> str:
     event = str(msg.get("event") or "agent").strip() or "agent"
@@ -24,15 +30,19 @@ class ConnectionManager:
     def remove(self, ws: WebSocket):
         self._ws = [w for w in self._ws if w != ws]
 
+    async def _record_event(self, msg: dict) -> None:
+        try:
+            from api.dependencies import get_repository
+
+            repo = get_repository()
+            await asyncio.to_thread(repo.events.record_event, msg.get("job_id") or "__system__", agent_event_action(msg))
+        except Exception as exc:
+            _log.debug("event recording failed during broadcast: %s", exc)
+            record_error("websocket_event_record_failed", str(exc), "api.websocket")
+
     async def broadcast(self, msg: dict):
         if msg.get("type") == "agent":
-            try:
-                from api.dependencies import get_repository
-
-                repo = get_repository()
-                await asyncio.to_thread(repo.events.record_event, msg.get("job_id") or "__system__", agent_event_action(msg))
-            except Exception:
-                pass
+            asyncio.create_task(self._record_event(msg))
 
         dead = []
         text = json.dumps(msg)
@@ -40,7 +50,9 @@ class ConnectionManager:
         async def _send(ws: WebSocket) -> None:
             try:
                 await asyncio.wait_for(ws.send_text(text), timeout=2.0)
-            except Exception:
+            except Exception as exc:
+                _log.debug("ws send failed (will remove dead connection): %s", exc)
+                record_error("websocket_send_failed", str(exc), "api.websocket")
                 dead.append(ws)
 
         await asyncio.gather(*(_send(ws) for ws in list(self._ws)))

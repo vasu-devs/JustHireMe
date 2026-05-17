@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Mapping
 from typing import Any
 
+from data.graph.connection import run_graph
 from data.graph import profile as graph_profile
 from data.sqlite import settings
 
@@ -70,15 +71,15 @@ class ProfileService:
         from profile.ingestor import ingest
 
         result = await asyncio.to_thread(ingest, raw, pdf_path)
-        snapshot = _profile_snapshot_from_resume(result, await asyncio.to_thread(self.get_profile))
+        snapshot = _profile_snapshot_from_resume(result, await run_graph(self.get_profile))
         if graph_profile.profile_has_data(snapshot):
-            await asyncio.to_thread(graph_profile.forget_profile_deletions_for_profile, snapshot)
-            await asyncio.to_thread(graph_profile.save_profile_snapshot, snapshot)
-        await asyncio.to_thread(self.refresh_profile_snapshot)
+            await run_graph(graph_profile.forget_profile_deletions_for_profile, snapshot)
+            await run_graph(graph_profile.save_profile_snapshot, snapshot)
+        await run_graph(self.refresh_profile_snapshot)
         if graph_profile.profile_has_data(snapshot):
-            await asyncio.to_thread(graph_profile.save_profile_snapshot, snapshot)
+            await run_graph(graph_profile.save_profile_snapshot, snapshot)
         try:
-            asyncio.get_running_loop().create_task(asyncio.to_thread(graph_profile.sync_vectors_from_graph))
+            asyncio.get_running_loop().create_task(run_graph(graph_profile.sync_vectors_from_graph))
         except Exception:
             pass
         return result
@@ -101,37 +102,37 @@ class ProfileService:
         candidate = cleaned["candidate"]
         if candidate["name"]:
             try:
-                await asyncio.to_thread(self.update_candidate, candidate["name"], candidate["summary"])
+                await run_graph(self.update_candidate, candidate["name"], candidate["summary"])
             except Exception as exc:
                 errors.append(f"candidate: {exc}")
 
         for skill in cleaned["skills"]:
             try:
-                await asyncio.to_thread(self.add_skill, skill["name"], skill["category"])
+                await run_graph(self.add_skill, skill["name"], skill["category"])
             except Exception:
                 pass
 
         for exp in cleaned.get("experience", parsed["experience"]):
             try:
-                await asyncio.to_thread(self.add_experience, exp["role"], exp["co"], exp["period"], exp["d"])
+                await run_graph(self.add_experience, exp["role"], exp["co"], exp["period"], exp["d"])
             except Exception as exc:
                 errors.append(f"exp {exp.get('role')}: {exc}")
 
         for edu in cleaned["education"]:
             try:
-                await asyncio.to_thread(self.add_education, edu["title"])
+                await run_graph(self.add_education, edu["title"])
             except Exception as exc:
                 errors.append(f"edu: {exc}")
 
         for project in cleaned["projects"]:
             try:
-                await asyncio.to_thread(self.add_project, project["title"], project["stack"], project["repo"], project["impact"])
+                await run_graph(self.add_project, project["title"], project["stack"], project["repo"], project["impact"])
             except Exception as exc:
                 errors.append(f"proj {project.get('title')}: {exc}")
 
         for cert in cleaned["certifications"]:
             try:
-                await asyncio.to_thread(self.add_certification, cert["title"])
+                await run_graph(self.add_certification, cert["title"])
             except Exception as exc:
                 errors.append(f"cert: {exc}")
 
@@ -160,7 +161,7 @@ class ProfileService:
 
         for skill in result["skills"]:
             try:
-                await asyncio.to_thread(self.add_skill, skill["n"], skill["cat"])
+                await run_graph(self.add_skill, skill["n"], skill["cat"])
             except Exception:
                 pass
 
@@ -174,7 +175,7 @@ class ProfileService:
                 if features:
                     detail_lines = "\n".join(f"- {item}" for item in features[:6])
                     details = f"{details}\n\nHighlights:\n{detail_lines}".strip()
-                await asyncio.to_thread(self.add_project, project["title"], project["stack"], project["repo"], details)
+                await run_graph(self.add_project, project["title"], project["stack"], project["repo"], details)
             except Exception as exc:
                 errors.append(f"proj {project.get('title')}: {exc}")
 
@@ -210,11 +211,11 @@ class ProfileService:
         data = normalize_profile_payload(data)
         errors: list[str] = []
         stats = {key: 0 for key in ["skills", "experience", "projects", "education", "certifications", "achievements"]}
-        existing_snapshot = await asyncio.to_thread(self.get_profile)
+        existing_snapshot = await run_graph(self.get_profile)
         imported_snapshot = _profile_snapshot_from_import(data, existing_snapshot)
         if graph_profile.profile_has_data(imported_snapshot):
-            await asyncio.to_thread(graph_profile.forget_profile_deletions_for_profile, imported_snapshot)
-            await asyncio.to_thread(graph_profile.save_profile_snapshot, imported_snapshot)
+            await run_graph(graph_profile.forget_profile_deletions_for_profile, imported_snapshot)
+            await run_graph(graph_profile.save_profile_snapshot, imported_snapshot)
 
         with graph_profile.bulk_profile_import():
             candidate = _as_dict(data.get("candidate") or {})
@@ -222,7 +223,7 @@ class ProfileService:
             candidate_summary = candidate.get("summary", candidate.get("s", ""))
             if candidate_name or candidate_summary:
                 try:
-                    await asyncio.to_thread(self.update_candidate, candidate_name, candidate_summary)
+                    await run_graph(self.update_candidate, candidate_name, candidate_summary)
                 except Exception as exc:
                     errors.append(f"candidate: {exc}")
 
@@ -237,14 +238,14 @@ class ProfileService:
             }
             if any(identity_map.values()):
                 try:
-                    await asyncio.to_thread(self.update_identity, {key: value for key, value in identity_map.items() if value})
+                    await run_graph(self.update_identity, {key: value for key, value in identity_map.items() if value})
                 except Exception as exc:
                     errors.append(f"identity: {exc}")
 
             for skill in data.get("skills", []) or []:
                 item = _as_dict(skill)
                 try:
-                    await asyncio.to_thread(self.add_skill, item.get("name", item.get("n", "")), item.get("category", item.get("cat", "general")))
+                    await run_graph(self.add_skill, item.get("name", item.get("n", "")), item.get("category", item.get("cat", "general")))
                     stats["skills"] += 1
                 except Exception:
                     pass
@@ -253,7 +254,7 @@ class ProfileService:
                 item = _as_dict(exp)
                 role = item.get("role", "")
                 try:
-                    await asyncio.to_thread(
+                    await run_graph(
                         self.add_experience,
                         role,
                         item.get("company", item.get("co", "")),
@@ -268,7 +269,7 @@ class ProfileService:
                 item = _as_dict(project)
                 title = item.get("title", "")
                 try:
-                    await asyncio.to_thread(self.add_project, title, item.get("stack", ""), item.get("repo", ""), item.get("impact", ""))
+                    await run_graph(self.add_project, title, item.get("stack", ""), item.get("repo", ""), item.get("impact", ""))
                     stats["projects"] += 1
                 except Exception as exc:
                     errors.append(f"proj {title}: {exc}")
@@ -276,7 +277,7 @@ class ProfileService:
             for edu in data.get("education", []) or []:
                 title = _entry_title(edu)
                 try:
-                    await asyncio.to_thread(self.add_education, title)
+                    await run_graph(self.add_education, title)
                     stats["education"] += 1
                 except Exception as exc:
                     errors.append(f"edu: {exc}")
@@ -284,7 +285,7 @@ class ProfileService:
             for cert in data.get("certifications", []) or []:
                 title = _entry_title(cert)
                 try:
-                    await asyncio.to_thread(self.add_certification, title)
+                    await run_graph(self.add_certification, title)
                     stats["certifications"] += 1
                 except Exception as exc:
                     errors.append(f"cert: {exc}")
@@ -292,24 +293,24 @@ class ProfileService:
             for achievement in data.get("achievements", []) or []:
                 title = _entry_title(achievement)
                 try:
-                    await asyncio.to_thread(self.add_achievement, title)
+                    await run_graph(self.add_achievement, title)
                     stats["achievements"] += 1
                 except Exception as exc:
                     errors.append(f"achievement: {exc}")
 
         try:
-            await asyncio.to_thread(self.refresh_profile_snapshot)
+            await run_graph(self.refresh_profile_snapshot)
         except Exception as exc:
             errors.append(f"profile refresh: {exc}")
 
         if graph_profile.profile_has_data(imported_snapshot):
             try:
-                await asyncio.to_thread(graph_profile.save_profile_snapshot, imported_snapshot)
+                await run_graph(graph_profile.save_profile_snapshot, imported_snapshot)
             except Exception as exc:
                 errors.append(f"profile snapshot fallback: {exc}")
 
         try:
-            asyncio.get_running_loop().create_task(asyncio.to_thread(graph_profile.sync_vectors_from_graph))
+            asyncio.get_running_loop().create_task(run_graph(graph_profile.sync_vectors_from_graph))
             vector_status = "queued"
         except Exception:
             vector_status = "skipped"

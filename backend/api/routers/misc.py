@@ -9,6 +9,7 @@ from api.dependencies import get_repository
 from api.rate_limit import RateLimiter, require_rate_limit
 from core.types import HelpChatBody
 from core.telemetry import log_error, redact_sensitive, redact_text
+from data.graph.connection import run_graph
 from data.repository import Repository
 from gateway.clients import graph_client
 from graph_service.stats import graph_stats_payload
@@ -27,24 +28,25 @@ async def graph_stats(repo: Repository = Depends(get_repository), repair: bool =
     errors: list[str] = []
     profile_repo = getattr(repo, "profile", None)
     if profile_repo and hasattr(profile_repo, "purge_profile_deletion_tombstones"):
-        _safe_graph_step(profile_repo.purge_profile_deletion_tombstones, "profile deletion purge", errors, default={"status": "skipped"})
+        await _safe_graph_step_async(profile_repo.purge_profile_deletion_tombstones, "profile deletion purge", errors, default={"status": "skipped"})
     if repair:
-        sync = _safe_graph_step(lambda: repo.graph.sync_job_leads(repo.leads.get_all_leads()), "lead sync", errors)
-        profile_sync = _safe_graph_step(
+        leads = await asyncio.to_thread(repo.leads.get_all_leads)
+        sync = await _safe_graph_step_async(lambda: repo.graph.sync_job_leads(leads), "lead sync", errors)
+        profile_sync = await _safe_graph_step_async(
             lambda: repo.graph.sync_profile_relationships() if hasattr(repo.graph, "sync_profile_relationships") else {"status": "skipped"},
             "profile sync",
             errors,
         )
-        vector_sync = _sync_vectors_from_graph()
+        vector_sync = await run_graph(_sync_vectors_from_graph)
         if vector_sync.get("status") == "error" and vector_sync.get("error"):
             errors.append(f"vector sync: {vector_sync['error']}")
     else:
         sync = {"status": "skipped", "reason": "read-only snapshot"}
         profile_sync = {"status": "skipped", "reason": "read-only snapshot"}
         vector_sync = {"status": "skipped", "synced": 0, "reason": "read-only snapshot"}
-    counts = _safe_graph_step(repo.graph.graph_counts, "counts", errors, default={})
-    available = _safe_graph_step(repo.graph.graph_available, "availability", errors, default=False)
-    graph = _safe_graph_step(repo.graph.graph_snapshot, "snapshot", errors, default={"nodes": [], "edges": [], "available": False})
+    counts = await _safe_graph_step_async(repo.graph.graph_counts, "counts", errors, default={})
+    available = await _safe_graph_step_async(repo.graph.graph_available, "availability", errors, default=False)
+    graph = await _safe_graph_step_async(repo.graph.graph_snapshot, "snapshot", errors, default={"nodes": [], "edges": [], "available": False})
     embedding = _embedding_space(repo)
     if embedding.get("error"):
         errors.append(f"embedding: {embedding['error']}")
@@ -71,6 +73,16 @@ async def graph_stats(repo: Repository = Depends(get_repository), repair: bool =
 def _safe_graph_step(fn, label: str, errors: list[str], default=None):
     try:
         return fn()
+    except Exception as exc:
+        errors.append(f"{label}: {exc}")
+        if default is not None:
+            return default
+        return {"status": "error", "error": str(exc)}
+
+
+async def _safe_graph_step_async(fn, label: str, errors: list[str], default=None):
+    try:
+        return await run_graph(fn)
     except Exception as exc:
         errors.append(f"{label}: {exc}")
         if default is not None:

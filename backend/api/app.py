@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.auth import LOCAL_ORIGIN_RE, require_http_token
 from api.dependencies import get_event_bus
-from api.routers import automation, discovery, events, generation, health, ingestion, internal, leads, misc, profile, settings
+from api.routers import automation, diagnostics, discovery, events, generation, health, ingestion, internal, leads, misc, profile, settings
 from api.websocket import register_websocket
 from core.telemetry import record_exception
 
@@ -62,6 +62,7 @@ def create_app(
             raise
 
     app.include_router(health.create_router(started_at))
+    app.include_router(diagnostics.create_router(started_at))
     app.include_router(internal.router)
     app.include_router(events.router)
     app.include_router(misc.router)

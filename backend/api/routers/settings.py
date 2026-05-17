@@ -5,7 +5,7 @@ import os
 import time
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from api.dependencies import get_repository
 from api.scheduler import ensure_ghost_job
@@ -244,7 +244,10 @@ def create_router(scheduler: AsyncIOScheduler, ghost_tick) -> APIRouter:
         for key in sensitive_keys({**old, **payload}):
             if payload.get(key) in LEGACY_MASKS:
                 payload[key] = old.get(key, "")
-        repo.settings.save_settings(payload)
+        try:
+            repo.settings.save_settings(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if payload.get("ghost_mode") == "true":
             ensure_ghost_job(scheduler, ghost_tick)
         return {"ok": True}

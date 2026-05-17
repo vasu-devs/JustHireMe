@@ -1,8 +1,8 @@
 import Icon from "./Icon";
-import type { View } from "../../types";
+import type { OperationProgress, View } from "../../types";
 import { useAppVersion } from "../hooks/useAppVersion";
 
-export function Topbar({ view }: { view: View }) {
+export function Topbar({ view, progress }: { view: View; progress?: OperationProgress }) {
   const appVersion = useAppVersion();
   const titles: Record<View, string> = {
     apply:     "Customize One Job",
@@ -44,6 +44,29 @@ export function Topbar({ view }: { view: View }) {
         <button className="btn" onClick={() => window.dispatchEvent(new CustomEvent("profile-export"))}>
           <Icon name="download" size={13} /> Export Graph
         </button>
+      )}
+      {progress?.active && (
+        <div style={{
+          width: 220,
+          minWidth: 180,
+          display: "flex",
+          flexDirection: "column",
+          gap: 5,
+        }}>
+          <div className="mono" style={{ fontSize: 10, color: "var(--ink-3)", display: "flex", justifyContent: "space-between", gap: 8 }}>
+            <span>{progress.mode === "reevaluate" ? "Re-scoring" : "Scanning"}</span>
+            <span>{progress.total ? `${Math.min(progress.completed, progress.total)}/${progress.total}` : progress.completed}</span>
+          </div>
+          <div style={{ height: 6, borderRadius: 999, background: "var(--paper-3)", overflow: "hidden", border: "1px solid var(--line)" }}>
+            <div style={{
+              width: `${progress.total ? Math.min(100, Math.round((progress.completed / progress.total) * 100)) : 12}%`,
+              minWidth: progress.completed ? 8 : 0,
+              height: "100%",
+              background: "var(--green)",
+              transition: "width 180ms ease",
+            }} />
+          </div>
+        </div>
       )}
       <div className="topbar-version mono" title={`JustHireMe version ${appVersion}`}>v{appVersion}</div>
     </header>
