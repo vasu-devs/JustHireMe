@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Icon from "../../shared/components/Icon";
 import type { ApiFetch, View } from "../../types";
-import { entryTitle, normalizeProfileResponse, profileDeleteKey, profileDeletePath } from "./profileUtils";
+import { entryTitle, normalizeProfileResponse, profileDeleteKey, profileDeletePath, removeProfileItem } from "./profileUtils";
 
 const stackItems = (stack: any): string[] =>
   (Array.isArray(stack) ? stack : String(stack || "").split(","))
@@ -62,24 +62,26 @@ export function ProfileView({ api, setView }: { api: ApiFetch; setView: (v: View
   const deleteItem = async (type: string, id: string) => {
     const key = `${type}:${id}`;
     if (!id || deletingItems.has(key)) return;
+    const previousProfile = profile;
+    setProfile((prev: any) => prev ? removeProfileItem(prev, type, id) : prev);
     setDeletingItems(prev => new Set(prev).add(key));
     try {
-      const res = await api(profileDeletePath(type, id), { method: "DELETE" });
+      const res = await api(profileDeletePath(type, id), { method: "DELETE", timeoutMs: 120000 });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.detail || `Delete failed (${res.status})`);
       setProfileErr(null);
+      window.dispatchEvent(new CustomEvent("graph-refresh"));
     } catch (err: any) {
       console.error("Delete error:", err);
+      setProfile(previousProfile);
       setProfileErr(err?.message || "Delete failed");
+    } finally {
+      setDeletingItems(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
     }
-    await fetchProfile();
-    window.dispatchEvent(new CustomEvent("profile-refresh"));
-    window.dispatchEvent(new CustomEvent("graph-refresh"));
-    setDeletingItems(prev => {
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
   };
 
   const saveEdit = async (type: string, id: string) => {
@@ -151,27 +153,26 @@ export function ProfileView({ api, setView }: { api: ApiFetch; setView: (v: View
   const summaryPreview = summary
     ? summary.length > 265 ? `${summary.slice(0, 262).trim()}...` : summary
     : "Add your name and target role summary above. This becomes the anchor for scoring and document generation.";
-  const skillRanks = useMemo(() => {
-    const counts = new Map<string, { label: string; count: number; cat: string; id: string }>();
-    const bump = (label: string, weight = 1, cat = "general", id = "") => {
-      const clean = String(label || "").trim();
-      if (!clean) return;
-      const key = clean.toLowerCase();
-      const prev = counts.get(key);
-      counts.set(key, { label: prev?.label || clean, count: (prev?.count || 0) + weight, cat: prev?.cat || cat, id: prev?.id || id });
-    };
-    skills.forEach((s: any) => bump(s.n, 1, s.cat, s.id));
-    projects.forEach((p: any) => stackItems(p.stack).forEach(name => bump(name, 3)));
-    exp.forEach((e: any) => (Array.isArray(e.s) ? e.s : stackItems(e.s)).forEach((name: string) => bump(name, 2)));
-    return Array.from(counts.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-  }, [skills, projects, exp]);
-  const previewSkills = expandedProfileList ? skillRanks : skillRanks.slice(0, 10);
+  const skillItems = useMemo(() => {
+    const seen = new Set<string>();
+    return skills
+      .map((s: any) => {
+        const label = String(s?.n || s?.name || s?.title || "").trim();
+        const id = String(s?.id || "").trim();
+        const key = (id || label).toLowerCase();
+        if (!label || seen.has(key)) return null;
+        seen.add(key);
+        return { label, cat: String(s?.cat || s?.category || "general"), id };
+      })
+      .filter(Boolean) as { label: string; cat: string; id: string }[];
+  }, [skills]);
+  const previewSkills = expandedProfileList ? skillItems : skillItems.slice(0, 10);
   const previewExp = expandedProfileList ? exp : exp.slice(0, 6);
   const previewProjects = expandedProfileList ? projects : projects.slice(0, 8);
   const previewEducation = expandedProfileList ? education : education.slice(0, 8);
   const previewCertifications = expandedProfileList ? certifications : certifications.slice(0, 8);
   const previewAchievements = expandedProfileList ? achievements : achievements.slice(0, 8);
-  const listTotal = activeProfileTab === "skills" ? skillRanks.length : activeProfileTab === "experience" ? exp.length : activeProfileTab === "projects" ? projects.length : activeProfileTab === "education" ? education.length : activeProfileTab === "certifications" ? certifications.length : achievements.length;
+  const listTotal = activeProfileTab === "skills" ? skillItems.length : activeProfileTab === "experience" ? exp.length : activeProfileTab === "projects" ? projects.length : activeProfileTab === "education" ? education.length : activeProfileTab === "certifications" ? certifications.length : achievements.length;
   const listShown = activeProfileTab === "skills" ? previewSkills.length : activeProfileTab === "experience" ? previewExp.length : activeProfileTab === "projects" ? previewProjects.length : activeProfileTab === "education" ? previewEducation.length : activeProfileTab === "certifications" ? previewCertifications.length : previewAchievements.length;
   const tabNodes = [
     { id: "skills" as const, label: "Skills", count: skills.length, tone: "blue", icon: "spark" },
@@ -327,7 +328,7 @@ export function ProfileView({ api, setView }: { api: ApiFetch; setView: (v: View
               <div className="profile-tab-scroll">
                 {activeProfileTab === "skills" && (
                   <div className="profile-skill-grid">
-                    {skillRanks.length === 0 && <div className="profile-empty">No skills yet.</div>}
+                    {skillItems.length === 0 && <div className="profile-empty">No skills yet.</div>}
                     {previewSkills.map((s, idx) => {
                       const tone = ["blue", "yellow", "purple", "green", "orange", "teal"][idx % 6];
                       return (
@@ -337,7 +338,7 @@ export function ProfileView({ api, setView }: { api: ApiFetch; setView: (v: View
                             <span>{s.label}</span>
                           </div>
                           <div className="profile-list-trailing">
-                            <span className="profile-count-badge">{s.count}</span>
+                            <span className="profile-count-badge">{s.cat}</span>
                             <button className="profile-row-action" onClick={() => deleteItem("skill", s.id || s.label)} disabled={deletingItems.has(`skill:${s.id || s.label}`)} title="Delete skill">
                               <Icon name="trash" size={14} />
                             </button>

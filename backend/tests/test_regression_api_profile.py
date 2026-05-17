@@ -70,6 +70,42 @@ class RegressionTests(unittest.TestCase):
              mock.patch.object(profile, "read_profile_from_graph", side_effect=RuntimeError("graph read failed")):
             self.assertEqual(profile.get_profile(), snapshot)
 
+    def test_public_profile_router_runs_sync_service_calls_off_event_loop(self):
+        import asyncio
+        import time
+        from api.routers.profile import _call_service
+
+        def slow_delete():
+            time.sleep(0.15)
+            return "ok"
+
+        async def run():
+            started = time.perf_counter()
+            task = asyncio.create_task(_call_service(slow_delete))
+            await asyncio.sleep(0.02)
+            self.assertLess(time.perf_counter() - started, 0.10)
+            return await task
+
+        self.assertEqual(asyncio.run(run()), "ok")
+
+    def test_internal_profile_router_runs_sync_service_calls_off_event_loop(self):
+        import asyncio
+        import time
+        from services.profile.router import _call_service
+
+        def slow_delete():
+            time.sleep(0.15)
+            return "ok"
+
+        async def run():
+            started = time.perf_counter()
+            task = asyncio.create_task(_call_service(slow_delete))
+            await asyncio.sleep(0.02)
+            self.assertLess(time.perf_counter() - started, 0.10)
+            return await task
+
+        self.assertEqual(asyncio.run(run()), "ok")
+
     def test_profile_stack_normalizer_accepts_existing_list_values(self):
         from data.graph import profile
 

@@ -635,7 +635,6 @@ def delete_skill(skill_id: str, db_path: str | None = None) -> None:
     for node_id in delete_ids:
         delete_vec_id_from_all(node_id)
         _safe_execute("MATCH (s:Skill) WHERE s.id = $id DETACH DELETE s", {"id": node_id})
-    _refresh_after_write(db_path)
     snapshot = normal_profile(load_profile_snapshot(db_path))
     delete_id_set = set(delete_ids)
     delete_key = _norm_key(value)
@@ -711,12 +710,10 @@ def update_experience(experience_id: str, role: str, company: str, period: str, 
 def delete_experience(experience_id: str, db_path: str | None = None) -> None:
     value = unquote(str(experience_id or "")).strip()
     delete_ids = _experience_delete_ids(value)
-    _refresh_after_write(db_path)
     delete_vec_rows("experiences", delete_ids)
     for node_id in delete_ids:
         delete_vec_id_from_all(node_id)
         _safe_execute("MATCH (e:Experience) WHERE e.id = $id DETACH DELETE e", {"id": node_id})
-    _refresh_after_write(db_path)
     snapshot = normal_profile(load_profile_snapshot(db_path))
     delete_id_set = set(delete_ids)
     delete_key = _norm_key(value)
@@ -796,7 +793,6 @@ def delete_project(project_id: str, db_path: str | None = None) -> None:
     for node_id in delete_ids:
         delete_vec_id_from_all(node_id)
         _safe_execute("MATCH (p:Project) WHERE p.id = $id DETACH DELETE p", {"id": node_id})
-    _refresh_after_write(db_path)
     snapshot = normal_profile(load_profile_snapshot(db_path))
     delete_id_set = set(delete_ids)
     delete_key = _norm_key(value)
@@ -935,7 +931,6 @@ def _delete_text_node(label: str, profile_key: str, entry: str, db_path: str | N
         delete_vec_id_from_all(node_id)
         _safe_execute(f"MATCH (n:{label}) WHERE n.id = $id DETACH DELETE n", {"id": node_id})
 
-    _refresh_after_write(db_path)
     snapshot = normal_profile(load_profile_snapshot(db_path))
     entry_key = _entry_key(entry)
     delete_id_set = set(delete_ids)
