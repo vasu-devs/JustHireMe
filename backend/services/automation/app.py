@@ -3,11 +3,12 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from contracts.common import ServiceHealth
+from core.version import APP_VERSION
 from services.automation.router import router
 
 
 def create_app(internal_token: str) -> FastAPI:
-    app = FastAPI(title="JustHireMe automation service", version="0.1.0")
+    app = FastAPI(title="JustHireMe automation service", version=APP_VERSION)
     app.state.internal_token = internal_token
 
     @app.get("/health", response_model=ServiceHealth)

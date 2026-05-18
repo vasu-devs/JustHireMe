@@ -560,7 +560,7 @@ jobs:
               echo "- Linux: download the .AppImage, run chmod a+x on it, then launch it; or install the .deb on Debian/Ubuntu-based systems."
             fi
             if find release-assets -maxdepth 1 -type f -name "*.dmg" | grep -q .; then
-              echo "- macOS: download the .dmg and drag JustHireMe into Applications. This alpha build uses ad-hoc signing, so macOS may require Privacy & Security -> Open Anyway."
+              echo "- macOS: download the .dmg and drag JustHireMe into Applications. If the build is not notarized, macOS may require Privacy & Security -> Open Anyway."
             fi
             echo
             echo "> **Your data stays on your machine.** JustHireMe is local-first: no hosted backend, no tracking, and no app data leaves your computer by default."

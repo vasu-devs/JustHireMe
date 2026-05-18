@@ -20,6 +20,18 @@ const files = [
     write: writeJsonVersion,
   },
   {
+    name: "website/package.json",
+    path: join(repoRoot, "website", "package.json"),
+    read: jsonVersion,
+    write: writeJsonVersion,
+  },
+  {
+    name: "website/package-lock.json",
+    path: join(repoRoot, "website", "package-lock.json"),
+    read: jsonVersion,
+    write: writeJsonVersion,
+  },
+  {
     name: "src-tauri/tauri.conf.json",
     path: join(repoRoot, "src-tauri", "tauri.conf.json"),
     read: jsonVersion,
@@ -48,6 +60,12 @@ const files = [
     path: join(repoRoot, "backend", "uv.lock"),
     read: (path) => tomlPackageLockVersion(path, "backend"),
     write: (path, version) => writeTomlPackageLockVersion(path, "backend", version),
+  },
+  {
+    name: "backend/core/version.py",
+    path: join(repoRoot, "backend", "core", "version.py"),
+    read: pythonConstVersion,
+    write: writePythonConstVersion,
   },
 ];
 
@@ -127,12 +145,40 @@ function writeTomlPackageLockVersion(path, packageName, version) {
   writeText(path, `${text.slice(0, index)}${nextBlock}${text.slice(index + block.length)}`);
 }
 
+function pythonConstVersion(path) {
+  const match = readText(path).match(/^APP_VERSION\s*=\s*"([^"]+)"/m);
+  if (!match) {
+    throw new Error(`Could not find APP_VERSION in ${path}`);
+  }
+  return match[1];
+}
+
+function writePythonConstVersion(path, version) {
+  const text = readText(path);
+  const next = text.replace(/^APP_VERSION\s*=\s*"[^"]+"/m, `APP_VERSION = "${version}"`);
+  if (next === text) {
+    if (pythonConstVersion(path) === version) {
+      return;
+    }
+    throw new Error(`Could not update APP_VERSION in ${path}`);
+  }
+  writeText(path, next);
+}
+
 function normalizeVersion(raw) {
   const version = raw?.trim().replace(/^v/, "");
   if (!versionPattern.test(version || "")) {
     throw new Error(`Invalid version "${raw}". Expected semver like 0.1.29 or v0.1.29.`);
   }
   return version;
+}
+
+function expectedVersionFromRef(refName) {
+  if (!refName) {
+    return null;
+  }
+  const version = refName.trim().replace(/^v/, "");
+  return versionPattern.test(version) ? refName : null;
 }
 
 function versions() {
@@ -180,7 +226,7 @@ const [command, value] = process.argv.slice(2);
 
 try {
   if (command === "check") {
-    check(value || process.env.GITHUB_REF_NAME);
+    check(value || expectedVersionFromRef(process.env.GITHUB_REF_NAME));
   } else if (command === "bump") {
     bump(value);
   } else {

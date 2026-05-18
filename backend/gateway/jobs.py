@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from data.sqlite.connection import DEFAULT_DB_PATH, connect, run_migrations
+from data.sqlite.connection import DEFAULT_DB_PATH, get_connection, run_migrations
 
 
 def _now() -> str:
@@ -36,7 +36,7 @@ class JobStore:
         if self._initialized:
             return
         run_migrations(self.db_path)
-        conn = connect(self.db_path)
+        conn = get_connection(self.db_path)
         try:
             conn.execute(
                 """
@@ -62,7 +62,7 @@ class JobStore:
     def create(self, kind: str, payload: dict[str, Any] | None = None) -> JobRecord:
         self.init()
         record = JobRecord(job_id=f"{kind}-{uuid.uuid4().hex[:12]}", kind=kind, status="queued", input_json=payload or {}, created_at=_now())
-        conn = connect(self.db_path)
+        conn = get_connection(self.db_path)
         try:
             conn.execute(
                 """
@@ -95,7 +95,7 @@ class JobStore:
         status = status or record.status
         started_at = record.started_at or (_now() if status == "running" else "")
         finished_at = record.finished_at or (_now() if status in {"succeeded", "failed", "cancelled"} else "")
-        conn = connect(self.db_path)
+        conn = get_connection(self.db_path)
         try:
             conn.execute(
                 """
@@ -126,7 +126,7 @@ class JobStore:
 
     def get(self, job_id: str) -> JobRecord | None:
         self.init()
-        conn = connect(self.db_path)
+        conn = get_connection(self.db_path)
         try:
             row = conn.execute(
                 """

@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-2ea44f?style=for-the-badge"></a>
-  <img alt="Status: Alpha" src="https://img.shields.io/badge/status-alpha-f59e0b?style=for-the-badge">
+  <img alt="Status: Stable v1" src="https://img.shields.io/badge/status-stable_v1-16a34a?style=for-the-badge">
   <img alt="Local First" src="https://img.shields.io/badge/local--first-yes-0ea5e9?style=for-the-badge">
   <img alt="Desktop: Tauri" src="https://img.shields.io/badge/desktop-Tauri-24c8db?style=for-the-badge">
   <img alt="Backend: Python" src="https://img.shields.io/badge/backend-Python_3.13-3776ab?style=for-the-badge">
@@ -55,14 +55,14 @@ JustHireMe is built and maintained by Vasudev Siddh - full-stack AI engineer, op
 
 ## Current Status
 
-JustHireMe is in alpha. The repository is public, hackable, and ready for source-adapter, ranking, docs, and Windows packaging contributions, but it is not a polished one-click consumer product yet.
+JustHireMe 1.0.0 is the stable local-first core release. The supported scope is the desktop workbench, Python sidecar API, lead ingestion, deterministic ranking, profile-aware matching, local CRM workflows, and document/outreach generation.
 
 | Area | Status |
 | --- | --- |
-| Frontend workbench | Active |
-| Python sidecar API | Active |
+| Frontend workbench | Stable v1 core |
+| Python sidecar API | Stable v1 core |
 | Scraper, ranking, vector matching, and customizer core | Supported open-source scope |
-| Windows desktop packaging | First release target |
+| Windows desktop packaging | Stable release target |
 | Browser automation / auto-apply | Experimental lab, disabled by default |
 | API key storage | Local app settings for now; OS keychain planned |
 

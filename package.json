@@ -21,6 +21,7 @@
     "build:sidecar": "node scripts/build-sidecar.mjs",
     "build:all": "node scripts/run-parallel.mjs build:all",
     "release:verify-updater": "node scripts/verify-updater-release.mjs",
+    "release:preflight": "npm run check:all && npm run release:smoke",
     "version:bump": "node scripts/version.mjs bump",
     "version:check": "node scripts/version.mjs check",
     "check": "npm run check:all",

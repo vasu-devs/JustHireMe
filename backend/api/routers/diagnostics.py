@@ -5,6 +5,7 @@ import time
 from fastapi import APIRouter
 
 from core.telemetry import get_error_count, get_top_errors
+from core.version import APP_VERSION
 
 
 def create_router(started_at: float) -> APIRouter:
@@ -15,7 +16,7 @@ def create_router(started_at: float) -> APIRouter:
         return {
             "top_errors": get_top_errors(limit=10),
             "error_count_24h": get_error_count(hours=24),
-            "version": "1.0.0",
+            "version": APP_VERSION,
             "uptime_seconds": round(time.monotonic() - started_at, 2),
         }
 

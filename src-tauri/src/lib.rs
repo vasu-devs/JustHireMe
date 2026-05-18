@@ -425,8 +425,23 @@ fn is_jhm_process(pid: u32) -> bool {
 }
 
 #[cfg(not(windows))]
-fn is_jhm_process(_pid: u32) -> bool {
-    true
+fn is_jhm_process(pid: u32) -> bool {
+    std::process::Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn wait_for_process_exit(pid: u32, timeout: std::time::Duration) -> bool {
+    let started = std::time::Instant::now();
+    while started.elapsed() < timeout {
+        if !is_jhm_process(pid) {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    !is_jhm_process(pid)
 }
 
 fn sidecar_pid_path(app: &AppHandle) -> Option<PathBuf> {
@@ -470,6 +485,42 @@ fn remember_sidecar_pid(app: &AppHandle, pid: u32) {
     let _ = std::fs::write(pid_path, pid.to_string());
 }
 
+fn request_sidecar_shutdown(app: &AppHandle) -> bool {
+    let port = app
+        .state::<SidecarPort>()
+        .0
+        .lock()
+        .ok()
+        .and_then(|guard| *guard);
+    let token = app
+        .state::<ApiTokenState>()
+        .0
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone());
+    let (Some(port), Some(token)) = (port, token) else {
+        return false;
+    };
+
+    use std::io::{Read, Write};
+    let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let Ok(mut stream) =
+        std::net::TcpStream::connect_timeout(&address, std::time::Duration::from_millis(500))
+    else {
+        return false;
+    };
+    let request = format!(
+        "POST /api/v1/shutdown HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    );
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(700)));
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buffer = [0_u8; 128];
+    let _ = stream.read(&mut buffer);
+    true
+}
+
 fn shutdown_sidecar(app: &AppHandle) {
     if let Ok(mut stopping) = app.state::<SidecarStopping>().0.lock() {
         *stopping = true;
@@ -484,9 +535,15 @@ fn shutdown_sidecar(app: &AppHandle) {
 
     if let Some(child) = child {
         let pid = child.pid();
-        eprintln!("[tauri] Stopping sidecar process tree: {pid}");
-        kill_process_tree(pid);
-        let _ = child.kill();
+        eprintln!("[tauri] Stopping sidecar process: {pid}");
+        let requested_shutdown = request_sidecar_shutdown(app);
+        if !requested_shutdown || !wait_for_process_exit(pid, std::time::Duration::from_secs(8)) {
+            let _ = child.kill();
+        }
+        if !wait_for_process_exit(pid, std::time::Duration::from_secs(3)) {
+            eprintln!("[tauri] Sidecar did not stop cleanly; killing process tree: {pid}");
+            kill_process_tree(pid);
+        }
     }
 
     if let Ok(mut port) = app.state::<SidecarPort>().0.lock() {

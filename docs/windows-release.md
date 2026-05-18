@@ -1,6 +1,6 @@
 # Windows Release Checklist
 
-The first public release target is a Windows desktop installer.
+The stable 1.0.0 public release target is a Windows desktop installer.
 
 ## Build
 
@@ -13,6 +13,8 @@ npm run release:windows
 ```
 
 The standard Windows release build verifies project versions, builds the frontend and Python sidecar, then produces the NSIS installer through Tauri. Use `npm run release:smoke` when you want the fastest parallel local smoke build without installer generation.
+
+Because the app has a Tauri updater public key configured, a full local `npm run release:windows` also needs `TAURI_SIGNING_PRIVATE_KEY` and, when applicable, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Public installers should normally be produced by the tagged GitHub release workflow where those secrets are available.
 
 | Artifact | Use |
 | --- | --- |
@@ -38,7 +40,7 @@ Build both NSIS and MSI only for a full compatibility release:
 npm run package:windows:all
 ```
 
-For the alpha installer, the bundled Python sidecar intentionally excludes the experimental browser automation stack and heavyweight local embedding model packages. The supported release smoke path is app launch, settings, profile/lead workflows, deterministic ranking, and document/outreach generation. Semantic matching should fail soft when local embedding packages are unavailable.
+For the stable core installer, the bundled Python sidecar intentionally excludes the experimental browser automation stack and heavyweight local embedding model packages. The supported release smoke path is app launch, settings, profile/lead workflows, deterministic ranking, and document/outreach generation. Semantic matching should fail soft when local embedding packages are unavailable.
 
 ## Updater Verification
 
@@ -65,6 +67,6 @@ That check fails the release if `latest.json` points at a missing installer, has
 ## Release Notes
 
 Mention that browser automation is experimental. The supported workflow is scraper, ranker, vector matching, and customization.
-Mention whether the build is the alpha slim installer or a future full-ML installer.
+Mention whether the build is the stable core installer or a future full-ML installer.
 Include SHA256 checksums for every uploaded installer asset.
 Public installers should be built by GitHub Actions from the release tag, not uploaded from a local workstation.

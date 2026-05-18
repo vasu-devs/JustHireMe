@@ -11,6 +11,7 @@ import json
 import sys
 from typing import Any, Callable
 
+from core.version import APP_VERSION
 from ranking.evaluator import score as score_fit
 from discovery.lead_intel import (
     budget_from_text,
@@ -145,7 +146,7 @@ def _handle(request: Json) -> Json | None:
             result = {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "justhireme", "version": "0.1.0"},
+                "serverInfo": {"name": "justhireme", "version": APP_VERSION},
             }
         elif method == "notifications/initialized":
             return None

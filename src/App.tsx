@@ -136,9 +136,18 @@ export default function App() {
 
   const onStopScan = useCallback(async () => {
     if (!port || !api) return;
-    try { await api(`/api/v1/scan/stop`, { method: "POST" }); }
-    catch { /* ignore */ }
-  }, [port, api]);
+    try {
+      const r = await api(`/api/v1/scan/stop`, { method: "POST" });
+      if (!r.ok) {
+        const detail = await r.json().then(d => d.detail).catch(() => "");
+        throw new Error(detail || "Stop scan failed");
+      }
+    } catch (e: any) {
+      const msg = e.message || "Stop scan request failed";
+      setScanErr(msg);
+      wsAddLog(msg, "system", "scan");
+    }
+  }, [port, api, setScanErr, wsAddLog]);
 
   const onReevaluateJobs = useCallback(async () => {
     if (!port || !api || reevaluating || scanning) return;
@@ -158,9 +167,18 @@ export default function App() {
 
   const onStopReevaluate = useCallback(async () => {
     if (!port || !api) return;
-    try { await api(`/api/v1/leads/reevaluate/stop`, { method: "POST" }); }
-    catch { /* ignore */ }
-  }, [port, api]);
+    try {
+      const r = await api(`/api/v1/leads/reevaluate/stop`, { method: "POST" });
+      if (!r.ok) {
+        const detail = await r.json().then(d => d.detail).catch(() => "");
+        throw new Error(detail || "Stop re-evaluation failed");
+      }
+    } catch (e: any) {
+      const msg = e.message || "Stop re-evaluation request failed";
+      setScanErr(msg);
+      wsAddLog(msg, "system", "reeval");
+    }
+  }, [port, api, setScanErr, wsAddLog]);
 
   const onCleanupLeads = useCallback(async () => {
     if (!port || !api || scanning || reevaluating || cleaning) return;

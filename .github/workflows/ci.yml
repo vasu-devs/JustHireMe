@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - codex-local-microservices
+      - "codex/**"
   pull_request:
     branches: [main]
 
@@ -58,6 +59,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run version:check
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

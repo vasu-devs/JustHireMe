@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import signal
 
 from fastapi import APIRouter, Depends
 
@@ -219,4 +220,14 @@ async def record_frontend_error(payload: dict):
         "userAgent": payload.get("userAgent", ""),
     })
     log_error(redact_text(payload.get("error") or "Frontend error"), {"frontend": safe_payload})
+    return {"ok": True}
+
+
+@router.post("/shutdown")
+async def request_shutdown():
+    async def _shutdown_soon():
+        await asyncio.sleep(0.1)
+        signal.raise_signal(signal.SIGTERM)
+
+    asyncio.create_task(_shutdown_soon())
     return {"ok": True}

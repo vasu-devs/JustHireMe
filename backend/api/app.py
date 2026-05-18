@@ -10,6 +10,7 @@ from api.dependencies import get_event_bus
 from api.routers import automation, diagnostics, discovery, events, generation, health, ingestion, internal, leads, misc, profile, settings
 from api.websocket import register_websocket
 from core.telemetry import record_exception
+from core.version import APP_VERSION
 
 
 def _wire_event_bus(connection_manager) -> None:
@@ -35,7 +36,7 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(
         title="JustHireMe",
-        version="0.1.0",
+        version=APP_VERSION,
         lifespan=lifespan,
     )
     app.add_middleware(

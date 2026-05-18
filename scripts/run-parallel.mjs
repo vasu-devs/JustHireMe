@@ -5,10 +5,13 @@ const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 
 const groups = {
   "check:all": [
+    ["version check", npm, ["run", "version:check"]],
+    ["frontend typecheck", npm, ["run", "typecheck"]],
     ["frontend tests", npm, ["test"]],
     ["frontend build", npm, ["run", "build"]],
     ["website build", npm, ["run", "build"], { cwd: "website" }],
     ["backend tests", ".venv\\Scripts\\python.exe", ["-m", "pytest", "tests", "-q"], { cwd: "backend", fallback: ["python", ["-m", "pytest", "tests", "-q"]] }],
+    ["rust tests", "cargo", ["test", "--lib"], { cwd: "src-tauri" }],
     ["rust check", "cargo", ["check"], { cwd: "src-tauri" }],
   ],
   "build:all": [

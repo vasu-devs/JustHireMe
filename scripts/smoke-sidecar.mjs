@@ -32,8 +32,8 @@ function remove(path, options = {}) {
     rmSync(path, {
       recursive: true,
       force: true,
-      maxRetries: 10,
-      retryDelay: 500,
+      maxRetries: 20,
+      retryDelay: 750,
     });
   } catch (error) {
     if (options.allowFailure) {
@@ -286,6 +286,8 @@ const { sidecar, cwd, cleanupDir } = explicitSidecar || resolveSidecar(manifest)
 const stdoutLines = [];
 const stderrLines = [];
 let passed = false;
+let handshake = null;
+let childClosed = false;
 
 remove(appDataDir);
 mkdirSync(appDataDir, { recursive: true });
@@ -302,9 +304,43 @@ const child = spawn(sidecar, ["--no-services"], {
   stdio: ["ignore", "pipe", "pipe"],
   windowsHide: true,
 });
+child.on("close", () => {
+  childClosed = true;
+});
+
+function waitForChildClose(childProcess, ms) {
+  if (!childProcess || childClosed || childProcess.exitCode !== null || childProcess.signalCode !== null) {
+    return Promise.resolve(true);
+  }
+  return new Promise((resolveWait) => {
+    const timer = setTimeout(() => {
+      childProcess.off("close", onClose);
+      resolveWait(false);
+    }, ms);
+    function onClose() {
+      clearTimeout(timer);
+      resolveWait(true);
+    }
+    childProcess.once("close", onClose);
+  });
+}
+
+async function requestShutdown(port, token) {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/shutdown`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      console.warn(`/api/v1/shutdown returned HTTP ${response.status}: ${await response.text()}`);
+    }
+  } catch (error) {
+    console.warn(`Could not request graceful sidecar shutdown: ${error.message}`);
+  }
+}
 
 try {
-  const handshake = await waitForHandshake(child, stdoutLines, stderrLines);
+  handshake = await waitForHandshake(child, stdoutLines, stderrLines);
   const health = await readHealth(handshake.port, handshake.token);
   const summary = requireHealth(health);
   await smokeCoreApi(handshake.port, handshake.token);
@@ -318,8 +354,15 @@ try {
   console.log("- api: settings, leads, profile, diagnostics");
   passed = true;
 } finally {
-  killProcessTree(child);
-  await sleep(2000);
+  if (handshake?.port && handshake?.token) {
+    await requestShutdown(handshake.port, handshake.token);
+  }
+  const closedCleanly = await waitForChildClose(child, 15_000);
+  if (!closedCleanly) {
+    killProcessTree(child);
+    await waitForChildClose(child, 5_000);
+  }
+  await sleep(1000);
   remove(appDataDir, { allowFailure: true });
   if (cleanupDir) {
     remove(cleanupDir, { allowFailure: true });
