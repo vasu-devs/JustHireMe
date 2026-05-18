@@ -1,4 +1,4 @@
-import { cacheableJson, cleanId, countersWritable, createMemoryCache, envInt, json, redisConfigured, redisPipeline, redisScript, send } from "./_counter.js";
+import { cacheableJson, cleanId, countersWritable, createMemoryCache, envInt, json, redisConfigured, redisPipeline, redisScript, send, visitorKey } from "./_counter.js";
 
 const TOTAL_KEY = "justhireme:downloads:total";
 const UNIQUE_PREFIX = "justhireme:downloads:visitor:";
@@ -102,10 +102,10 @@ export default async function handler(request, response) {
       return send(response, json({ configured: true, writable: false, counted: false, total: baseline, windows: 0, mac: 0, linux: 0 }));
     }
 
-    const visitorKey = `${UNIQUE_PREFIX}${platform}:${visitorId}`;
+    const key = visitorKey(UNIQUE_PREFIX, visitorId, platform);
     const [wasNew, total, platformTotal] = await redisScript(
       COUNT_DOWNLOAD_SCRIPT,
-      [visitorKey, TOTAL_KEY, PLATFORM_KEYS[platform]],
+      [key, TOTAL_KEY, PLATFORM_KEYS[platform]],
       [String(baseline), String(VISITOR_TTL_SECONDS)],
     );
     const cached = COUNT_CACHE.get();

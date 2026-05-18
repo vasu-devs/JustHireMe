@@ -47,6 +47,7 @@ def create_app(
     )
     app.state.internal_token = internal_token
     app.state.connection_manager = connection_manager
+    app.state.token_getter = token_getter
 
     @app.middleware("http")
     async def require_http_token_middleware(request: Request, call_next):

@@ -1,3 +1,5 @@
+import { createHash, createHmac } from "node:crypto";
+
 export function json(body, status = 200) {
   return { body, status };
 }
@@ -91,6 +93,22 @@ export async function redisScript(script, keys = [], args = []) {
 
 export function cleanId(value) {
   return String(value || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80);
+}
+
+export function hashVisitorId(value) {
+  const id = cleanId(value);
+  if (!id) return "";
+  const salt = process.env.COUNTER_HASH_SALT || process.env.UPSTASH_REDIS_REST_TOKEN || "justhireme-public-counter";
+  if (salt) {
+    return createHmac("sha256", salt).update(id).digest("base64url").slice(0, 48);
+  }
+  return createHash("sha256").update(id).digest("base64url").slice(0, 48);
+}
+
+export function visitorKey(prefix, visitorId, scope = "") {
+  const hashed = hashVisitorId(visitorId);
+  if (!hashed) return "";
+  return `${prefix}${scope ? `${scope}:` : ""}${hashed}`;
 }
 
 export function createMemoryCache(ttlMs) {

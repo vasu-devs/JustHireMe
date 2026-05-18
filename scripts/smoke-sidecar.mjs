@@ -107,16 +107,17 @@ function resolveSidecar(manifest) {
   const internal = join(targetReleaseDir, "_internal");
 
   if (existsSync(sidecar)) {
-    if (manifest.sidecarBinaryBytes && bytes(sidecar) !== manifest.sidecarBinaryBytes) {
-      fail(
-        `Target sidecar is stale: ${sidecar} is ${bytes(sidecar)} bytes, expected ${manifest.sidecarBinaryBytes}. ` +
-          "Run the release build before sidecar smoke."
-      );
+    const targetIsStale = manifest.sidecarBinaryBytes && bytes(sidecar) !== manifest.sidecarBinaryBytes;
+    const targetMissingRuntime = manifest.sidecarLayout === "onedir" && !existsSync(internal);
+
+    if (!targetIsStale && !targetMissingRuntime) {
+      return { sidecar, cwd: targetReleaseDir, cleanupDir: "" };
     }
-    if (manifest.sidecarLayout === "onedir" && !existsSync(internal)) {
-      fail(`Target sidecar runtime directory not found at ${internal}`);
-    }
-    return { sidecar, cwd: targetReleaseDir, cleanupDir: "" };
+
+    const reason = targetIsStale
+      ? `${sidecar} is ${bytes(sidecar)} bytes, expected ${manifest.sidecarBinaryBytes}`
+      : `${internal} is missing`;
+    console.warn(`Ignoring stale target sidecar (${reason}); using fresh resource sidecar instead.`);
   }
 
   return prepareFallbackSidecar(manifest);
@@ -202,13 +203,15 @@ function waitForHandshake(child, stdoutLines, stderrLines) {
   });
 }
 
-async function readHealth(port) {
+async function readHealth(port, token) {
   const deadline = Date.now() + 30_000;
   let lastError = null;
 
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/health`);
+      const response = await fetch(`http://127.0.0.1:${port}/health`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!response.ok) {
         throw new Error(`/health returned HTTP ${response.status}: ${await response.text()}`);
       }
@@ -271,7 +274,7 @@ const child = spawn(sidecar, ["--no-services"], {
 
 try {
   const handshake = await waitForHandshake(child, stdoutLines, stderrLines);
-  const health = await readHealth(handshake.port);
+  const health = await readHealth(handshake.port, handshake.token);
   const summary = requireHealth(health);
 
   console.log(`Sidecar smoke passed: ${sidecar}`);

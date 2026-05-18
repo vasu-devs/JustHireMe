@@ -17,12 +17,16 @@ def create_api_token() -> str:
     return secrets.token_hex(32)
 
 
+def valid_token(candidate: str, expected: str) -> bool:
+    return bool(candidate) and bool(expected) and secrets.compare_digest(candidate, expected)
+
+
 async def require_http_token(request: Request, call_next, token_getter: Callable[[], str]):
     if request.method == "OPTIONS" or request.url.path == "/health" or request.url.path.startswith("/internal/"):
         return await call_next(request)
 
     creds = await _bearer(request)
-    if creds is None or creds.credentials != token_getter():
+    if creds is None or not valid_token(creds.credentials, token_getter()):
         return JSONResponse(
             {"detail": "invalid token"},
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -32,11 +36,12 @@ async def require_http_token(request: Request, call_next, token_getter: Callable
 
 async def require_ws_token(ws: WebSocket, token_getter: Callable[[], str]) -> bool:
     token = ws.query_params.get("token", "")
-    if token == token_getter():
+    expected = token_getter()
+    if valid_token(token, expected):
         return True
 
     auth = ws.headers.get("authorization", "")
-    if auth.startswith("Bearer ") and auth[7:] == token_getter():
+    if auth.startswith("Bearer ") and valid_token(auth[7:], expected):
         return True
 
     await ws.close(code=4401, reason="invalid token")

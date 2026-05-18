@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from api.dependencies import get_repository
 from api.rate_limit import RateLimiter, require_rate_limit
 from core.types import HelpChatBody
-from core.telemetry import log_error
+from core.telemetry import log_error, redact_sensitive, redact_text
 from data.repository import Repository
 from gateway.clients import graph_client
 from graph_service.stats import graph_stats_payload
@@ -197,5 +197,11 @@ async def help_chat(body: HelpChatBody):
 
 @router.post("/errors")
 async def record_frontend_error(payload: dict):
-    log_error(str(payload.get("error") or "Frontend error"), {"frontend": payload})
+    safe_payload = redact_sensitive({
+        "error": payload.get("error") or "Frontend error",
+        "componentStack": payload.get("componentStack", ""),
+        "url": payload.get("url", ""),
+        "userAgent": payload.get("userAgent", ""),
+    })
+    log_error(redact_text(payload.get("error") or "Frontend error"), {"frontend": safe_payload})
     return {"ok": True}

@@ -92,12 +92,14 @@ function waitForHandshake(child, stdoutLines, stderrLines) {
   });
 }
 
-async function readHealth(port) {
+async function readHealth(port, token) {
   const deadline = Date.now() + 30_000;
   let lastError = null;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/health`);
+      const response = await fetch(`http://127.0.0.1:${port}/health`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return response.json();
     } catch (error) {
@@ -133,7 +135,7 @@ async function smokeInstalledSidecar(installDir, appDataDir) {
 
   try {
     const handshake = await waitForHandshake(child, stdoutLines, stderrLines);
-    const health = await readHealth(handshake.port);
+    const health = await readHealth(handshake.port, handshake.token);
     const components = health.components || health.checks || {};
     if (components.sqlite?.status !== "ok") fail(`SQLite health is ${components.sqlite?.status || "missing"}`);
     if (components.graph?.status !== "ok") fail(`Graph health is ${components.graph?.status || "missing"}`);

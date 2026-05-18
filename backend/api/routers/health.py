@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import time
 from datetime import datetime, timezone
 
@@ -9,6 +10,20 @@ from fastapi import APIRouter, Depends, Request
 from api.dependencies import get_repository
 from data.repository import Repository
 from gateway.clients import graph_client, get_service_registry
+
+
+def _details_authorized(request: Request) -> bool:
+    auth = request.headers.get("authorization", "")
+    if not auth.startswith("Bearer "):
+        return False
+    token_getter = getattr(request.app.state, "token_getter", None)
+    if not callable(token_getter):
+        return False
+    try:
+        expected = token_getter()
+    except Exception:
+        return False
+    return bool(expected) and secrets.compare_digest(auth[7:], expected)
 
 
 def _check_sqlite(repo: Repository) -> dict:
@@ -116,6 +131,15 @@ def create_router(started_at: float) -> APIRouter:
 
     @router.get("/health", dependencies=[])
     async def health(request: Request, repo: Repository = Depends(get_repository)):
+        base = {
+            "status": "alive",
+            "uptime_seconds": round(time.monotonic() - started_at, 2),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "details_available": _details_authorized(request),
+        }
+        if not base["details_available"]:
+            return base
+
         service_registry = getattr(request.app.state, "service_registry", None)
         service_supervisor = getattr(request.app.state, "service_supervisor", None)
         if service_supervisor is not None:
@@ -129,9 +153,8 @@ def create_router(started_at: float) -> APIRouter:
         }
         status = "alive" if checks["sqlite"]["status"] == "ok" and checks["graph"]["status"] == "ok" else "degraded"
         return {
+            **base,
             "status": status,
-            "uptime_seconds": round(time.monotonic() - started_at, 2),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
             "log_level": os.environ.get("JHM_LOG_LEVEL", "INFO"),
             "last_scan_finished_at": repo.settings.get_setting("last_scan_finished_at", ""),
             "components": checks,

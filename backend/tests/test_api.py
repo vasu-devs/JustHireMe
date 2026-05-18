@@ -125,6 +125,8 @@ class TestAuthGate(unittest.TestCase):
     def test_health_no_token_is_200(self):
         resp = get("/health", auth=False)
         self.assertEqual(resp.status_code, 200)
+        self.assertNotIn("components", resp.json())
+        self.assertFalse(resp.json()["details_available"])
 
     def test_protected_route_no_token_is_401(self):
         resp = get("/api/v1/leads", auth=False)
@@ -289,6 +291,16 @@ class TestHealthEndpoint(unittest.TestCase):
     def test_health_returns_log_level(self):
         resp = get("/health")
         self.assertIn("log_level", resp.json())
+
+    def test_health_details_require_valid_token(self):
+        no_auth = get("/health", auth=False).json()
+        with_auth = get("/health").json()
+        wrong_auth = CLIENT.get("/health", headers={"Authorization": "Bearer wrong-token"}).json()
+
+        self.assertNotIn("components", no_auth)
+        self.assertNotIn("components", wrong_auth)
+        self.assertIn("components", with_auth)
+        self.assertTrue(with_auth["details_available"])
 
 
 class TestLeadsEndpoints(unittest.TestCase):

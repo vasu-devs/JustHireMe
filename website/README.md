@@ -26,9 +26,12 @@ COUNTER_WRITES_ENABLED=false
 COUNTER_SERVER_CACHE_SECONDS=1800
 COUNTER_CDN_CACHE_SECONDS=21600
 COUNTER_VISITOR_TTL_DAYS=400
+COUNTER_HASH_SALT=...
 ```
 
 Set `COUNTER_WRITES_ENABLED=false` as an emergency brake if the Upstash command count starts rising too fast. The page will keep showing the configured baseline or cached count while new writes are paused.
+
+Visitor ids are hashed before they are used in Redis keys. Set `COUNTER_HASH_SALT` to a stable secret to preserve deduplication across deployments without storing raw browser ids server-side.
 
 ## Download Counter
 
@@ -81,3 +84,5 @@ Then use filtered issue pages:
 - Reviews only: `https://github.com/vasu-devs/JustHireMe/issues?q=is%3Aissue%20label%3Areview`
 
 Feedback and review submissions are delivered through GitHub issues only. If GitHub issue delivery is not configured, the endpoint returns `202` and the page tells the visitor that delivery setup is still needed.
+
+Because GitHub issues are public, the API redacts the separate name/email fields and scrubs email addresses, phone numbers, bearer tokens, and common API-key formats from the message before creating an issue. Ask users not to paste private resumes, account credentials, or secrets into the public feedback form.

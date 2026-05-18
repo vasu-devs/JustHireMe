@@ -1,4 +1,4 @@
-import { cacheableJson, cleanId, countersWritable, createMemoryCache, envInt, json, redis, redisConfigured, redisScript, send } from "./_counter.js";
+import { cacheableJson, cleanId, countersWritable, createMemoryCache, envInt, json, redis, redisConfigured, redisScript, send, visitorKey } from "./_counter.js";
 
 const TOTAL_KEY = "justhireme:views:total";
 const UNIQUE_PREFIX = "justhireme:views:visitor:";
@@ -71,10 +71,10 @@ export default async function handler(request, response) {
       return send(response, json({ configured: true, writable: false, counted: false, total: baseline }));
     }
 
-    const visitorKey = `${UNIQUE_PREFIX}${visitorId}`;
+    const key = visitorKey(UNIQUE_PREFIX, visitorId);
     const [wasNew, nextTotal] = await redisScript(
       COUNT_VIEW_SCRIPT,
-      [visitorKey, TOTAL_KEY],
+      [key, TOTAL_KEY],
       [String(baseline), String(VISITOR_TTL_SECONDS)],
     );
     const total = Number.parseInt(nextTotal || `${baseline}`, 10);
