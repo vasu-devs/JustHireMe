@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2 - 2026-05-18
+
+- Added the execution and stability records to the repository release branch.
+- Fixed Linux CI mypy checks for Windows-only SQLite migration locking.
+
 ## 1.0.1 - 2026-05-18
 
 - Added cross-platform `release:smoke` CI coverage across Linux, Windows, and macOS.

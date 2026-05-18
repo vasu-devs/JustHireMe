@@ -4,7 +4,7 @@ import os
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from core.logging import get_logger
 
@@ -191,7 +191,8 @@ def _lock_file(lock_file) -> None:
     if os.name == "nt":
         import msvcrt
 
-        msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+        msvcrt_module = cast(Any, msvcrt)
+        msvcrt_module.locking(lock_file.fileno(), msvcrt_module.LK_LOCK, 1)
     else:
         import fcntl
 
@@ -202,7 +203,8 @@ def _unlock_file(lock_file) -> None:
     if os.name == "nt":
         import msvcrt
 
-        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        msvcrt_module = cast(Any, msvcrt)
+        msvcrt_module.locking(lock_file.fileno(), msvcrt_module.LK_UNLCK, 1)
     else:
         import fcntl
 
