@@ -1,10 +1,10 @@
+import logging
 import asyncio
 import base64
 import json
 import os
-import sys
+from typing import Any
 from pydantic import BaseModel, Field
-from typing import List
 from core.logging import get_logger
 
 _log = get_logger(__name__)
@@ -32,7 +32,8 @@ def resolve_answer(field_type: str, candidate: dict) -> str:
         return ""
     try:
         return str(resolver(candidate) or "").strip()
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/automation/actuator.py:resolve_answer: %s', log_exc)
         return ""
 
 
@@ -81,7 +82,8 @@ async def read_form(
                     el = page.locator(sel).first
                     await el.wait_for(state="visible", timeout=1500)
                     found = True
-                except Exception:
+                except Exception as log_exc:
+                    logging.getLogger(__name__).warning('suppressed exception in backend/automation/actuator.py:read_form: %s', log_exc)
                     found = False
 
                 if not found:
@@ -106,16 +108,17 @@ async def read_form(
                                  "github", "website", "city", "cover", "resume", "name"}
                 for lbl in labels:
                     lbl_lower = lbl.lower().strip()
-                    if lbl_lower and not any(w in lbl_lower for w in covered_words):
-                        if len(lbl_lower) < 60:
-                            unmatched.append(lbl.strip())
-            except Exception:
+                    if lbl_lower and not any(w in lbl_lower for w in covered_words) and len(lbl_lower) < 60:
+                        unmatched.append(lbl.strip())
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/automation/actuator.py:read_form: %s', log_exc)
                 pass
 
             try:
                 raw = await page.screenshot(type="png", full_page=False)
                 screenshot_b64 = base64.b64encode(raw).decode()
-            except Exception:
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/automation/actuator.py:read_form: %s', log_exc)
                 pass
 
             await browser.close()
@@ -171,12 +174,13 @@ async def _upload_resume(p, asset: str) -> bool:
         await u.set_input_files(asset, timeout=5000)
         await p.wait_for_timeout(_FILL_DELAY)
         return True
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/automation/actuator.py:_upload_resume: %s', log_exc)
         return False
 
 
 async def _fill_dom(p, j: dict, a: str):
-    result = {"fields": [], "uploaded": False, "vision_actions": 0}
+    result: dict[str, Any] = {"fields": [], "uploaded": False, "vision_actions": 0}
     for sel, key in _DOM_MAP:
         v = j.get(key, "")
         if not v:
@@ -189,7 +193,8 @@ async def _fill_dom(p, j: dict, a: str):
             await el.fill(str(v), timeout=3000)
             result["fields"].append(key)
             await p.wait_for_timeout(_FILL_DELAY)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/automation/actuator.py:_fill_dom: %s', log_exc)
             pass
     result["uploaded"] = await _upload_resume(p, a)
     return result
@@ -209,7 +214,7 @@ class _Act(BaseModel):
 
 
 class _Acts(BaseModel):
-    actions: List[_Act] = Field(default_factory=list)
+    actions: list[_Act] = Field(default_factory=list)
 
 
 _VISION_SYSTEM = (
@@ -229,7 +234,8 @@ _VISION_SYSTEM = (
 def _parse_actions(text: str) -> _Acts:
     try:
         return _Acts.model_validate_json(text)
-    except Exception:
+    except Exception as log_exc:
+        _log.debug("structured action JSON parse failed; trying embedded JSON fallback: %s", log_exc)
         start, end = text.find("{"), text.rfind("}")
         if start == -1 or end == -1 or end <= start:
             raise
@@ -253,7 +259,7 @@ def _vision_actions_anthropic(model: str, key: str, b64: str, ctx: str) -> _Acts
         }],
         output_format=_Acts,
     )
-    return r.parsed_output
+    return r.parsed_output or _Acts()
 
 
 def _vision_actions_openai_compatible(provider: str, model: str, key: str, b64: str, ctx: str) -> _Acts:
@@ -292,7 +298,8 @@ def _vision_actions_openai_compatible(provider: str, model: str, key: str, b64: 
     try:
         body["response_format"] = {"type": "json_object"}
         r = c.chat.completions.create(**body)
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/automation/actuator.py:_vision_actions_openai_compatible: %s', log_exc)
         body.pop("response_format", None)
         r = c.chat.completions.create(**body)
 
@@ -354,7 +361,8 @@ async def _find_submit(p):
             btn = p.locator(sel).first
             await btn.wait_for(state="visible", timeout=2000)
             return btn
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/automation/actuator.py:_find_submit: %s', log_exc)
             pass
     return None
 

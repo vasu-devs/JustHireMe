@@ -46,6 +46,10 @@ ENV/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+coverage/
+htmlcov/
+backend/.coverage
 backend/.hf-cache/
 backend/.pyinstaller-cache/
 backend/build_cache/

@@ -1,5 +1,7 @@
+import logging
 import os
 import ipaddress
+import threading
 from urllib.parse import urlparse
 import httpx
 import anthropic
@@ -12,16 +14,24 @@ from core.logging import get_logger
 _log = get_logger(__name__)
 
 _TIMEOUT = httpx.Timeout(300.0, connect=10.0)
+# STABILITY: thread-safe LLM repository singleton
+_repo_lock = threading.RLock()
 _repo: Repository = create_repository()
 
 
 def configure_repository(repo: Repository) -> None:
     global _repo
-    _repo = repo
+    with _repo_lock:
+        _repo = repo
+
+
+def get_repository() -> Repository:
+    with _repo_lock:
+        return _repo
 
 
 def get_setting(key: str, default: str = "") -> str:
-    return _repo.settings.get_setting(key, default)
+    return get_repository().settings.get_setting(key, default)
 
 # Maps provider id → settings key holding the global API key
 _KEY_NAMES: dict[str, str] = {
@@ -237,8 +247,8 @@ def call_llm(s: str, u: str, m: type[BaseModel], step: str | None = None):
         if not k:
             _log.warning("anthropic — no key (step=%s) — falling back", step)
             return _parse_fallback(u, m)
-        c = anthropic.Anthropic(api_key=k, timeout=120.0)
-        r = c.messages.parse(
+        anthropic_client = anthropic.Anthropic(api_key=k, timeout=120.0)
+        r = anthropic_client.messages.parse(
             model=model,
             max_tokens=4096,
             system=s,
@@ -251,11 +261,11 @@ def call_llm(s: str, u: str, m: type[BaseModel], step: str | None = None):
         if not k:
             _log.warning("groq — no key (step=%s) — falling back", step)
             return _parse_fallback(u, m)
-        c = instructor.from_openai(
+        groq_client = instructor.from_openai(
             OpenAI(base_url="https://api.groq.com/openai/v1", api_key=k,
                    timeout=_TIMEOUT, max_retries=0)
         )
-        return c.chat.completions.create(
+        return groq_client.chat.completions.create(
             model=model,
             response_model=m,
             max_retries=1,
@@ -266,8 +276,8 @@ def call_llm(s: str, u: str, m: type[BaseModel], step: str | None = None):
         if not k:
             _log.warning("gemini: no key (step=%s); falling back", step)
             return _parse_fallback(u, m)
-        c = instructor.from_openai(_client_gemini(k), mode=instructor.Mode.JSON)
-        return c.chat.completions.create(
+        gemini_client = instructor.from_openai(_client_gemini(k), mode=instructor.Mode.JSON)
+        return gemini_client.chat.completions.create(
             model=model,
             response_model=m,
             max_retries=1,
@@ -278,8 +288,8 @@ def call_llm(s: str, u: str, m: type[BaseModel], step: str | None = None):
         if not k:
             _log.warning("nvidia — no key (step=%s) — falling back", step)
             return _parse_fallback(u, m)
-        c = _client_nvidia(k)
-        return c.chat.completions.create(
+        nvidia_client = _client_nvidia(k)
+        return nvidia_client.chat.completions.create(
             model=model,
             response_model=m,
             max_retries=1,
@@ -292,8 +302,8 @@ def call_llm(s: str, u: str, m: type[BaseModel], step: str | None = None):
         if not k:
             _log.warning("openai — no key (step=%s)", step)
             return _parse_fallback(u, m)
-        c = instructor.from_openai(OpenAI(api_key=k, timeout=_TIMEOUT))
-        return c.chat.completions.create(
+        openai_client = instructor.from_openai(OpenAI(api_key=k, timeout=_TIMEOUT))
+        return openai_client.chat.completions.create(
             model=model,
             response_model=m,
             messages=[{"role": "system", "content": s}, {"role": "user", "content": u}],
@@ -305,11 +315,11 @@ def call_llm(s: str, u: str, m: type[BaseModel], step: str | None = None):
             return _parse_fallback(u, m)
         # deepseek-reasoner does not support tool_choice — use JSON mode instead
         mode = instructor.Mode.JSON if "reasoner" in model else instructor.Mode.TOOLS
-        c = instructor.from_openai(
+        deepseek_client = instructor.from_openai(
             OpenAI(base_url="https://api.deepseek.com", api_key=k, timeout=_TIMEOUT),
             mode=mode,
         )
-        return c.chat.completions.create(
+        return deepseek_client.chat.completions.create(
             model=model,
             response_model=m,
             messages=[{"role": "system", "content": s}, {"role": "user", "content": u}],
@@ -336,11 +346,11 @@ def call_llm(s: str, u: str, m: type[BaseModel], step: str | None = None):
         except ValueError as exc:
             _log.warning("%s configuration invalid (step=%s): %s", p, step, exc)
             return _parse_fallback(u, m)
-        c = instructor.from_openai(
+        compat_client = instructor.from_openai(
             client,
             mode=instructor.Mode.JSON,
         )
-        return c.chat.completions.create(
+        return compat_client.chat.completions.create(
             model=model,
             response_model=m,
             max_retries=1,
@@ -350,10 +360,10 @@ def call_llm(s: str, u: str, m: type[BaseModel], step: str | None = None):
     else:  # ollama / default
         b = get_setting("ollama_url", "http://localhost:11434/v1")
         _log.info("ollama at %s model=%s (step=%s)", b, model, step)
-        c = instructor.from_openai(
+        ollama_client = instructor.from_openai(
             OpenAI(base_url=b, api_key="ollama", timeout=_TIMEOUT, max_retries=0)
         )
-        return c.chat.completions.create(
+        return ollama_client.chat.completions.create(
             model=model,
             response_model=m,
             max_retries=1,
@@ -372,103 +382,104 @@ def call_raw(s: str, u: str, step: str | None = None) -> str:
     if p == "anthropic":
         if not k:
             return ""
-        c = anthropic.Anthropic(api_key=k, timeout=120.0)
-        r = c.messages.create(
+        anthropic_client = anthropic.Anthropic(api_key=k, timeout=120.0)
+        anthropic_response = anthropic_client.messages.create(
             model=model,
             max_tokens=4096,
             system=s,
             messages=[{"role": "user", "content": u}],
         )
-        return r.content[0].text
+        return str(getattr(anthropic_response.content[0], "text", "") or "")
 
     elif p == "groq":
         if not k:
             return ""
-        c = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=k,
+        groq_client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=k,
                    timeout=_TIMEOUT, max_retries=0)
-        r = c.chat.completions.create(
+        groq_response = groq_client.chat.completions.create(
             model=model,
             messages=[{"role": "system", "content": s}, {"role": "user", "content": u}],
         )
-        return r.choices[0].message.content or ""
+        return groq_response.choices[0].message.content or ""
 
     elif p == "gemini":
         if not k:
             return ""
-        c = _client_gemini(k)
-        r = c.chat.completions.create(
+        gemini_client = _client_gemini(k)
+        gemini_response = gemini_client.chat.completions.create(
             model=model,
             messages=[{"role": "system", "content": s}, {"role": "user", "content": u}],
         )
-        return r.choices[0].message.content or ""
+        return gemini_response.choices[0].message.content or ""
 
     elif p == "nvidia":
         if not k:
             return ""
-        c = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=k,
+        nvidia_client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=k,
                    timeout=_TIMEOUT, max_retries=0)
-        r = c.chat.completions.create(
+        nvidia_response = nvidia_client.chat.completions.create(
             model=model,
             messages=[{"role": "system", "content": s}, {"role": "user", "content": u}],
             max_tokens=16384,
             extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
-        return r.choices[0].message.content or ""
+        return nvidia_response.choices[0].message.content or ""
 
     elif p == "openai":
         if not k:
             return ""
-        c = OpenAI(api_key=k, timeout=_TIMEOUT)
-        r = c.chat.completions.create(
+        openai_client = OpenAI(api_key=k, timeout=_TIMEOUT)
+        openai_response = openai_client.chat.completions.create(
             model=model,
             messages=[{"role": "system", "content": s}, {"role": "user", "content": u}],
         )
-        return r.choices[0].message.content or ""
+        return openai_response.choices[0].message.content or ""
 
     elif p == "deepseek":
         if not k:
             return ""
-        c = OpenAI(base_url="https://api.deepseek.com", api_key=k, timeout=_TIMEOUT)
-        r = c.chat.completions.create(
+        deepseek_client = OpenAI(base_url="https://api.deepseek.com", api_key=k, timeout=_TIMEOUT)
+        deepseek_response = deepseek_client.chat.completions.create(
             model=model,
             messages=[{"role": "system", "content": s}, {"role": "user", "content": u}],
         )
-        return r.choices[0].message.content or ""
+        return deepseek_response.choices[0].message.content or ""
 
     elif p in _OPENAI_COMPAT_PROVIDERS:
         if not k:
             return ""
         try:
-            c = _client_openai_compat(p, k)
+            compat_raw_client = _client_openai_compat(p, k)
         except ValueError as exc:
             _log.warning("%s configuration invalid (step=%s): %s", p, step, exc)
             return ""
         if p == "perplexity":
-            r = c.responses.create(
+            compat_response = compat_raw_client.responses.create(
                 model=model,
                 instructions=s,
                 input=u,
             )
-            return getattr(r, "output_text", "") or ""
-        r = c.chat.completions.create(
+            return getattr(compat_response, "output_text", "") or ""
+        compat_chat_response = compat_raw_client.chat.completions.create(
             model=model,
             messages=[{"role": "system", "content": s}, {"role": "user", "content": u}],
         )
-        return r.choices[0].message.content or ""
+        return compat_chat_response.choices[0].message.content or ""
 
     else:  # ollama
         b = get_setting("ollama_url", "http://localhost:11434/v1")
-        c = OpenAI(base_url=b, api_key="ollama", timeout=_TIMEOUT, max_retries=0)
-        r = c.chat.completions.create(
+        ollama_client = OpenAI(base_url=b, api_key="ollama", timeout=_TIMEOUT, max_retries=0)
+        ollama_response = ollama_client.chat.completions.create(
             model=model,
             messages=[{"role": "system", "content": s}, {"role": "user", "content": u}],
         )
-        return r.choices[0].message.content or ""
+        return ollama_response.choices[0].message.content or ""
 
 
 def _parse_fallback(u: str, m: type[BaseModel]):
     """Minimal local fallback — no LLM, returns empty structured output."""
     try:
         return m()
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/llm/client.py:_parse_fallback: %s', log_exc)
         return m.model_construct()

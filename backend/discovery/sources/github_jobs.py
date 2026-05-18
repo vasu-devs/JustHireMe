@@ -20,6 +20,8 @@ async def scrape_github(raw: str) -> list[dict]:
         "order": "desc",
         "per_page": "25",
     })
+    if not isinstance(data, dict):
+        return []
     results = []
     for item in data.get("items", []):
         updated = item.get("updated_at", "")
@@ -28,7 +30,7 @@ async def scrape_github(raw: str) -> list[dict]:
         repo_url = (item.get("repository_url") or "").replace("https://api.github.com/repos/", "https://github.com/")
         repo = repo_url.rsplit("/", 2)[-2:] if repo_url else []
         company = "/".join(repo) if repo else company_from_url(item.get("html_url", ""))
-        labels = ", ".join(l.get("name", "") for l in (item.get("labels") or []) if isinstance(l, dict))
+        labels = ", ".join(label.get("name", "") for label in (item.get("labels") or []) if isinstance(label, dict))
         desc = clean_text((item.get("body") or "")[:1000])
         if labels:
             desc = (desc + f"\nLabels: {labels}").strip()

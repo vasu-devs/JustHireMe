@@ -9,7 +9,6 @@ from generation.generators.resume import _profile_payload, _rank_projects
 
 def _draft_package(profile: dict, proof: str, j: dict, template: str = "") -> _DocPackage:
     from llm import call_llm
-    import json
 
     recommended = _rank_projects(profile, j, limit=3)
     jd_keywords = _extract_jd_keywords(j.get("description", ""), profile)
@@ -166,7 +165,6 @@ def _draft_package(profile: dict, proof: str, j: dict, template: str = "") -> _D
 def _draft(proof: str, j: dict, template: str = "") -> str:
     from llm import call_raw
     mp = "\n".join(f"- {pt}" for pt in j.get("match_points", []))
-    candidate_name = j.get("candidate_name", "")
     desc = j.get("description", "")
 
     template_instruction = (

@@ -23,15 +23,15 @@ from core.config import (
 )
 
 __all__ = [
+    "BLOCKED_JOB_TARGET_MARKERS",
     "DEFAULT_JOB_TARGETS",
     "INDIA_JOB_TARGETS",
-    "BLOCKED_JOB_TARGET_MARKERS",
     "dedupe_targets",
     "desired_position",
     "free_sources_enabled",
     "has_explicit_discovery_targets",
-    "has_x_token",
     "has_profile_discovery_signal",
+    "has_x_token",
     "int_cfg",
     "is_hn_target",
     "job_market_focus",

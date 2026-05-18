@@ -18,6 +18,8 @@ async def scrape_reddit(raw: str) -> list[dict]:
         "t": "month",
         "limit": "25",
     })
+    if not isinstance(data, dict):
+        return []
     results = []
     for child in (data.get("data", {}) or {}).get("children", []):
         post = child.get("data", {}) if isinstance(child, dict) else {}

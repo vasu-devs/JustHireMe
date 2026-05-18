@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Protocol, TypedDict
 
+from pydantic import BaseModel, Field
+
 
 class GeneratedAsset(TypedDict, total=False):
     type: str
@@ -23,9 +25,6 @@ class Generator(Protocol):
     name: str
 
     def generate(self, lead: dict, profile: dict, config: dict | None = None) -> GeneratedAsset: ...
-
-from pydantic import BaseModel, Field
-
 
 class _DocPackage(BaseModel):
     selected_projects: list[str] = Field(default_factory=list)

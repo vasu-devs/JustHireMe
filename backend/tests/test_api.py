@@ -6,6 +6,8 @@ import asyncio
 from pathlib import Path
 from unittest import mock
 
+from starlette.websockets import WebSocketDisconnect
+
 # ── Must run before any backend module is imported ───────────────────────────
 os.environ["LOCALAPPDATA"] = str(Path(__file__).resolve().parent)
 os.makedirs = lambda *_args, **_kwargs: None
@@ -274,9 +276,8 @@ class TestGraphEndpoint(unittest.TestCase):
         self.assertEqual(msg["type"], "heartbeat")
 
     def test_websocket_missing_token_closes_without_server_error(self):
-        with self.assertRaises(Exception):
-            with CLIENT.websocket_connect("/ws"):
-                pass
+        with self.assertRaises(WebSocketDisconnect), CLIENT.websocket_connect("/ws"):
+            pass
 
 
 class TestHealthEndpoint(unittest.TestCase):
@@ -301,6 +302,14 @@ class TestHealthEndpoint(unittest.TestCase):
         self.assertNotIn("components", wrong_auth)
         self.assertIn("components", with_auth)
         self.assertTrue(with_auth["details_available"])
+
+    def test_subsystem_health_exposes_degradation_schema(self):
+        resp = get("/api/v1/health/subsystems")
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual({"graph", "vector", "llm", "embeddings"}, set(payload))
+        for subsystem in payload.values():
+            self.assertIn(subsystem["status"], {"ok", "degraded", "unavailable"})
 
 
 class TestLeadsEndpoints(unittest.TestCase):

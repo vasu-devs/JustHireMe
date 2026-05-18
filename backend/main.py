@@ -14,7 +14,7 @@ from fastapi import WebSocket
 from api.app import create_app
 from api.auth import create_api_token, require_ws_token
 from api.scheduler import create_ghost_tick, create_lifespan, create_scheduler
-from api.websocket import ConnectionManager, agent_event_action as _agent_event_action
+from api.websocket import ConnectionManager, agent_event_action as _agent_event_action  # noqa: F401
 from core.logging import get_logger
 from gateway.supervisor import LocalServiceSupervisor
 from services.apps import create_service_app

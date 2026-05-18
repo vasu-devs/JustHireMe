@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import json
 import os
@@ -87,7 +88,8 @@ def record_exception(exc: BaseException, *, domain: str = "api", request_id: str
         }
         with path_obj.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).debug('suppressed exception in backend/core/telemetry.py:record_exception: %s', log_exc)
         return
 
 
@@ -97,7 +99,8 @@ def _rotate_error_log(max_lines: int = 500) -> None:
         lines = path_obj.read_text(encoding="utf-8").splitlines(True)
         if len(lines) > max_lines:
             path_obj.write_text("".join(lines[-max_lines:]), encoding="utf-8")
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).debug('suppressed exception in backend/core/telemetry.py:_rotate_error_log: %s', log_exc)
         return
 
 
@@ -115,7 +118,8 @@ def log_error(exc: BaseException | str, context: dict | None = None) -> None:
         with path_obj.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
         _rotate_error_log()
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).debug('suppressed exception in backend/core/telemetry.py:log_error: %s', log_exc)
         return
 
 
@@ -147,7 +151,8 @@ def record_error(error_type: str, message: str = "", source: str = "") -> None:
                 (error_type, message, source),
             )
         conn.commit()
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).debug('suppressed exception in backend/core/telemetry.py:record_error: %s', log_exc)
         return
 
 
@@ -177,7 +182,8 @@ def get_top_errors(limit: int = 10, days: int = 7) -> list[dict]:
             }
             for row in rows
         ]
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).debug('suppressed exception in backend/core/telemetry.py:get_top_errors: %s', log_exc)
         return []
 
 
@@ -191,5 +197,6 @@ def get_error_count(hours: int = 24) -> int:
             (f"-{max(1, int(hours))} hours",),
         ).fetchone()
         return int((row["total"] if hasattr(row, "keys") else row[0]) or 0)
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).debug('suppressed exception in backend/core/telemetry.py:get_error_count: %s', log_exc)
         return 0

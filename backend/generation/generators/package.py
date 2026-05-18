@@ -7,29 +7,17 @@ from data.repository import Repository, create_repository
 from core.logging import get_logger
 from core.generation_readiness import lead_generation_blocker
 
-from generation.generators.base import _DocPackage
+from generation.generators.base import _DocPackage  # noqa: F401
 from generation.generators.cover_letter import (
-    _is_trivial_doc,
     _normalize_package,
-    _split_cover_from_resume,
-    _strip_doc_heading,
 )
-from generation.generators.drafting import _draft, _draft_package
+from generation.generators.drafting import _draft_package
 from generation.generators.keywords import (
-    _compact_value,
-    _extract_jd_keywords,
-    _job_keyword_terms,
     _keyword_coverage,
-    _profile_keyword_terms,
 )
-from generation.generators.outreach_email import _fallback_outreach
 from generation.generators.resume import (
     _build_proof,
-    _categorize_skills,
     _fallback_package,
-    _keywords,
-    _profile_payload,
-    _rank_projects,
 )
 import generation.pdf_renderer as _pdf
 

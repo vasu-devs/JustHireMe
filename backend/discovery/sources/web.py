@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import List
 
 from pydantic import BaseModel, Field
 
@@ -21,7 +20,7 @@ class Lead(BaseModel):
 
 
 class Leads(BaseModel):
-    leads: List[Lead] = Field(default_factory=list)
+    leads: list[Lead] = Field(default_factory=list)
 
 
 SCOUT_EXTRACT_SYSTEM = (

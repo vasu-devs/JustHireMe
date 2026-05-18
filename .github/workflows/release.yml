@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+      - "V*"
 
 concurrency:
   group: release-${{ github.ref_name }}
@@ -73,7 +74,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install backend dependencies
-        run: cd backend && uv sync --dev
+        run: cd backend && uv sync --dev --frozen
 
       - name: Audit backend dependencies
         run: cd backend && uv run --with pip-audit pip-audit
@@ -376,6 +377,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run ${{ matrix.package_script }}
+
+      - name: Smoke packaged Windows sidecar
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $triple = (rustc -vV | Select-String "host:").ToString().Split(" ")[1].Trim()
+          $sidecarPath = "src-tauri\resources\backend\jhm-sidecar-next-$triple.exe"
+          if (-not (Test-Path $sidecarPath)) {
+            throw "Packaged Windows sidecar resource not found at $sidecarPath"
+          }
+          $env:JHM_SIDECAR_PATH = (Resolve-Path $sidecarPath).Path
+          npm run smoke:sidecar
 
       - name: Smoke packaged macOS sidecar
         if: matrix.platform == 'macos'

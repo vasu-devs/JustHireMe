@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import re
 from pathlib import Path
@@ -269,7 +270,8 @@ def _read_doc(path: str, limit: int = 9000) -> str:
     file = _repo_root() / path
     try:
         text = file.read_text(encoding="utf-8", errors="ignore")
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/help/service.py:_read_doc: %s', log_exc)
         return ""
     return f"\n\n## {path}\n{text[:limit]}"
 
@@ -317,7 +319,7 @@ def _topic(question: str) -> str:
         return "sources"
     if "resume" in w or "cover" in w or "customize" in w or "package" in w or "generate" in w:
         return "customize"
-    if "start" in w or "setup" in w or "first" in w or "what" in w and "do" in w:
+    if "start" in w or "setup" in w or "first" in w or ("what" in w and "do" in w):
         return "workflow"
     if "auto" in w and "apply" in w:
         return "auto_apply"
@@ -460,6 +462,7 @@ def answer(question: str, history: list[dict] | None = None) -> dict:
     try:
         response = call_raw(system, prompt, step="help").strip()
     except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/help/service.py:answer: %s', exc)
         response = ""
         provider = f"{provider} unavailable"
         model = str(exc)[:120]

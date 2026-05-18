@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import asyncio
 import csv
@@ -16,6 +17,12 @@ from core.types import FeedbackBody, FollowupBody, ManualLeadBody, StatusBody
 from data.repository import Repository
 
 MANUAL_FEEDBACK_TIMEOUT_SECONDS = 8
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _track_background_task(task: asyncio.Task) -> None:
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 def default_assets_dir() -> str:
@@ -43,7 +50,8 @@ def versioned_assets(job_id: str, base_dir: str) -> list[dict]:
     ]
     try:
         names = os.listdir(base_dir)
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/leads.py:versioned_assets: %s', log_exc)
         return []
     for name in names:
         full = os.path.join(base_dir, name)
@@ -150,8 +158,8 @@ def create_router(manager) -> APIRouter:
         job_id = _safe_job_id(job_id)
         try:
             repo.leads.delete_lead(job_id)
-        except LookupError:
-            raise HTTPException(status_code=404, detail="lead not found")
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="lead not found") from exc
         return {"ok": True}
 
     @router.put("/leads/{job_id}/status")
@@ -161,10 +169,10 @@ def create_router(manager) -> APIRouter:
             repo.leads.update_lead_status(job_id, body.status)
             await manager.broadcast({"type": "LEAD_UPDATED", "data": {"job_id": job_id, "status": body.status}})
             return {"ok": True}
-        except LookupError:
-            raise HTTPException(status_code=404, detail="lead not found")
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="lead not found") from exc
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.put("/leads/{job_id}/feedback")
     async def update_feedback(job_id: str, body: FeedbackBody, repo: Repository = Depends(get_repository)):
@@ -211,6 +219,7 @@ def create_router(manager) -> APIRouter:
                 timeout=MANUAL_FEEDBACK_TIMEOUT_SECONDS,
             )
         except Exception as exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/leads.py:create_manual_lead: %s', exc)
             meta = dict(raw_lead.get("source_meta") or {})
             meta["feedback_learning_error"] = str(exc) or "timed out"
             lead = {**raw_lead, "source_meta": meta}
@@ -254,12 +263,14 @@ def create_router(manager) -> APIRouter:
                 await asyncio.to_thread(repo.leads.save_lead, lead)
                 try:
                     await asyncio.to_thread(repo.leads.update_lead_status, lead["job_id"], "tailoring")
-                except Exception:
+                except Exception as log_exc:
+                    logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/leads.py:_run: %s', log_exc)
                     pass
                 saved = await asyncio.to_thread(repo.leads.get_lead_by_id, lead["job_id"])
                 await manager.broadcast({"type": "LEAD_UPDATED", "data": saved or queued_lead})
                 await generate_one(lead["job_id"], manager, repo=repo, service=service, job_store=job_store)
             except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/leads.py:_run: %s', exc)
                 failed = {**queued_lead, "status": "discovered"}
                 meta = dict(failed.get("source_meta") or {})
                 meta["generation_error"] = str(exc)
@@ -271,7 +282,7 @@ def create_router(manager) -> APIRouter:
                     "msg": f"Generation failed for {lead.get('title','?')}: {exc}",
                 })
 
-        asyncio.create_task(_run())
+        _track_background_task(asyncio.create_task(_run()))
         await manager.broadcast({"type": "LEAD_UPDATED", "data": queued_lead})
         return {"status": "started", "job_id": lead["job_id"], "lead": queued_lead}
 

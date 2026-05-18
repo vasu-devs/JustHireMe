@@ -89,7 +89,7 @@ async def scrape_custom_connector(
             errors.append(f"{name}: items_path did not resolve to a list")
         return []
 
-    fields = connector.get("fields") if isinstance(connector.get("fields"), dict) else {}
+    fields: dict = connector.get("fields") if isinstance(connector.get("fields"), dict) else {}
     defaults = {
         "title": "title",
         "company": "company",

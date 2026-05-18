@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { Lead } from "../../types";
 import {
+  cleanLeadText,
+  getTone,
   getMark,
+  isUrlOnlyText,
+  leadSearchText,
   leadDisplayHeading,
   normalizeSeniority,
+  roleFromUrl,
   seniorityMatches,
+  seniorityLabel,
+  seniorityTone,
   sortLeads,
   stripCompanyPrefix,
+  uniqueLeadValues,
 } from "./leadUtils";
 import * as leadUtils from "./leadUtils";
 
@@ -77,6 +85,20 @@ describe("sortLeads", () => {
       lead({ job_id: "second", signal_score: 50 }),
     ], "signal").map(l => l.job_id)).toEqual(["first", "second"]);
   });
+
+  it("sorts by company and recommended priority", () => {
+    expect(sortLeads([
+      lead({ job_id: "z", company: "Zulu", title: "Backend" }),
+      lead({ job_id: "a", company: "Acme", title: "Frontend" }),
+    ], "company").map(l => l.job_id)).toEqual(["a", "z"]);
+
+    expect(sortLeads([
+      lead({ job_id: "contacted", signal_score: 80, last_contacted_at: "2026-05-01" }),
+      lead({ job_id: "fresh", signal_score: 80 }),
+      lead({ job_id: "budget", signal_score: 80, budget: "$80/hr" }),
+      lead({ job_id: "learned", signal_score: 80, learning_delta: 4 }),
+    ], "recommended").map(l => l.job_id)).toEqual(["learned", "contacted", "budget", "fresh"]);
+  });
 });
 
 describe("leadDisplayHeading", () => {
@@ -114,6 +136,38 @@ describe("getMark", () => {
 
   it("returns a fallback mark for empty company names", () => {
     expect(getMark("")).toBe("?");
+  });
+});
+
+describe("lead utility formatting helpers", () => {
+  it("builds searchable text and unique values", () => {
+    const items = [
+      lead({ company: "Acme", title: "AI Engineer", signal_tags: ["agent"], tech_stack: ["FastAPI"] }),
+      lead({ company: "Beta", title: "React Engineer", platform: "x" }),
+      lead({ company: "Acme", title: "Duplicate" }),
+    ];
+    expect(leadSearchText(items[0])).toContain("fastapi");
+    expect(uniqueLeadValues(items, "company")).toEqual(["Acme", "Beta"]);
+  });
+
+  it("cleans URL-only text and derives roles from URLs", () => {
+    expect(cleanLeadText("  hello\nworld  ")).toBe("hello world");
+    expect(isUrlOnlyText("https://example.com/jobs/backend-engineer")).toBe(true);
+    expect(isUrlOnlyText("Backend Engineer https://example.com")).toBe(false);
+    expect(roleFromUrl("example.com/jobs/123-senior-llm-engineer-abcdef1234")).toBe("Senior LLM Engineer");
+  });
+
+  it("maps seniority and status labels to stable display values", () => {
+    expect(seniorityLabel("beginner")).toBe("Beginner");
+    expect(seniorityTone("fresher")).toBe("teal");
+    expect(getTone("accepted")).toBe("teal");
+    expect(getTone("discarded")).toBe("red");
+    expect(getTone("matched")).toBe("green");
+    expect(getTone("bidding")).toBe("teal");
+    expect(getTone("proposal_sent")).toBe("purple");
+    expect(getTone("awarded")).toBe("blue");
+    expect(getTone("completed")).toBe("green");
+    expect(getTone("unknown-status")).toBe("blue");
   });
 });
 

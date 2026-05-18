@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import asyncio
 import os
@@ -15,7 +16,8 @@ def _read_pdf_text(path: str) -> str:
 
         reader = PdfReader(path)
         return "\n".join(page.extract_text() or "" for page in reader.pages)
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/automation/service.py:_read_pdf_text: %s', log_exc)
         return ""
 
 
@@ -68,13 +70,15 @@ def get_lead_for_fire_sync(job_id: str, repo: Repository | None = None) -> tuple
     cover_path = lead.get("cover_letter_path") or ""
     try:
         profile = active_repo.profile.get_profile()
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/automation/service.py:get_lead_for_fire_sync: %s', log_exc)
         profile = {}
     resume_text = _read_pdf_text(path)
     cover_text = _read_pdf_text(cover_path)
     try:
         settings = active_repo.settings.get_settings()
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/automation/service.py:get_lead_for_fire_sync: %s', log_exc)
         settings = {}
     contact = _contact_from_text(
         "\n".join(

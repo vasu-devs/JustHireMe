@@ -37,7 +37,7 @@ jobs:
       - uses: astral-sh/setup-uv@v8.1.0
 
       - name: Audit backend dependencies
-        run: cd backend && uv sync --dev && uv run --with pip-audit pip-audit
+        run: cd backend && uv sync --dev --frozen && uv run --with pip-audit pip-audit
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -60,8 +60,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run version:check
+      - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run test:behavioral
+      - run: npm run test:coverage
       - run: npm run build
 
   website:
@@ -93,9 +95,11 @@ jobs:
         with:
           python-version: '3.13'
       - uses: astral-sh/setup-uv@v8.1.0
-      - run: cd backend && uv sync --dev
+      - run: cd backend && uv sync --dev --frozen
+      - run: cd backend && uv run ruff check .
+      - run: cd backend && uv run mypy . --ignore-missing-imports
       - run: cd backend && uv run python -m pytest tests/test_import_boundaries.py -q
-      - run: cd backend && uv run python -m pytest tests -q
+      - run: cd backend && uv run python -m pytest tests -q --cov=. --cov-report=term-missing --cov-fail-under=60
 
   macos-sidecar-smoke:
     name: macOS sidecar smoke
@@ -118,8 +122,11 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Install frontend dependencies
+        run: npm ci
+
       - name: Install backend dependencies
-        run: cd backend && uv sync --dev
+        run: cd backend && uv sync --dev --frozen
 
       - name: Build macOS sidecar
         run: npm run build:sidecar
@@ -149,7 +156,7 @@ jobs:
         with:
           python-version: '3.13'
       - uses: astral-sh/setup-uv@v8.1.0
-      - run: cd backend && uv sync --dev
+      - run: cd backend && uv sync --dev --frozen
       - name: Run focused domain tests
         run: |
           cd backend
@@ -159,6 +166,39 @@ jobs:
           else
             uv run python -m pytest tests/test_import_boundaries.py -q
           fi
+
+  windows-sidecar-smoke:
+    name: Windows sidecar smoke
+    runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - uses: astral-sh/setup-uv@v8.1.0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: cd backend && uv sync --dev --frozen
+
+      - name: Build Windows sidecar
+        run: npm run build:sidecar
+
+      - name: Smoke Windows sidecar
+        run: npm run smoke:sidecar
 
   rust:
     name: Rust check

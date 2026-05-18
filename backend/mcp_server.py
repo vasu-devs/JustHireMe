@@ -6,10 +6,12 @@ needed by MCP clients: initialize, tools/list, and tools/call.
 """
 
 from __future__ import annotations
+import logging
 
 import json
 import sys
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from core.version import APP_VERSION
 from ranking.evaluator import score as score_fit
@@ -163,6 +165,7 @@ def _handle(request: Json) -> Json | None:
             raise ValueError(f"Unsupported method: {method}")
         return {"jsonrpc": "2.0", "id": req_id, "result": result}
     except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/mcp_server.py:_handle: %s', exc)
         return {
             "jsonrpc": "2.0",
             "id": req_id,
@@ -178,6 +181,7 @@ def main() -> None:
             request = json.loads(line)
             response = _handle(request)
         except Exception as exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/mcp_server.py:main: %s', exc)
             response = {
                 "jsonrpc": "2.0",
                 "id": None,

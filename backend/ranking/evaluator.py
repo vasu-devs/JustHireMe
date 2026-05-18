@@ -7,9 +7,9 @@ evidence-backed context and so hard safety caps can prevent obvious overrating.
 """
 
 from __future__ import annotations
+import logging
 
 import json
-from typing import List
 
 from pydantic import BaseModel, Field
 from core.logging import get_logger
@@ -27,8 +27,8 @@ _log = get_logger(__name__)
 class _Score(BaseModel):
     score: int = 0
     reason: str = ""
-    match_points: List[str] = Field(default_factory=list)
-    gaps: List[str] = Field(default_factory=list)
+    match_points: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
     confidence: int = 0
 
 
@@ -145,7 +145,8 @@ def _infer_experience_level(candidate_data: dict) -> str:
 def _compact_json(value, limit: int = 14000) -> str:
     try:
         text = json.dumps(value, ensure_ascii=False, default=str, indent=2)
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/evaluator.py:_compact_json: %s', log_exc)
         text = json.dumps(str(value), ensure_ascii=False)
     if len(text) <= limit:
         return text
@@ -199,7 +200,8 @@ def _evaluator_llm_requested(settings: dict | None = None) -> bool:
             "llm_provider",
         )
         return any(str(settings.get(key, "") or "").strip() for key in keys)
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/evaluator.py:_evaluator_llm_requested: %s', log_exc)
         return False
 
 
@@ -268,8 +270,9 @@ def _normalize_llm_result(raw, baseline: dict) -> dict:
         raise ValueError("empty evaluator response")
 
     try:
-        score = int(round(float(data.get("score", baseline.get("score", 0)))))
-    except Exception:
+        score = round(float(data.get("score", baseline.get("score", 0))))
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/evaluator.py:_normalize_llm_result: %s', log_exc)
         score = int(baseline.get("score") or 0)
     score = max(0, min(100, score))
 

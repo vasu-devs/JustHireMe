@@ -1,3 +1,4 @@
+import logging
 import hashlib
 import re
 from urllib.parse import unquote, urlparse
@@ -240,7 +241,7 @@ def outreach_drafts(title: str, company: str, text: str, kind: str, budget: str 
             break
     company_label = company or "there"
     reply = (
-        f"This looks aligned with my AI automation, Python, and React work. "
+        "This looks aligned with my AI automation, Python, and React work. "
         "Happy to share relevant projects or apply through the right channel."
     )
     dm = (
@@ -266,7 +267,8 @@ def outreach_drafts(title: str, company: str, text: str, kind: str, budget: str 
 def company_from_url(url: str) -> str:
     try:
         host = urlparse(url if "://" in url else "https://" + url).netloc.lower()
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/discovery/lead_intel.py:company_from_url: %s', log_exc)
         host = ""
     host = host.replace("www.", "")
     if not host:
@@ -290,7 +292,8 @@ def _is_url_only_text(text: str) -> bool:
 def _role_title_from_url(url: str) -> str:
     try:
         parsed = urlparse(url if "://" in url else f"https://{url}")
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/discovery/lead_intel.py:_role_title_from_url: %s', log_exc)
         return ""
     parts = [unquote(part).strip() for part in parsed.path.split("/") if part.strip()]
     if not parts:

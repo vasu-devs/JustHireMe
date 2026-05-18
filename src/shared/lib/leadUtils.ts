@@ -71,7 +71,7 @@ export const cleanLeadText = (value: unknown) =>
 export const isUrlOnlyText = (value: unknown) => {
   const text = cleanLeadText(value);
   if (!text) return false;
-  return text.replace(/https?:\/\/\S+|www\.\S+/gi, "").replace(/[\s|,;:()[\]{}\-_\/]+/g, "") === "";
+  return text.replace(/https?:\/\/\S+|www\.\S+/gi, "").replace(/[\s|,;:()[\]{}\-_/]+/g, "") === "";
 };
 
 export const roleFromUrl = (value: unknown) => {

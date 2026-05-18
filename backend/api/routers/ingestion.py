@@ -90,14 +90,16 @@ def _temp_upload(file: UploadFile | None):
     suffix = Path(file.filename).suffix.lower()
     if suffix not in {".pdf", ".doc", ".docx", ".txt", ".md"}:
         suffix = ".txt"
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    tmp_name = ""
     try:
-        shutil.copyfileobj(file.file, tmp)
-        tmp.close()
-        yield tmp.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            tmp_name = tmp.name
+        yield tmp_name
     finally:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp.name)
+        if tmp_name:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_name)
 
 
 def create_router(manager, logger) -> APIRouter:
@@ -130,7 +132,7 @@ def create_router(manager, logger) -> APIRouter:
                 })
                 return profile_payload
         except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.post("/ingest/linkedin")
     async def ingest_linkedin(file: UploadFile = File(...)):
@@ -143,7 +145,7 @@ def create_router(manager, logger) -> APIRouter:
             return await get_profile_service().ingest_linkedin(raw)
         except Exception as exc:
             logger.error("linkedin parse failed: %s", exc)
-            raise HTTPException(422, f"could not parse linkedin export: {exc}")
+            raise HTTPException(422, f"could not parse linkedin export: {exc}") from exc
 
     @router.post("/ingest/github")
     async def ingest_github_endpoint(body: GithubIngestBody):
@@ -154,14 +156,14 @@ def create_router(manager, logger) -> APIRouter:
                 max_repos=body.max_repos,
             )
         except ServiceTimeout as exc:
-            raise HTTPException(504, str(exc))
+            raise HTTPException(504, str(exc)) from exc
         except ServiceUnavailable as exc:
-            raise HTTPException(503, str(exc))
+            raise HTTPException(503, str(exc)) from exc
         except ServiceRequestError as exc:
-            raise HTTPException(502, str(exc))
+            raise HTTPException(502, str(exc)) from exc
         except Exception as exc:
             logger.error("github ingest failed: %s", exc)
-            raise HTTPException(502, f"could not ingest github profile: {exc}")
+            raise HTTPException(502, f"could not ingest github profile: {exc}") from exc
         if "error" in result:
             status_code = int(result.get("status_code") or (404 if result.get("error_kind") == "not_found" else 502))
             raise HTTPException(status_code, result["error"])
@@ -200,14 +202,14 @@ def create_router(manager, logger) -> APIRouter:
         try:
             result = await get_profile_service().ingest_portfolio(body.url, auto_import=body.auto_import)
         except ServiceTimeout as exc:
-            raise HTTPException(504, str(exc))
+            raise HTTPException(504, str(exc)) from exc
         except ServiceUnavailable as exc:
-            raise HTTPException(503, str(exc))
+            raise HTTPException(503, str(exc)) from exc
         except ServiceRequestError as exc:
-            raise HTTPException(502, str(exc))
+            raise HTTPException(502, str(exc)) from exc
         except Exception as exc:
             logger.error("portfolio ingest failed: %s", exc)
-            raise HTTPException(502, f"could not ingest portfolio: {exc}")
+            raise HTTPException(502, f"could not ingest portfolio: {exc}") from exc
         if result.get("error") and not result.get("screenshot_b64"):
             raise HTTPException(int(result.get("status_code") or 422), result["error"])
         if result.get("imported"):

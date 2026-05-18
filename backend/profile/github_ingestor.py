@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import asyncio
 import base64
@@ -180,7 +181,8 @@ def _decode_content(data: dict | None, *, max_chars: int = 12000) -> str:
     if encoding == "base64":
         try:
             content = base64.b64decode(content).decode("utf-8", errors="ignore")
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/profile/github_ingestor.py:_decode_content: %s', log_exc)
             return ""
     return str(content or "")[:max_chars]
 
@@ -214,7 +216,8 @@ def _parse_dt(value: str | None):
         return None
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/profile/github_ingestor.py:_parse_dt: %s', log_exc)
         return None
 
 
@@ -254,7 +257,8 @@ def _skills_from_manifest(path: str, content: str) -> list[str]:
                 name = dep.split("/")[-1].lower()
                 if name in DEPENDENCY_SKILLS:
                     skills.add(DEPENDENCY_SKILLS[name])
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/profile/github_ingestor.py:_skills_from_manifest: %s', log_exc)
             pass
     else:
         lower = content.lower()
@@ -465,6 +469,8 @@ async def ingest_github(username: str, token: str | None = None, max_repos: int 
         return {"error": str(exc), "error_kind": "github_unavailable", "status_code": exc.status_code or 502}
     if not user:
         return {"error": f"GitHub user '{username}' not found", "error_kind": "not_found", "status_code": 404}
+    if not isinstance(user, dict):
+        return {"error": f"GitHub user '{username}' returned an unexpected response", "error_kind": "invalid_response", "status_code": 502}
 
     github_user = {
         "login": user.get("login", username),

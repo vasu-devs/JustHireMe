@@ -4,9 +4,9 @@ from ranking.criteria.base import Criterion, CriterionSpec
 from ranking.criteria.registry import DEFAULT_CRITERIA, criteria_by_key, criteria_by_name
 
 __all__ = [
+    "DEFAULT_CRITERIA",
     "Criterion",
     "CriterionSpec",
-    "DEFAULT_CRITERIA",
     "criteria_by_key",
     "criteria_by_name",
 ]

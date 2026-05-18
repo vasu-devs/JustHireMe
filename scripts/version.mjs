@@ -166,7 +166,7 @@ function writePythonConstVersion(path, version) {
 }
 
 function normalizeVersion(raw) {
-  const version = raw?.trim().replace(/^v/, "");
+  const version = raw?.trim().replace(/^v/i, "");
   if (!versionPattern.test(version || "")) {
     throw new Error(`Invalid version "${raw}". Expected semver like 0.1.29 or v0.1.29.`);
   }
@@ -177,7 +177,7 @@ function expectedVersionFromRef(refName) {
   if (!refName) {
     return null;
   }
-  const version = refName.trim().replace(/^v/, "");
+  const version = refName.trim().replace(/^v/i, "");
   return versionPattern.test(version) ? refName : null;
 }
 

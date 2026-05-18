@@ -1,7 +1,10 @@
+import logging
 import asyncio
 import hashlib
 import os
 import re
+import threading
+from typing import Any
 from urllib.parse import urlencode
 
 from discovery.lead_intel import (
@@ -23,7 +26,16 @@ url_exists = _repo.leads.url_exists
 
 X_API_BASE = "https://api.x.com/2/tweets/search/recent"
 LAST_ERRORS: list[str] = []
-LAST_USAGE: dict = {}
+LAST_USAGE: dict[str, Any] = {}
+# STABILITY: thread-safe scout diagnostics snapshot
+_STATE_LOCK = threading.RLock()
+
+
+def _publish_state(errors: list[str], usage: dict[str, Any]) -> None:
+    global LAST_ERRORS, LAST_USAGE
+    with _STATE_LOCK:
+        LAST_ERRORS = list(errors)
+        LAST_USAGE = dict(usage)
 
 DEFAULT_QUERIES = [
     '("hiring" OR "job opening" OR "open role") ("AI engineer" OR "software engineer" OR "Python developer") lang:en -is:retweet',
@@ -88,7 +100,8 @@ def _h(value: str) -> str:
 def _int_setting(value, default: int, min_value: int, max_value: int) -> int:
     try:
         parsed = int(str(value or "").strip())
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/automation/x_scout.py:_int_setting: %s', log_exc)
         parsed = default
     return max(min_value, min(parsed, max_value))
 
@@ -391,9 +404,8 @@ def run(
     max_requests: int = 5,
     min_signal_score: int = 55,
 ) -> list[dict]:
-    global LAST_ERRORS, LAST_USAGE
-    LAST_ERRORS = []
-    LAST_USAGE = {
+    errors: list[str] = []
+    usage: dict[str, Any] = {
         "configured_queries": 0,
         "executed_queries": 0,
         "tweets_seen": 0,
@@ -404,7 +416,8 @@ def run(
 
     token = bearer_token or os.environ.get("X_BEARER_TOKEN") or os.environ.get("TWITTER_BEARER_TOKEN")
     if not token:
-        LAST_ERRORS.append("X bearer token is not configured")
+        errors.append("X bearer token is not configured")
+        _publish_state(errors, usage)
         return []
 
     wanted = "job"
@@ -414,16 +427,17 @@ def run(
     leads: list[dict] = []
     seen: set[str] = set()
     targets = queries or build_queries(raw_queries, raw_watchlist)
-    LAST_USAGE["configured_queries"] = len(targets)
+    usage["configured_queries"] = len(targets)
 
     for query in targets[:max_requests]:
         try:
             tweets, users = asyncio.run(_search_recent(token, query, max_results=max_results))
-            LAST_USAGE["executed_queries"] += 1
-            LAST_USAGE["tweets_seen"] += len(tweets)
+            usage["executed_queries"] += 1
+            usage["tweets_seen"] += len(tweets)
         except Exception as exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/automation/x_scout.py:run: %s', exc)
             detail = str(exc).strip() or type(exc).__name__
-            LAST_ERRORS.append(f"{query}: {detail}")
+            errors.append(f"{query}: {detail}")
             if "429" in detail:
                 break
             continue
@@ -431,12 +445,12 @@ def run(
         for tweet in tweets:
             kind = classify_post(tweet.get("text", ""))
             if not kind or (wanted and kind != wanted):
-                LAST_USAGE["filtered"] += 1
+                usage["filtered"] += 1
                 continue
             lead = _lead_from_tweet(tweet, users.get(str(tweet.get("author_id"))), kind, query)
             lead = rank_lead_by_feedback(lead)
             if lead["signal_score"] < min_signal_score:
-                LAST_USAGE["filtered"] += 1
+                usage["filtered"] += 1
                 continue
             if lead["job_id"] in seen or url_exists(lead["job_id"]):
                 continue
@@ -468,10 +482,11 @@ def run(
                 learning_reason=lead.get("learning_reason", ""),
                 source_meta=lead["source_meta"],
             )
-            LAST_USAGE["saved"] += 1
+            usage["saved"] += 1
             leads.append(lead)
 
     if len(targets) > max_requests:
-        LAST_ERRORS.append(f"Request cap hit: ran {max_requests} of {len(targets)} X queries")
+        errors.append(f"Request cap hit: ran {max_requests} of {len(targets)} X queries")
 
+    _publish_state(errors, usage)
     return leads

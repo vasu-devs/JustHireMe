@@ -191,6 +191,35 @@
   overflow: hidden;
 }
 
+.subsystem-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 18px;
+  border-bottom: 1px solid rgba(181, 120, 40, 0.22);
+  background: var(--yellow-soft);
+  color: var(--yellow-ink);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+}
+
+.subsystem-banner strong {
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
+.subsystem-banner span {
+  min-width: 0;
+}
+
+.subsystem-banner-detail {
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar {
   width: 232px;
   flex-shrink: 0;

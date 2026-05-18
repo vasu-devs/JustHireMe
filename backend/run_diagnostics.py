@@ -92,9 +92,9 @@ def run_scout(urls):
     dt = round(time.time() - t0, 1)
 
     log("SCOUT", f"Completed in {dt}s — {B}{len(leads)} new leads{X} discovered", G)
-    for l in leads:
-        log("SCOUT", f"  → {l.get('title','?')} @ {l.get('company','?')}  [{l.get('platform','')}]", C)
-        log("SCOUT", f"    {D}{l.get('url','')}{X}", D)
+    for lead in leads:
+        log("SCOUT", f"  → {lead.get('title','?')} @ {lead.get('company','?')}  [{lead.get('platform','')}]", C)
+        log("SCOUT", f"    {D}{lead.get('url','')}{X}", D)
 
     return leads
 

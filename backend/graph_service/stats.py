@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from typing import Any
 
 from data.repository import create_repository
 from graph_service.helpers import embedding_space, safe_graph_step, sync_vectors_from_graph
@@ -85,7 +86,7 @@ def _profile_snapshot_graph(profile: dict) -> dict:
 
 
 def _merge_graphs(primary: dict, fallback: dict) -> dict:
-    merged = {
+    merged: dict[str, Any] = {
         "nodes": list(primary.get("nodes") or []),
         "edges": list(primary.get("edges") or []),
         "available": bool(primary.get("available") or fallback.get("available")),
@@ -118,9 +119,7 @@ def _filter_stale_profile_nodes(graph: dict, profile_graph: dict) -> dict:
         node_id = str(node.get("id") or "")
         node_type = str(node.get("type") or "")
         subtitle = str(node.get("subtitle") or "").strip().lower()
-        if node_id in candidate_owned_ids and node_type in {"Skill", "Project"} and node_id not in allowed_profile_ids:
-            remove_ids.add(node_id)
-        elif node_type == "Skill" and subtitle == "project_stack" and node_id not in allowed_profile_ids:
+        if (node_id in candidate_owned_ids and node_type in {"Skill", "Project"} and node_id not in allowed_profile_ids) or (node_type == "Skill" and subtitle == "project_stack" and node_id not in allowed_profile_ids):
             remove_ids.add(node_id)
     if not remove_ids:
         return graph

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 import json
 import time
 from pathlib import Path
@@ -35,7 +36,8 @@ def get_selectors() -> dict:
     if cached_json and (now - cached_at) < _TTL:
         try:
             return json.loads(cached_json)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/automation/selectors.py:get_selectors: %s', log_exc)
             pass
 
     if remote_url:
@@ -52,7 +54,8 @@ def get_selectors() -> dict:
     if cached_json:
         try:
             return json.loads(cached_json)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/automation/selectors.py:get_selectors: %s', log_exc)
             pass
 
     return _load_bundled()

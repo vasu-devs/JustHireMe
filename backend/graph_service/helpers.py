@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import math
 
@@ -26,6 +27,7 @@ def safe_graph_step(fn, label: str, errors: list[str], default=None):
     try:
         return fn()
     except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/graph_service/helpers.py:safe_graph_step: %s', exc)
         errors.append(f"{label}: {exc}")
         if default is not None:
             return default
@@ -38,6 +40,7 @@ def sync_vectors_from_graph() -> dict:
 
         return _sync()
     except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/graph_service/helpers.py:sync_vectors_from_graph: %s', exc)
         return {"status": "error", "synced": 0, "error": str(exc)}
 
 
@@ -49,6 +52,7 @@ def embedding_space(repo: Repository, limit: int = 80) -> dict:
             if name in {"profile", "candidates", "skills", "projects", "experiences", "credentials"}
         ]
     except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/graph_service/helpers.py:embedding_space: %s', exc)
         return {"available": False, "points": points, "error": str(exc)}
 
     for table_name in tables:
@@ -60,7 +64,8 @@ def embedding_space(repo: Repository, limit: int = 80) -> dict:
                 rows = table.to_pandas().head(limit).to_dict("records")
             else:
                 rows = []
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/graph_service/helpers.py:embedding_space: %s', log_exc)
             rows = []
         for row in rows:
             vector = row.get("vector") or []
@@ -111,7 +116,8 @@ def project_vector(vector: list) -> tuple[float, float, float]:
     for idx, raw in enumerate(vector):
         try:
             value = float(raw)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/graph_service/helpers.py:project_vector: %s', log_exc)
             continue
         if value == 0:
             continue
@@ -140,6 +146,7 @@ def vector_table_names(vec) -> list[str]:
         tables = pairs.get("tables", [])
         if isinstance(tables, list):
             return [str(item) for item in tables]
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/graph_service/helpers.py:vector_table_names: %s', log_exc)
         pass
     return [str(item) for item in raw]

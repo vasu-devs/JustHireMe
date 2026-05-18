@@ -14,10 +14,10 @@ over the current profile payload, so matching still has a semantic signal before
 the vector store is warmed.
 """
 from __future__ import annotations
+import logging
 
 import hashlib
 import math
-from typing import Optional
 from core.logging import get_logger
 
 _log = get_logger(__name__)
@@ -27,17 +27,19 @@ def _h(value: str) -> str:
     return hashlib.md5(value.encode()).hexdigest()[:12]
 
 
-def _embed_jd(text: str) -> Optional[list[float]]:
+def _embed_jd(text: str) -> list[float] | None:
     """Embed a JD string into a 384-dim vector. Returns None on any failure."""
     if not (text or "").strip():
         return None
     try:
         from data.vector.embeddings import embed_texts
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/semantic.py:_embed_jd: %s', log_exc)
         return None
     try:
         vecs = embed_texts([text])
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/semantic.py:_embed_jd: %s', log_exc)
         return None
     if not vecs:
         return None
@@ -49,7 +51,8 @@ def _embed_jd(text: str) -> Optional[list[float]]:
         return None
     try:
         return [float(x) for x in first]
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/semantic.py:_embed_jd: %s', log_exc)
         return None
 
 
@@ -57,7 +60,8 @@ def _vec_store():
     try:
         from data.vector.connection import vec
         return vec
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/semantic.py:_vec_store: %s', log_exc)
         return None
 
 
@@ -66,7 +70,8 @@ def _available_tables(store) -> set[str]:
         return set()
     try:
         return set(store.list_tables() or [])
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/semantic.py:_available_tables: %s', log_exc)
         return set()
 
 
@@ -159,27 +164,31 @@ def _table_search(
         return []
     try:
         table = store.open_table(table_name)
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/semantic.py:_table_search: %s', log_exc)
         return []
     try:
         # LanceDB returns rows ordered by similarity. Prefer cosine when supported.
         try:
             search = table.search(query).metric("cosine")
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/ranking/semantic.py:_table_search: %s', log_exc)
             search = table.search(query)
         server_filtered = False
         if allowed_ids:
             try:
                 search = search.where(_ids_where_clause(allowed_ids), prefilter=True)
                 server_filtered = True
-            except Exception:
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/ranking/semantic.py:_table_search: %s', log_exc)
                 server_filtered = False
         if server_filtered or allowed_ids is None:
             request_limit = limit
         else:
             request_limit = max(limit, min(200, len(allowed_ids) + limit * 8))
         results = search.limit(request_limit).to_list()
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/semantic.py:_table_search: %s', log_exc)
         return []
     return _filter_rows(list(results or []), allowed_ids, limit)
 
@@ -310,7 +319,8 @@ def _hash_embedding(text: str) -> list[float] | None:
     try:
         from data.vector.embeddings import hash_embedding
         return [float(x) for x in hash_embedding(text)]
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/semantic.py:_hash_embedding: %s', log_exc)
         return None
 
 
@@ -354,7 +364,7 @@ def _semantic_result(
     credential_matches: list[tuple[str, float]],
     profile_matches: list[tuple[str, float]],
     source: str,
-) -> Optional[dict]:
+) -> dict | None:
     groups = [
         ("skills", skill_matches, 0.22),
         ("projects", project_matches, 0.34),
@@ -373,14 +383,10 @@ def _semantic_result(
     peak_signal = sum(maxes[name] * weight for name, _values, weight in active) / weight_total
 
     combined = 0.60 * avg_signal + 0.40 * peak_signal
-    if source == "local-profile":
-        # The built-in hashing embedder is deliberately lightweight and yields
-        # lower cosine values than sentence-transformer vectors for short tech
-        # text, so calibrate it on a narrower band.
-        stretched = (combined - 0.06) / 0.30
-    else:
-        stretched = (combined - 0.15) / 0.55
-    score = max(0, min(100, int(round(stretched * 100))))
+    # The built-in hashing embedder is deliberately lightweight and yields lower
+    # cosine values than sentence-transformer vectors for short tech text.
+    stretched = (combined - 0.06) / 0.30 if source == "local-profile" else (combined - 0.15) / 0.55
+    score = max(0, min(100, round(stretched * 100)))
 
     raw = {
         **{f"{name}_avg": round(avgs.get(name, 0.0), 3) for name, _values, _weight in groups},
@@ -407,7 +413,7 @@ def semantic_fit(
     candidate_data: dict | None = None,
     top_skills: int = 6,
     top_projects: int = 3,
-) -> Optional[dict]:
+) -> dict | None:
     """Compute a 0-100 semantic-fit score for a JD against the stored profile.
 
     Prefers scoped LanceDB rows when available, then falls back to a local hashed
@@ -486,7 +492,7 @@ class SemanticMatcher:
         candidate_data: dict | None = None,
         top_skills: int = 6,
         top_projects: int = 3,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         return semantic_fit(
             jd_text,
             candidate_data=candidate_data,

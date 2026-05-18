@@ -1,3 +1,7 @@
+import asyncio
+from typing import ClassVar
+from unittest import mock
+
 from discovery.sources import rss
 from discovery.sources import hackernews
 from discovery.sources import ats
@@ -46,7 +50,7 @@ def test_web_source_target_helpers():
 
 
 def test_web_source_github_jobs_marks_platform():
-    with __import__("unittest").mock.patch("discovery.sources.web.scrape", return_value=[{"platform": "scout"}]):
+    with mock.patch("discovery.sources.web.scrape", return_value=[{"platform": "scout"}]):
         leads = web.scrape_github_jobs_target("https://github.com/example/jobs")
 
     assert leads[0]["platform"] == "github_jobs"
@@ -60,17 +64,17 @@ def test_ats_target_detection():
 
 def test_ats_target_dispatches_provider():
     async def run():
-        with __import__("unittest").mock.patch("discovery.sources.ats.scrape_greenhouse", return_value=[]) as scrape:
+        with mock.patch("discovery.sources.ats.scrape_greenhouse", return_value=[]) as scrape:
             await ats.scrape_target("ats:greenhouse:openai")
         scrape.assert_called_once_with("openai")
 
-    __import__("asyncio").run(run())
+    asyncio.run(run())
 
 
 def test_apify_actor_posts_to_dataset_endpoint():
     class FakeResponse:
         status_code = 200
-        headers = {}
+        headers: ClassVar[dict] = {}
 
         def raise_for_status(self):
             return None
@@ -93,7 +97,7 @@ def test_apify_actor_posts_to_dataset_endpoint():
             return FakeResponse()
 
     async def run():
-        with __import__("unittest").mock.patch("discovery.sources.apify.httpx.AsyncClient", FakeClient):
+        with mock.patch("discovery.sources.apify.httpx.AsyncClient", FakeClient):
             return await apify.run_actor("owner/actor", {"queries": ["python"]}, "token")
 
-    assert __import__("asyncio").run(run()) == [{"title": "Role"}]
+    assert asyncio.run(run()) == [{"title": "Role"}]

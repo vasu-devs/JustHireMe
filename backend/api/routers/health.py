@@ -67,8 +67,11 @@ async def _check_graph_service(repo: Repository) -> dict:
 
 def _check_vector(repo: Repository) -> dict:
     try:
+        status_fn = getattr(repo.vector, "vector_status", None)
+        if callable(status_fn):
+            return status_fn()
         if getattr(repo.vector.vec, "available", True) is False:
-            return {"status": "disabled", "tables": [], "reason": getattr(repo.vector.vec, "reason", "")}
+            return {"status": "unavailable", "tables": [], "error": getattr(repo.vector.vec, "reason", "")}
         tables = list(repo.vector.vec.list_tables() or [])
         return {"status": "ok", "tables": tables}
     except Exception as exc:
@@ -126,6 +129,30 @@ def _check_llm(repo: Repository) -> dict:
         return {"status": "error", "error": str(exc)}
 
 
+def _check_embeddings() -> dict:
+    try:
+        from data.vector.embeddings import embedding_status
+
+        return embedding_status()
+    except Exception as exc:
+        return {"status": "unavailable", "error": str(exc)}
+
+
+def _as_subsystem_status(name: str, payload: dict) -> dict:
+    raw_status = str(payload.get("status") or "unavailable")
+    error = str(payload.get("error") or payload.get("reason") or "")
+    if raw_status == "ok":
+        status = "ok"
+    elif raw_status in {"missing_key", "disabled", "error", "unavailable"}:
+        status = "unavailable"
+    else:
+        status = "degraded"
+    details = {key: value for key, value in payload.items() if key not in {"status", "error", "reason"}}
+    if name == "llm" and raw_status == "missing_key" and not error:
+        error = "LLM API key is not configured"
+    return {"status": status, "error": error, **details}
+
+
 def create_router(started_at: float) -> APIRouter:
     router = APIRouter()
 
@@ -161,5 +188,15 @@ def create_router(started_at: float) -> APIRouter:
             "checks": checks,
             "services": service_registry.snapshot() if service_registry else {},
         }
+
+    @router.get("/api/v1/health/subsystems")
+    async def health_subsystems(repo: Repository = Depends(get_repository)):
+        checks = {
+            "graph": await _check_graph_service(repo),
+            "vector": _check_vector(repo),
+            "llm": _check_llm(repo),
+            "embeddings": _check_embeddings(),
+        }
+        return {name: _as_subsystem_status(name, payload) for name, payload in checks.items()}
 
     return router

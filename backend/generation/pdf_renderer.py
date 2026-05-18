@@ -152,7 +152,10 @@ def _render_resume_template(md_text: str, filename: str) -> str:
                     if int(budget["bullets"]) and bullet_count >= int(budget["bullets"]):
                         continue
                     bullet_count += 1
-                    prefix = re.match(r"^[-*+]\s+", stripped).group(0)
+                    prefix_match = re.match(r"^[-*+]\s+", stripped)
+                    if not prefix_match:
+                        continue
+                    prefix = prefix_match.group(0)
                     out.append(prefix + _shorten_text(re.sub(r"^[-*+]\s+", "", stripped), int(budget["chars"])))
                     continue
                 if heading in {"SUMMARY", "SKILLS", "CERTIFICATES", "CERTS", "ACHIEVEMENTS", "EDUCATION"}:
@@ -339,6 +342,7 @@ def _render_resume_template(md_text: str, filename: str) -> str:
         if not overflow:
             chosen_pdf = filled_pdf
             chosen_ratio = used_ratio
+    assert chosen_pdf is not None
     chosen_pdf.output(out)
     return out
 
@@ -538,8 +542,13 @@ def _render(md_text: str, filename: str, kind: str = "resume") -> str:
         if not truncated:
             break
     pdf = chosen_pdf
+    assert pdf is not None
     pdf.output(out)
     return out
+
+
+clean = _clean
+strip_inline = _strip_inline
 
 
 def render_resume_template(md_text: str, filename: str) -> str:

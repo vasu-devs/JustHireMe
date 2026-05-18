@@ -1,6 +1,8 @@
 from __future__ import annotations
+import logging
 
 from dataclasses import dataclass
+from threading import RLock
 
 import httpx
 
@@ -22,14 +24,19 @@ class ServiceEndpoint:
 class ServiceRegistry:
     def __init__(self, endpoints: dict[str, ServiceEndpoint] | None = None):
         self._endpoints = endpoints or {}
+        self._lock = RLock()
 
     def set(self, endpoint: ServiceEndpoint) -> None:
-        self._endpoints[endpoint.name] = endpoint
+        with self._lock:
+            self._endpoints[endpoint.name] = endpoint
 
     def get(self, name: str) -> ServiceEndpoint | None:
-        return self._endpoints.get(name)
+        with self._lock:
+            return self._endpoints.get(name)
 
     def snapshot(self) -> dict[str, dict]:
+        with self._lock:
+            endpoints = dict(self._endpoints)
         return {
             name: {
                 "name": endpoint.name,
@@ -42,20 +49,24 @@ class ServiceRegistry:
                 "last_error": endpoint.last_error,
                 "restart_count": endpoint.restart_count,
             }
-            for name, endpoint in self._endpoints.items()
+            for name, endpoint in endpoints.items()
         }
 
 
+# STABILITY: thread-safe gateway service registry
 _registry: ServiceRegistry | None = None
+_registry_lock = RLock()
 
 
 def set_service_registry(registry: ServiceRegistry | None) -> None:
     global _registry
-    _registry = registry
+    with _registry_lock:
+        _registry = registry
 
 
 def get_service_registry() -> ServiceRegistry | None:
-    return _registry
+    with _registry_lock:
+        return _registry
 
 
 class ServiceRequestError(RuntimeError):
@@ -107,7 +118,8 @@ class BaseServiceClient:
             detail = response.text
             try:
                 detail = response.json().get("detail", detail)
-            except Exception:
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/gateway/clients/base.py:_request: %s', log_exc)
                 pass
             message = f"{self.service_name} service returned {response.status_code}: {detail}"
             if response.status_code == 404:
@@ -123,4 +135,5 @@ class BaseServiceClient:
 
 
 def _endpoint(name: str) -> ServiceEndpoint | None:
-    return _registry.get(name) if _registry else None
+    registry = get_service_registry()
+    return registry.get(name) if registry else None

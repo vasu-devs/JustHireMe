@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import asyncio
 
@@ -8,6 +9,13 @@ from api.dependencies import get_generation_service, get_job_runner, get_reposit
 from api.rate_limit import RateLimiter, require_rate_limit
 from core.generation_readiness import lead_generation_blocker
 from data.repository import Repository
+
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _track_background_task(task: asyncio.Task) -> None:
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 async def generate_one(
@@ -30,7 +38,8 @@ async def generate_one(
     if blocked_reason:
         try:
             job_store.update(job.job_id, status="failed", error=blocked_reason)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', log_exc)
             pass
         await manager.broadcast({"type": "agent", "event": "gen_error", "msg": blocked_reason})
         raise HTTPException(status_code=422, detail=blocked_reason)
@@ -48,7 +57,8 @@ async def generate_one(
             repo.leads.update_lead_status(job_id, "tailoring")
             tailoring_lead = {**lead, "status": "tailoring"}
             await manager.broadcast({"type": "LEAD_UPDATED", "data": tailoring_lead})
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', log_exc)
             pass
         generation = await service.generate_with_contacts(lead, template=template)
         package = generation.package
@@ -62,6 +72,7 @@ async def generate_one(
                 package.get("keyword_coverage", {}),
             )
         except Exception as exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', exc)
             persistence_errors.append(f"asset package: {exc}")
 
         outreach_fields = {}
@@ -75,6 +86,7 @@ async def generate_one(
             try:
                 repo.leads.update_outreach_fields(job_id, outreach_fields)
             except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', exc)
                 persistence_errors.append(f"outreach fields: {exc}")
 
         enriched_lead = {
@@ -93,6 +105,7 @@ async def generate_one(
         try:
             repo.leads.save_contact_lookup(job_id, contact_lookup)
         except Exception as exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', exc)
             persistence_errors.append(f"contact lookup: {exc}")
         enriched_lead["contact_lookup"] = contact_lookup
         enriched_meta = dict(enriched_lead.get("source_meta") or {})
@@ -108,7 +121,8 @@ async def generate_one(
         })
         try:
             job_store.update(job.job_id, status="succeeded", progress=100, result={"lead": enriched_lead})
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', log_exc)
             pass
         enriched_lead["generation_job_id"] = job.job_id
         return enriched_lead
@@ -121,7 +135,8 @@ async def generate_one(
             failed_meta["generation_error"] = str(exc)
             failed_lead["source_meta"] = failed_meta
             await manager.broadcast({"type": "LEAD_UPDATED", "data": failed_lead})
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', log_exc)
             pass
         await manager.broadcast({
             "type": "agent",
@@ -160,16 +175,18 @@ def create_router(*, manager) -> APIRouter:
         try:
             await asyncio.to_thread(repo.leads.update_lead_status, job_id, "tailoring")
             await manager.broadcast({"type": "LEAD_UPDATED", "data": tailoring_lead})
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:start_generate_for_lead: %s', log_exc)
             pass
 
         async def _run():
             try:
                 await generate_one(job_id, manager, repo=repo, service=service, job_store=job_store)
-            except Exception:
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:_run: %s', log_exc)
                 pass
 
-        asyncio.create_task(_run())
+        _track_background_task(asyncio.create_task(_run()))
         return {"status": "started", "job_id": job_id, "lead": tailoring_lead}
 
     @router.post("/leads/{job_id}/pipeline/run")
@@ -190,11 +207,13 @@ def create_router(*, manager) -> APIRouter:
             job_store.update(job.job_id, status="running", progress=10)
             try:
                 profile = await asyncio.wait_for(asyncio.to_thread(repo.profile.get_profile), timeout=20)
-            except Exception:
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:_run: %s', log_exc)
                 profile = {}
             try:
                 cfg = await asyncio.wait_for(asyncio.to_thread(repo.settings.get_settings), timeout=10)
-            except Exception:
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:_run: %s', log_exc)
                 cfg = {}
             state: PipelineState = {
                 "job_id": job_id,
@@ -221,6 +240,7 @@ def create_router(*, manager) -> APIRouter:
                     "msg": f"Pipeline done for {job_id}: score={result['score']}, error={result['error']}",
                 })
             except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:_run: %s', exc)
                 job_store.update(job.job_id, status="failed", error=str(exc))
                 await manager.broadcast({
                     "type": "agent",

@@ -222,9 +222,7 @@ def _valid_resume_project(project: dict) -> bool:
     lower = title.lower()
     if lower in {"api", "apis", "conditioning", "github", "repo", "repository", "project", "projects"}:
         return False
-    if URL_RE.search(title) or EMAIL_RE.search(title):
-        return False
-    return True
+    return not (URL_RE.search(title) or EMAIL_RE.search(title))
 
 
 def _rank_projects(profile: dict, lead: dict, limit: int = 4) -> list[dict]:
@@ -332,7 +330,7 @@ def _categorize_skills(skills: list[dict]) -> dict[str, list[str]]:
 def _fallback_package(profile: dict, lead: dict, template: str = "") -> _DocPackage:
     selected = _rank_projects(profile, lead, limit=2)
     name = profile.get("n") or "Candidate"
-    identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
+    identity: dict = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
     title = _safe_text(str(lead.get("title") or "Software Engineer")) or "Software Engineer"
     company = _safe_text(str(lead.get("company") or "the company")) or "the company"
     skills_raw = profile.get("skills", [])
@@ -341,7 +339,7 @@ def _fallback_package(profile: dict, lead: dict, template: str = "") -> _DocPack
     achievements = profile.get("achievements", [])
     jd_terms = _job_keyword_terms(_lead_text(lead))
     prioritized_skills = _prioritized_skills(profile, lead)
-    coverage = _keyword_coverage(profile, lead)
+    coverage: dict = _keyword_coverage(profile, lead) or {}
 
     skill_cats = _categorize_skills([
         {

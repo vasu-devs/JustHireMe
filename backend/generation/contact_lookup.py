@@ -1,6 +1,5 @@
 import json
 import os
-import json
 import re
 import urllib.parse
 import urllib.request
@@ -64,7 +63,7 @@ def _domain_from_url(url: str) -> str:
 
 
 def _domain_from_meta(lead: dict) -> str:
-    meta = lead.get("source_meta") if isinstance(lead.get("source_meta"), dict) else {}
+    meta: dict = lead.get("source_meta") if isinstance(lead.get("source_meta"), dict) else {}
     for key in ("company_domain", "domain", "website"):
         domain = _domain_from_url(str(meta.get(key) or ""))
         if domain:
@@ -159,7 +158,7 @@ def _candidate_name(settings: dict, profile: dict) -> str:
 
 
 def _skills_line(lead: dict) -> str:
-    stack = lead.get("tech_stack") if isinstance(lead.get("tech_stack"), list) else []
+    stack: list = lead.get("tech_stack") if isinstance(lead.get("tech_stack"), list) else []
     terms = [str(x).strip() for x in stack if str(x).strip()]
     if not terms:
         terms = re.findall(r"\b(?:Python|FastAPI|React|TypeScript|AWS|Docker|Kubernetes|LLM|AI|PostgreSQL|Kafka|CI/CD)\b", str(lead.get("description") or ""), re.I)

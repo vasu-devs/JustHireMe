@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -18,6 +19,8 @@ def is_ats_target(target: str) -> bool:
 
 async def scrape_greenhouse(slug: str) -> list[dict]:
     data = await json_get(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs", {"content": "true"})
+    if not isinstance(data, dict):
+        return []
     results = []
     for job in data.get("jobs", []):
         updated = job.get("updated_at") or ""
@@ -51,7 +54,8 @@ async def scrape_lever(slug: str) -> list[dict]:
         if job.get("createdAt"):
             try:
                 created = datetime.fromtimestamp(int(job["createdAt"]) / 1000, tz=timezone.utc).isoformat()
-            except Exception:
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/discovery/sources/ats.py:scrape_lever: %s', log_exc)
                 created = str(job.get("createdAt"))
         if created and not is_recent(created):
             continue
@@ -100,7 +104,8 @@ async def scrape_ashby(slug: str) -> list[dict]:
 async def scrape_workable(slug: str) -> list[dict]:
     try:
         data = await json_get(f"https://www.workable.com/api/accounts/{slug}", {"details": "true"})
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/discovery/sources/ats.py:scrape_workable: %s', log_exc)
         data = await json_get(f"https://apply.workable.com/api/v1/widget/accounts/{slug}")
 
     if isinstance(data, list):

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import warnings
 from typing import Any, TypedDict
@@ -12,7 +13,8 @@ try:
         category=LangChainPendingDeprecationWarning,
         module=r"langgraph\.cache\.base",
     )
-except Exception:
+except Exception as log_exc:
+    logging.getLogger(__name__).warning('suppressed exception in backend/graph/__init__.py:<module>: %s', log_exc)
     pass
 
 from langgraph.graph import END, StateGraph

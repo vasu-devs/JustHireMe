@@ -1,6 +1,7 @@
 """Deterministic lead quality gate for discovery sources."""
 
 from __future__ import annotations
+import logging
 
 import re
 from datetime import datetime, timedelta, timezone
@@ -90,7 +91,8 @@ def _parse_date(value: str) -> datetime | None:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/discovery/quality_gate.py:_parse_date: %s', log_exc)
         pass
     for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%b %d, %Y", "%d %b %Y"):
         try:

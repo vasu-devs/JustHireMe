@@ -36,6 +36,8 @@ const PIPELINE_VIEW_TO_TAB: Partial<Record<View, PipelineTab>> = {
   "pipeline-discarded": "discarded",
 };
 
+type SubsystemHealth = Record<string, { status: string; error?: string; reason?: string; [key: string]: unknown }>;
+
 export default function App() {
   const { conn, port, apiToken, sidecarError, logs, addLog: wsAddLog, progress } = useWS();
   const api = useMemo<ApiFetch | null>(() => {
@@ -55,6 +57,7 @@ export default function App() {
   const liveSel = sel ? (leads.find(l => l.job_id === sel.job_id) ?? sel) : null;
   const [startupSeconds, setStartupSeconds] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("jhm-sidebar-collapsed") === "1");
+  const [subsystems, setSubsystems] = useState<SubsystemHealth | null>(null);
 
   useEffect(() => {
     localStorage.setItem("jhm-sidebar-collapsed", sidebarCollapsed ? "1" : "0");
@@ -94,6 +97,30 @@ export default function App() {
       setStartupSeconds(Math.floor((Date.now() - started) / 1000));
     }, 1000);
     return () => window.clearInterval(timer);
+  }, [api]);
+
+  useEffect(() => {
+    if (!api) {
+      setSubsystems(null);
+      return;
+    }
+    let stopped = false;
+    const load = async () => {
+      try {
+        const response = await api("/api/v1/health/subsystems", { timeoutMs: 10000 });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (!stopped) setSubsystems(payload);
+      } catch {
+        if (!stopped) setSubsystems(null);
+      }
+    };
+    load();
+    const timer = window.setInterval(load, 30000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
   }, [api]);
 
   useKeyboardShortcuts({
@@ -226,6 +253,7 @@ export default function App() {
   };
   const pipelineTab = PIPELINE_VIEW_TO_TAB[view] || "all";
   const isPipelineView = Boolean(PIPELINE_VIEW_TO_TAB[view]);
+  const degradedSubsystems = Object.entries(subsystems ?? {}).filter(([, value]) => value.status !== "ok");
 
   if (!api) {
     return (
@@ -250,6 +278,7 @@ export default function App() {
         />
         <div className="app-main">
           <Topbar view={view} progress={progress} />
+          <SubsystemBanner items={degradedSubsystems} />
           <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "var(--paper)" }}>
             {view === "apply"     && <ErrorBoundary label="Apply" api={api ?? undefined}><ApplyJobView port={port} api={api} leads={leads} openDrawer={setSel} initialInput={applyDraft} autoFocus={applyAutoFocus} /></ErrorBoundary>}
             {view === "dashboard" && <ErrorBoundary label="Dashboard" api={api ?? undefined}><DashboardView leads={leads} dueFollowups={dueFollowups} logs={logs} setView={setView} openDrawer={setSel} scanning={scanning} reevaluating={reevaluating} cleaning={cleaning} progress={progress} onScan={onScan} onStopScan={onStopScan} onReevaluate={onReevaluateJobs} onStopReevaluate={onStopReevaluate} onCleanup={onCleanupLeads} scanErr={scanErr} /></ErrorBoundary>}
@@ -286,6 +315,25 @@ export default function App() {
       </div>
       <UpdatePrompt />
     </>
+  );
+}
+
+function SubsystemBanner({ items }: { items: Array<[string, SubsystemHealth[string]]> }) {
+  if (items.length === 0) return null;
+  const summary = items.map(([name, value]) => `${name}: ${value.status}`).join(" | ");
+  const detail = items
+    .map(([name, value]) => {
+      const message = value.error || value.reason;
+      return message ? `${name}: ${message}` : "";
+    })
+    .filter(Boolean)
+    .join(" | ");
+  return (
+    <div className="subsystem-banner" role="status">
+      <strong>Subsystem degraded</strong>
+      <span>{summary}</span>
+      {detail && <span className="subsystem-banner-detail">{detail}</span>}
+    </div>
   );
 }
 

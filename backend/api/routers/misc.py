@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import asyncio
 import math
@@ -13,11 +14,16 @@ from core.telemetry import log_error, redact_sensitive, redact_text
 from data.graph.connection import run_graph
 from data.repository import Repository
 from gateway.clients import graph_client
-from graph_service.stats import graph_stats_payload
 
 
 router = APIRouter(prefix="/api/v1", tags=["misc"])
 _help_limiter = RateLimiter(20, 60)
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _track_background_task(task: asyncio.Task) -> None:
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 @router.get("/graph")
@@ -75,6 +81,7 @@ def _safe_graph_step(fn, label: str, errors: list[str], default=None):
     try:
         return fn()
     except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/misc.py:_safe_graph_step: %s', exc)
         errors.append(f"{label}: {exc}")
         if default is not None:
             return default
@@ -85,6 +92,7 @@ async def _safe_graph_step_async(fn, label: str, errors: list[str], default=None
     try:
         return await run_graph(fn)
     except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/misc.py:_safe_graph_step_async: %s', exc)
         errors.append(f"{label}: {exc}")
         if default is not None:
             return default
@@ -97,6 +105,7 @@ def _sync_vectors_from_graph() -> dict:
 
         return sync_vectors_from_graph()
     except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/misc.py:_sync_vectors_from_graph: %s', exc)
         return {"status": "error", "synced": 0, "error": str(exc)}
 
 
@@ -108,6 +117,7 @@ def _embedding_space(repo: Repository, limit: int = 80) -> dict:
             if name in {"profile", "candidates", "skills", "projects", "experiences", "credentials"}
         ]
     except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/misc.py:_embedding_space: %s', exc)
         return {"available": False, "points": points, "error": str(exc)}
 
     for table_name in tables:
@@ -119,7 +129,8 @@ def _embedding_space(repo: Repository, limit: int = 80) -> dict:
                 rows = table.to_pandas().head(limit).to_dict("records")
             else:
                 rows = []
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/misc.py:_embedding_space: %s', log_exc)
             rows = []
         for row in rows:
             vector = row.get("vector") or []
@@ -168,7 +179,8 @@ def _project_vector(vector: list) -> tuple[float, float, float]:
     for idx, raw in enumerate(vector):
         try:
             value = float(raw)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/misc.py:_project_vector: %s', log_exc)
             continue
         if value == 0:
             continue
@@ -197,7 +209,8 @@ def _vector_table_names(vec) -> list[str]:
         tables = pairs.get("tables", [])
         if isinstance(tables, list):
             return [str(item) for item in tables]
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/misc.py:_vector_table_names: %s', log_exc)
         pass
     return [str(item) for item in raw]
 
@@ -229,5 +242,5 @@ async def request_shutdown():
         await asyncio.sleep(0.1)
         signal.raise_signal(signal.SIGTERM)
 
-    asyncio.create_task(_shutdown_soon())
+    _track_background_task(asyncio.create_task(_shutdown_soon()))
     return {"ok": True}

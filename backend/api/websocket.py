@@ -21,14 +21,28 @@ def agent_event_action(msg: dict) -> str:
 
 
 class ConnectionManager:
-    def __init__(self):
+    def __init__(self, max_connections: int = 50):
         self._ws: list[WebSocket] = []
+        # STABILITY: synchronized websocket connection list and bounded fanout
+        self._lock = asyncio.Lock()
+        self._max_connections = max_connections
+        self._tasks: set[asyncio.Task] = set()
+
+    def _track_task(self, task: asyncio.Task) -> None:
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def add(self, ws: WebSocket):
-        self._ws.append(ws)
+        async with self._lock:
+            if len(self._ws) >= self._max_connections:
+                await ws.close(code=1013, reason="too many websocket connections")
+                return False
+            self._ws.append(ws)
+            return True
 
-    def remove(self, ws: WebSocket):
-        self._ws = [w for w in self._ws if w != ws]
+    async def remove(self, ws: WebSocket):
+        async with self._lock:
+            self._ws = [w for w in self._ws if w != ws]
 
     async def _record_event(self, msg: dict) -> None:
         try:
@@ -42,7 +56,7 @@ class ConnectionManager:
 
     async def broadcast(self, msg: dict):
         if msg.get("type") == "agent":
-            asyncio.create_task(self._record_event(msg))
+            self._track_task(asyncio.create_task(self._record_event(msg)))
 
         dead = []
         text = json.dumps(msg)
@@ -55,9 +69,11 @@ class ConnectionManager:
                 record_error("websocket_send_failed", str(exc), "api.websocket")
                 dead.append(ws)
 
-        await asyncio.gather(*(_send(ws) for ws in list(self._ws)))
+        async with self._lock:
+            sockets = list(self._ws)
+        await asyncio.gather(*(_send(ws) for ws in sockets))
         for ws in dead:
-            self.remove(ws)
+            await self.remove(ws)
 
 
 async def websocket_loop(
@@ -68,7 +84,8 @@ async def websocket_loop(
     logger,
 ) -> None:
     await ws.accept()
-    await manager.add(ws)
+    if not await manager.add(ws):
+        return
     beat = 0
     try:
         while True:
@@ -84,14 +101,14 @@ async def websocket_loop(
                 msg = await asyncio.wait_for(ws.receive_text(), timeout=2.0)
                 if msg == "ping":
                     await ws.send_text(json.dumps({"type": "pong"}))
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
     except WebSocketDisconnect:
         pass
     except Exception as exc:
         logger.warning("ws: %s", exc)
     finally:
-        manager.remove(ws)
+        await manager.remove(ws)
 
 
 def register_websocket(

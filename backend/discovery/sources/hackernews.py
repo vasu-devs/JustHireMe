@@ -27,6 +27,8 @@ async def scrape_hn(raw: str) -> list[dict]:
         "numericFilters": f"created_at_i>{cutoff}",
         "hitsPerPage": "30",
     })
+    if not isinstance(data, dict):
+        return []
     results = []
     for hit in data.get("hits", []):
         story_title = hit.get("story_title", "")

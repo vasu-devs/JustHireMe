@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import os
 import re
@@ -267,7 +268,8 @@ def has_x_token(cfg: dict) -> bool:
 def int_cfg(cfg: dict, key: str, default: int, min_value: int, max_value: int) -> int:
     try:
         value = int(str(cfg.get(key, "") or "").strip())
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/core/config.py:int_cfg: %s', log_exc)
         value = default
     return max(min_value, min(value, max_value))
 

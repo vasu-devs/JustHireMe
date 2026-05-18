@@ -3,23 +3,19 @@ from __future__ import annotations
 import html
 import re
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
-from discovery.lead_intel import (
-    budget_from_text,
-    clean_text,
-    company_from_text,
-    company_from_url,
-    fit_bullets,
-    followup_sequence,
-    lead_id,
-    location_from_text,
-    manual_lead_from_text,
-    outreach_drafts,
-    proof_snippet,
-    signal_quality,
-    tech_stack_from_text,
-    urgency_from_text,
-)
+from discovery.lead_intel import budget_from_text as budget_from_text
+from discovery.lead_intel import fit_bullets as fit_bullets
+from discovery.lead_intel import followup_sequence as followup_sequence
+from discovery.lead_intel import lead_id as lead_id
+from discovery.lead_intel import location_from_text as location_from_text
+from discovery.lead_intel import outreach_drafts as outreach_drafts
+from discovery.lead_intel import proof_snippet as proof_snippet
+from discovery.lead_intel import signal_quality as signal_quality
+from discovery.lead_intel import tech_stack_from_text as tech_stack_from_text
+from discovery.lead_intel import urgency_from_text as urgency_from_text
+
 
 MAX_AGE_DAYS = 7
 
@@ -114,6 +110,22 @@ def is_recent(date_str: str) -> bool:
     if parsed is None:
         return True
     return parsed >= cutoff()
+
+
+def clean_text(text: str) -> str:
+    return re.sub(r"\s+", " ", strip_html_text(text)).strip()
+
+
+def company_from_url(url: str) -> str:
+    try:
+        host = urlparse(url if "://" in url else "https://" + url).netloc.lower()
+    except ValueError:
+        host = ""
+    host = host.replace("www.", "")
+    if not host:
+        return "Manual Lead"
+    first = host.split(".")[0]
+    return first[:1].upper() + first[1:]
 
 
 def strip_html_text(text: str) -> str:

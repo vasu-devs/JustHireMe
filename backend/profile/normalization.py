@@ -1,10 +1,11 @@
 from __future__ import annotations
+import logging
 
 import re
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-from models.schema import C, E, P, S
+from models.schema import C, P, S
 
 
 SKILL_CANONICAL = {
@@ -336,10 +337,7 @@ def normalize_projects(raw_items: list[Any], *, known_skills: list[str] | None =
 
 
 def normalize_stack(value: Any) -> list[str]:
-    if isinstance(value, list):
-        raw_parts = value
-    else:
-        raw_parts = re.split(r",|;|\||/", str(value or ""))
+    raw_parts = value if isinstance(value, list) else re.split(r",|;|\||/", str(value or ""))
     out: list[str] = []
     for raw in raw_parts:
         out.extend(split_skill_names(str(raw)))
@@ -524,9 +522,7 @@ def _valid_skill(skill: str) -> bool:
         return False
     if len(clean.split()) > 5:
         return False
-    if ACTION_SENTENCE_RE.search(clean):
-        return False
-    return True
+    return not ACTION_SENTENCE_RE.search(clean)
 
 
 def _valid_project_title(title: str, known_skills: set[str]) -> bool:
@@ -545,9 +541,7 @@ def _valid_project_title(title: str, known_skills: set[str]) -> bool:
     words = title.split()
     if len(words) > 10:
         return False
-    if ACTION_SENTENCE_RE.search(title):
-        return False
-    return True
+    return not ACTION_SENTENCE_RE.search(title)
 
 
 def _projectish_title(title: str) -> bool:
@@ -568,9 +562,7 @@ def _looks_like_project_detail(title: str) -> bool:
         return True
     if len(clean.split()) > 9 and re.search(r"[.!?]$", clean):
         return True
-    if re.search(r"(?i)\b(summary|description|highlights?|features?|tech stack|stack)\s*:", clean):
-        return True
-    return False
+    return bool(re.search(r"(?i)\b(summary|description|highlights?|features?|tech stack|stack)\s*:", clean))
 
 
 def _looks_like_stack_cluster(title: str) -> bool:
@@ -578,7 +570,7 @@ def _looks_like_stack_cluster(title: str) -> bool:
     if not clean or len(clean) > 120:
         return False
     hits = _known_skill_hits(clean)
-    return len(hits) >= 2 and (len(clean.split()) <= 8 or re.search(r"[A-Za-z]\.[A-Za-z]|[a-z][A-Z]", clean))
+    return bool(len(hits) >= 2 and (len(clean.split()) <= 8 or re.search(r"[A-Za-z]\.[A-Za-z]|[a-z][A-Z]", clean)))
 
 
 def _projectish_text(text: str) -> bool:
@@ -627,7 +619,8 @@ def _repo_title_from_url(url: str) -> str:
         return ""
     try:
         parsed = urlparse(url if "://" in url else f"https://{url}")
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/profile/normalization.py:_repo_title_from_url: %s', log_exc)
         return ""
     if "github.com" not in parsed.netloc.lower():
         return ""
@@ -651,9 +644,7 @@ def _education_detail(line: str) -> bool:
         return True
     if GRADE_RE.search(clean):
         return True
-    if DATE_RE.search(clean) and len(clean.split()) <= 6:
-        return True
-    return False
+    return bool(DATE_RE.search(clean) and len(clean.split()) <= 6)
 
 
 def _valid_education_item(item: str) -> bool:
@@ -730,9 +721,7 @@ def _is_section_or_noise(text: str) -> bool:
         return True
     if re.fullmatch(r"\d+[\d,.]*(?:%|x|k)?", clean):
         return True
-    if re.search(r"\b(show all|view all|open|menu|close|copyright|privacy)\b", clean):
-        return True
-    return False
+    return bool(re.search(r"\b(show all|view all|open|menu|close|copyright|privacy)\b", clean))
 
 
 def _clean_text(value: str) -> str:

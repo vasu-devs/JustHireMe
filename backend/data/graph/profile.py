@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import contextlib
 import contextvars
@@ -57,10 +58,12 @@ def _save_profile_patch(patch: dict, db_path: str | None = None) -> None:
             graph = read_profile_from_graph()
             if profile_has_data(graph):
                 base = merge_profiles(base, graph)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:_save_profile_patch: %s', log_exc)
             pass
         save_profile_snapshot(merge_profiles(base, patch), db_path)
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:_save_profile_patch: %s', log_exc)
         pass
 
 
@@ -122,7 +125,7 @@ def empty_profile() -> dict:
 
 def normal_profile(profile: dict | None) -> dict:
     profile = profile if isinstance(profile, dict) else {}
-    identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
+    identity: dict = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
     return {
         "n": str(profile.get("n") or ""),
         "s": clean_profile_summary(str(profile.get("s") or "")),
@@ -140,7 +143,8 @@ def _load_profile_deletions(db_path: str | None = None) -> dict[str, list[str]]:
     try:
         raw = get_setting(PROFILE_DELETIONS_KEY, "", db_path) if db_path else get_setting(PROFILE_DELETIONS_KEY, "")
         data = json.loads(raw or "{}")
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:_load_profile_deletions: %s', log_exc)
         data = {}
     return {
         key: sorted({
@@ -160,7 +164,8 @@ def _save_profile_deletions(deletions: dict[str, list[str]], db_path: str | None
             save_settings(payload, db_path)
         else:
             save_settings(payload)
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:_save_profile_deletions: %s', log_exc)
         pass
 
 
@@ -286,7 +291,8 @@ def load_profile_snapshot(db_path: str | None = None) -> dict:
             return {}
         profile = apply_profile_deletions(json.loads(raw or "{}"), db_path)
         return profile if profile_has_data(profile) else {}
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:load_profile_snapshot: %s', log_exc)
         return {}
 
 
@@ -300,7 +306,8 @@ def save_profile_snapshot(profile: dict, db_path: str | None = None, *, allow_em
             save_settings(payload, db_path)
         else:
             save_settings(payload)
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:save_profile_snapshot: %s', log_exc)
         pass
 
 
@@ -423,7 +430,8 @@ def merge_profiles(base: dict | None, incoming: dict | None) -> dict:
 def refresh_profile_snapshot(db_path: str | None = None) -> None:
     try:
         save_profile_snapshot(read_profile_from_graph(), db_path)
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:refresh_profile_snapshot: %s', log_exc)
         pass
 
 
@@ -498,6 +506,7 @@ def sync_vectors_from_graph() -> dict:
                 row = result.get_next()
                 credentials.append([row[0], row[1], label])
     except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:sync_vectors_from_graph: %s', exc)
         return {"status": "error", "synced": 0, "error": str(exc)}
 
     synced = 0
@@ -552,14 +561,16 @@ def _link_to_candidate(label: str, node_id: str, rel: str) -> None:
             f"MATCH (a:Candidate {{id: $s}}), (b:{label} {{id: $d}}) MERGE (a)-[:{rel}]->(b)",
             {"s": candidate_id, "d": node_id},
         )
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:_link_to_candidate: %s', log_exc)
         pass
 
 
 def _unlink_outgoing(label: str, node_id: str, rel: str) -> None:
     try:
         execute_query(f"MATCH (n:{label} {{id: $id}})-[r:{rel}]->() DELETE r", {"id": node_id})
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:_unlink_outgoing: %s', log_exc)
         pass
 
 
@@ -582,7 +593,8 @@ def _link_project_skills(project_id: str, stack: str, db_path: str | None = None
                 "MATCH (p:Project {id: $project_id}), (s:Skill {id: $skill_id}) MERGE (p)-[:PROJ_UTILIZES]->(s)",
                 {"project_id": project_id, "skill_id": skill["id"]},
             )
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:_link_project_skills: %s', log_exc)
             pass
 
 
@@ -602,7 +614,8 @@ def _link_experience_skills(experience_id: str, text: str, replace: bool = False
                     "MATCH (e:Experience {id: $experience_id}), (s:Skill {id: $skill_id}) MERGE (e)-[:EXP_UTILIZES]->(s)",
                     {"experience_id": experience_id, "skill_id": skill_id},
                 )
-            except Exception:
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:_link_experience_skills: %s', log_exc)
                 pass
 
 
@@ -615,7 +628,8 @@ def delete_vec_rows(table_name: str, ids: list[str]) -> None:
             return
         quoted = ["'" + item.replace("'", "''") + "'" for item in ids]
         vec.open_table(table_name).delete("id IN (" + ", ".join(quoted) + ")")
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:delete_vec_rows: %s', log_exc)
         pass
 
 
@@ -648,7 +662,8 @@ def prune_bad_vector_rows() -> int:
             if bad_ids:
                 delete_vec_rows(table_name, bad_ids)
                 deleted += len(set(bad_ids))
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:prune_bad_vector_rows: %s', log_exc)
             continue
     return deleted
 
@@ -668,7 +683,8 @@ def vec_table_names() -> list[str]:
         tables = pairs.get("tables", [])
         if isinstance(tables, list):
             return [str(item) for item in tables]
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:vec_table_names: %s', log_exc)
         pass
     return [str(item) for item in raw]
 
@@ -696,7 +712,8 @@ def _rows_for_existing_table(table_name: str, rows: list[dict]) -> list[dict]:
         if not field_names:
             return rows
         return [{key: value for key, value in row.items() if key in field_names} for row in rows]
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:_rows_for_existing_table: %s', log_exc)
         return rows
 
 
@@ -706,7 +723,7 @@ def embed_rows(table_name: str, rows: list[dict], texts: Iterable[str]) -> None:
 
         pairs = [
             (row, str(text or "").strip())
-            for row, text in zip(rows, texts)
+            for row, text in zip(rows, texts, strict=False)
             if not is_bad_vector_label(row.get("label") or row.get("title") or row.get("n") or row.get("role") or row.get("id"))
             and not is_bad_vector_label(text)
         ]
@@ -717,7 +734,10 @@ def embed_rows(table_name: str, rows: list[dict], texts: Iterable[str]) -> None:
         vectors = embed_texts(clean_texts)
         if not vectors:
             return
-        put_vec_rows(table_name, [{**row, "text": text, "vector": vector} for row, text, vector in zip(clean_rows, clean_texts, vectors)])
+        put_vec_rows(table_name, [
+            {**row, "text": text, "vector": vector}
+            for row, text, vector in zip(clean_rows, clean_texts, vectors, strict=False)
+        ])
     except Exception as exc:
         _log.warning("embedding write failed for %s: %s", table_name, exc)
 
@@ -780,7 +800,8 @@ def add_skill(name: str, category: str, db_path: str | None = None) -> dict:
     _forget_profile_deletion("skills", [skill_id, name], db_path)
     try:
         execute_query("CREATE (:Skill {id: $id, n: $n, cat: $cat})", {"id": skill_id, "n": name, "cat": category})
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:add_skill: %s', log_exc)
         _safe_execute(
             "MATCH (s:Skill) WHERE s.id = $id SET s.n = $n, s.cat = $cat",
             {"id": skill_id, "n": name, "cat": category},
@@ -788,7 +809,8 @@ def add_skill(name: str, category: str, db_path: str | None = None) -> dict:
     if not _bulk_import_active():
         try:
             add_skill_vec(skill_id, name, category)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:add_skill: %s', log_exc)
             pass
     _link_to_candidate("Skill", skill_id, "HAS_SKILL")
     _refresh_after_write(db_path)
@@ -807,7 +829,8 @@ def update_skill(skill_id: str, name: str, category: str, db_path: str | None = 
     if not _bulk_import_active():
         try:
             add_skill_vec(skill_id, name, category)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:update_skill: %s', log_exc)
             pass
     _link_to_candidate("Skill", skill_id, "HAS_SKILL")
     _refresh_after_write(db_path)
@@ -862,7 +885,8 @@ def add_experience(role: str, company: str, period: str, description: str, db_pa
             "CREATE (:Experience {id: $id, role: $role, co: $co, period: $period, d: $d})",
             {"id": experience_id, "role": role, "co": company, "period": period, "d": description},
         )
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:add_experience: %s', log_exc)
         _safe_execute(
             "MATCH (e:Experience) WHERE e.id = $id SET e.role = $role, e.co = $co, e.period = $period, e.d = $d",
             {"id": experience_id, "role": role, "co": company, "period": period, "d": description},
@@ -872,7 +896,8 @@ def add_experience(role: str, company: str, period: str, description: str, db_pa
     if not _bulk_import_active():
         try:
             add_experience_vec(experience_id, role, company, period, description)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:add_experience: %s', log_exc)
             pass
     _refresh_after_write(db_path)
     _save_profile_patch({"exp": [{"id": experience_id, "role": role, "co": company, "period": period, "d": description}]}, db_path)
@@ -894,7 +919,8 @@ def update_experience(experience_id: str, role: str, company: str, period: str, 
     if not _bulk_import_active():
         try:
             add_experience_vec(experience_id, role, company, period, description)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:update_experience: %s', log_exc)
             pass
     _refresh_after_write(db_path)
     snapshot = normal_profile(load_profile_snapshot(db_path))
@@ -944,7 +970,8 @@ def add_project(title: str, stack: str, repo: str, impact: str, db_path: str | N
             "CREATE (:Project {id: $id, title: $title, stack: $stack, repo: $repo, impact: $impact})",
             {"id": project_id, "title": title, "stack": stack, "repo": repo, "impact": impact},
         )
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:add_project: %s', log_exc)
         _safe_execute(
             "MATCH (p:Project) WHERE p.id = $id SET p.title = $title, p.stack = $stack, p.repo = $repo, p.impact = $impact",
             {"id": project_id, "title": title, "stack": stack, "repo": repo, "impact": impact},
@@ -954,7 +981,8 @@ def add_project(title: str, stack: str, repo: str, impact: str, db_path: str | N
     if not _bulk_import_active():
         try:
             add_project_vec(project_id, title, stack, impact)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:add_project: %s', log_exc)
             pass
     _refresh_after_write(db_path)
     _save_profile_patch({"projects": [{"id": project_id, "title": title, "stack": stack_list(stack), "repo": repo, "impact": impact}]}, db_path)
@@ -976,7 +1004,8 @@ def update_project(project_id: str, title: str, stack: str, repo: str, impact: s
     if not _bulk_import_active():
         try:
             add_project_vec(project_id, title, stack, impact)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:update_project: %s', log_exc)
             pass
     _refresh_after_write(db_path)
     snapshot = normal_profile(load_profile_snapshot(db_path))
@@ -1026,13 +1055,15 @@ def _add_text_node(label: str, rel: str, title: str, db_path: str | None = None)
         _forget_profile_deletion(key, [node_id, title], db_path)
     try:
         execute_query(f"CREATE (:{label} {{id: $id, title: $title}})", {"id": node_id, "title": title})
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:_add_text_node: %s', log_exc)
         pass
     _link_to_candidate(label, node_id, rel)
     if not _bulk_import_active():
         try:
             add_credential_vec(node_id, title, label)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:_add_text_node: %s', log_exc)
             pass
     _refresh_after_write(db_path)
     if key:
@@ -1181,7 +1212,8 @@ def update_identity(identity: dict, db_path: str | None = None) -> dict:
             _log.warning("identity settings save skipped: %s", exc)
     try:
         snapshot = normal_profile(load_profile_snapshot(db_path) or read_profile_from_graph())
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:update_identity: %s', log_exc)
         snapshot = empty_profile()
     snapshot["identity"] = {**snapshot.get("identity", {}), **clean}
     save_profile_snapshot(snapshot, db_path)
@@ -1212,7 +1244,8 @@ def update_candidate(name: str, summary: str, db_path: str | None = None) -> dic
     if not _bulk_import_active():
         try:
             add_candidate_vec(candidate_id, name, summary)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:update_candidate: %s', log_exc)
             pass
     _refresh_after_write(db_path)
     _save_profile_patch({"n": name, "s": summary}, db_path)

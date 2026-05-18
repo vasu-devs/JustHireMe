@@ -30,7 +30,7 @@ def _is_url_only(value: object) -> bool:
 
 def lead_generation_blocker(lead: dict) -> str:
     """Return a user-facing reason when a lead is too thin to generate safely."""
-    meta = lead.get("source_meta") if isinstance(lead.get("source_meta"), dict) else {}
+    meta: dict = lead.get("source_meta") if isinstance(lead.get("source_meta"), dict) else {}
     title = _clean(lead.get("title"))
     company = _clean(lead.get("company"))
     description = _clean(lead.get("description"))
@@ -47,4 +47,3 @@ def lead_generation_blocker(lead: dict) -> str:
     if len(non_url_context) < 35 or not _ROLE_OR_STACK_RE.search(non_url_context):
         return "Paste a fuller job description before generating so the resume can be tailored without guessing."
     return ""
-

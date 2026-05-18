@@ -9,14 +9,13 @@ candidate's actual role, skills, and project evidence rather than generic keywor
 import re
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from pydantic import BaseModel
-from typing import List
 from core.logging import get_logger
 
 _log = get_logger(__name__)
 
 
 class _Plan(BaseModel):
-    queries: List[str]
+    queries: list[str]
 
 
 def _extract_domains(urls: list[str]) -> tuple[list[str], list[str]]:

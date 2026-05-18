@@ -4,8 +4,6 @@ import re
 
 from data.sqlite.leads import (
     get_feedback_training_examples as _get_sqlite_feedback_training_examples,
-    get_leads_for_learning,
-    update_learning_score,
 )
 
 

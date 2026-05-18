@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import asyncio
 from collections.abc import Mapping
@@ -80,7 +81,8 @@ class ProfileService:
             await run_graph(graph_profile.save_profile_snapshot, snapshot)
         try:
             asyncio.get_running_loop().create_task(run_graph(graph_profile.sync_vectors_from_graph))
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:ingest_resume: %s', log_exc)
             pass
         return result
 
@@ -104,36 +106,42 @@ class ProfileService:
             try:
                 await run_graph(self.update_candidate, candidate["name"], candidate["summary"])
             except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:ingest_linkedin: %s', exc)
                 errors.append(f"candidate: {exc}")
 
         for skill in cleaned["skills"]:
             try:
                 await run_graph(self.add_skill, skill["name"], skill["category"])
-            except Exception:
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:ingest_linkedin: %s', log_exc)
                 pass
 
         for exp in cleaned.get("experience", parsed["experience"]):
             try:
                 await run_graph(self.add_experience, exp["role"], exp["co"], exp["period"], exp["d"])
             except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:ingest_linkedin: %s', exc)
                 errors.append(f"exp {exp.get('role')}: {exc}")
 
         for edu in cleaned["education"]:
             try:
                 await run_graph(self.add_education, edu["title"])
             except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:ingest_linkedin: %s', exc)
                 errors.append(f"edu: {exc}")
 
         for project in cleaned["projects"]:
             try:
                 await run_graph(self.add_project, project["title"], project["stack"], project["repo"], project["impact"])
             except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:ingest_linkedin: %s', exc)
                 errors.append(f"proj {project.get('title')}: {exc}")
 
         for cert in cleaned["certifications"]:
             try:
                 await run_graph(self.add_certification, cert["title"])
             except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:ingest_linkedin: %s', exc)
                 errors.append(f"cert: {exc}")
 
         return {
@@ -162,7 +170,8 @@ class ProfileService:
         for skill in result["skills"]:
             try:
                 await run_graph(self.add_skill, skill["n"], skill["cat"])
-            except Exception:
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:ingest_github: %s', log_exc)
                 pass
 
         for project in result["projects"]:
@@ -177,6 +186,7 @@ class ProfileService:
                     details = f"{details}\n\nHighlights:\n{detail_lines}".strip()
                 await run_graph(self.add_project, project["title"], project["stack"], project["repo"], details)
             except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:ingest_github: %s', exc)
                 errors.append(f"proj {project.get('title')}: {exc}")
 
         github_user = result.get("github_user", {})
@@ -225,6 +235,7 @@ class ProfileService:
                 try:
                     await run_graph(self.update_candidate, candidate_name, candidate_summary)
                 except Exception as exc:
+                    logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:import_profile_data: %s', exc)
                     errors.append(f"candidate: {exc}")
 
             identity = _as_dict(data.get("identity") or {})
@@ -240,6 +251,7 @@ class ProfileService:
                 try:
                     await run_graph(self.update_identity, {key: value for key, value in identity_map.items() if value})
                 except Exception as exc:
+                    logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:import_profile_data: %s', exc)
                     errors.append(f"identity: {exc}")
 
             for skill in data.get("skills", []) or []:
@@ -247,7 +259,8 @@ class ProfileService:
                 try:
                     await run_graph(self.add_skill, item.get("name", item.get("n", "")), item.get("category", item.get("cat", "general")))
                     stats["skills"] += 1
-                except Exception:
+                except Exception as log_exc:
+                    logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:import_profile_data: %s', log_exc)
                     pass
 
             for exp in data.get("experience", []) or []:
@@ -263,6 +276,7 @@ class ProfileService:
                     )
                     stats["experience"] += 1
                 except Exception as exc:
+                    logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:import_profile_data: %s', exc)
                     errors.append(f"exp {role}: {exc}")
 
             for project in data.get("projects", []) or []:
@@ -272,6 +286,7 @@ class ProfileService:
                     await run_graph(self.add_project, title, item.get("stack", ""), item.get("repo", ""), item.get("impact", ""))
                     stats["projects"] += 1
                 except Exception as exc:
+                    logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:import_profile_data: %s', exc)
                     errors.append(f"proj {title}: {exc}")
 
             for edu in data.get("education", []) or []:
@@ -280,6 +295,7 @@ class ProfileService:
                     await run_graph(self.add_education, title)
                     stats["education"] += 1
                 except Exception as exc:
+                    logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:import_profile_data: %s', exc)
                     errors.append(f"edu: {exc}")
 
             for cert in data.get("certifications", []) or []:
@@ -288,6 +304,7 @@ class ProfileService:
                     await run_graph(self.add_certification, title)
                     stats["certifications"] += 1
                 except Exception as exc:
+                    logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:import_profile_data: %s', exc)
                     errors.append(f"cert: {exc}")
 
             for achievement in data.get("achievements", []) or []:
@@ -296,23 +313,27 @@ class ProfileService:
                     await run_graph(self.add_achievement, title)
                     stats["achievements"] += 1
                 except Exception as exc:
+                    logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:import_profile_data: %s', exc)
                     errors.append(f"achievement: {exc}")
 
         try:
             await run_graph(self.refresh_profile_snapshot)
         except Exception as exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:import_profile_data: %s', exc)
             errors.append(f"profile refresh: {exc}")
 
         if graph_profile.profile_has_data(imported_snapshot):
             try:
                 await run_graph(graph_profile.save_profile_snapshot, imported_snapshot)
             except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:import_profile_data: %s', exc)
                 errors.append(f"profile snapshot fallback: {exc}")
 
         try:
             asyncio.get_running_loop().create_task(run_graph(graph_profile.sync_vectors_from_graph))
             vector_status = "queued"
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/profile/service.py:import_profile_data: %s', log_exc)
             vector_status = "skipped"
 
         return {"status": "ok" if not errors else "partial", "stats": {**stats, "vector_sync": vector_status}, "errors": errors}

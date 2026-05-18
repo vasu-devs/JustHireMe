@@ -1,3 +1,4 @@
+import logging
 import hashlib
 import re
 import zipfile
@@ -29,14 +30,16 @@ def _put_node(tbl: str, props: dict):
 
         cols = ", ".join(f"{k}: ${k}" for k in props)
         execute_query(f"CREATE (:{tbl} {{{cols}}})", props)
-    except Exception:
+    except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/profile/ingestor.py:_put_node: %s', exc)
         try:
             if len(props) > 1:
                 from data.graph.connection import execute_query
 
                 sets = ", ".join(f"n.{k} = ${k}" for k in props if k != pk)
                 execute_query(f"MATCH (n:{tbl}) WHERE n.{pk} = ${pk} SET {sets}", props)
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/profile/ingestor.py:_put_node: %s', log_exc)
             pass
 
 
@@ -48,7 +51,8 @@ def _put_rel(a: str, aid: str, b: str, bid: str, rel: str):
             f"MATCH (a:{a} {{id: $s}}), (b:{b} {{id: $d}}) MERGE (a)-[:{rel}]->(b)",
             {"s": aid, "d": bid},
         )
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/profile/ingestor.py:_put_rel: %s', log_exc)
         pass
 
 
@@ -64,7 +68,8 @@ def _put_vec(name: str, rows: list):
             quoted = ["'" + item.replace("'", "''") + "'" for item in ids]
             try:
                 table.delete("id IN (" + ", ".join(quoted) + ")")
-            except Exception:
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/profile/ingestor.py:_put_vec: %s', log_exc)
                 pass
         table.add(rows)
     else:
@@ -132,7 +137,7 @@ def _vectors(p: C):
         if s_rows:
             vecs = _emb([r["n"] for r in s_rows])
             if vecs:
-                _put_vec("skills", [{**r, "vector": v} for r, v in zip(s_rows, vecs)])
+                _put_vec("skills", [{**r, "vector": v} for r, v in zip(s_rows, vecs, strict=False)])
 
         p_rows = [
             {"id": _h(pr.title), "title": pr.title, "stack": ",".join(pr.stack), "impact": pr.impact}
@@ -142,7 +147,7 @@ def _vectors(p: C):
             texts = [f"{r['title']} {r['stack']} {r['impact']}" for r in p_rows]
             vecs = _emb(texts)
             if vecs:
-                _put_vec("projects", [{**r, "vector": v} for r, v in zip(p_rows, vecs)])
+                _put_vec("projects", [{**r, "vector": v} for r, v in zip(p_rows, vecs, strict=False)])
     except Exception as exc:
         _log.warning("vectors skipped: %s", exc, exc_info=True)
 
@@ -545,15 +550,11 @@ def _section_lines(text: str, headings: tuple[str, ...]) -> list[str]:
 
 
 def _parse_resume_heuristic(txt: str) -> C:
-    from models.schema import S, E, P
+    from models.schema import S, E
 
     clean_text = re.sub(r"\r\n?", "\n", txt or "")
     lines = [_strip_md(line) for line in clean_text.splitlines()]
     lines = [line for line in lines if line]
-
-    email = re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", clean_text)
-    phone = re.search(r"(?:\+?\d[\d\s().-]{7,}\d)", clean_text)
-    links = re.findall(r"https?://[^\s|)]+", clean_text)
 
     name = "Candidate"
     for line in lines[:8]:
@@ -836,7 +837,7 @@ def run(raw: str = "", pdf: str | None = None) -> C:
     from llm import call_llm, resolve_config
 
     txt = (raw + " " + _document(pdf)).strip() if pdf else raw
-    p, k, model = resolve_config("ingestor")
+    p, k, _model = resolve_config("ingestor")
 
     if p != "ollama" and not k:
         _log.warning(

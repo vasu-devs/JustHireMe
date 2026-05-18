@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import json
 import html
@@ -25,10 +26,12 @@ LEAD_COLUMN_NAMES = tuple(part.strip() for part in LEAD_SELECT_COLUMNS.split(","
 def row_get(row, key: str, default=None):
     try:
         return row[key]
-    except Exception:
+    except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/sqlite/leads.py:row_get: %s', exc)
         try:
             return row[LEAD_COLUMN_NAMES.index(key)]
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/data/sqlite/leads.py:row_get: %s', log_exc)
             return default
 
 
@@ -41,7 +44,8 @@ def json_list(value: str | list) -> list:
     try:
         parsed = json.loads(raw)
         return parsed if isinstance(parsed, list) else []
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/sqlite/leads.py:json_list: %s', log_exc)
         return [part.strip() for part in raw.split(",") if part.strip()]
 
 
@@ -51,7 +55,8 @@ def json_dict(value: str | dict) -> dict:
     try:
         parsed = json.loads(str(value or "{}"))
         return parsed if isinstance(parsed, dict) else {}
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/sqlite/leads.py:json_dict: %s', log_exc)
         return {}
 
 
@@ -568,7 +573,7 @@ def update_outreach_fields(job_id: str, fields: dict[str, str], db_path: str = D
     conn = get_connection(db_path)
     try:
         sets = ", ".join(f"{key}=?" for key in payload)
-        vals = list(payload.values()) + [job_id]
+        vals = [*payload.values(), job_id]
         conn.execute(f"UPDATE leads SET {sets} WHERE job_id=?", vals)
         conn.commit()
     finally:

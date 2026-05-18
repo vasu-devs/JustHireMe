@@ -6,7 +6,6 @@ import html
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Any
 from urllib.parse import urljoin, urlparse, urlunparse
 
 from pydantic import BaseModel, Field
@@ -550,7 +549,6 @@ def _extract_projects(pages: list[PageSnapshot], global_skills: list[str]) -> li
     candidate_name = _candidate_name(pages)
     for page in pages:
         lines = _important_lines(page.text)
-        page_path = urlparse(page.url).path.lower()
         in_project_section = False
         blocked_section = False
         for index, line in enumerate(lines):
@@ -669,9 +667,7 @@ def _block_has_project_evidence(block: str) -> bool:
         return True
     if re.search(r"\b(built|shipped|created|developed|launched|designed|engineered|implemented|automated|turns|features)\b", block, re.I):
         return True
-    if re.search(r"\b\d+[\d,.]*\s*(views|stars|likes|repos|requests|commits|prs|users|%|x)\b", block, re.I):
-        return True
-    return False
+    return bool(re.search(r"\b\d+[\d,.]*\s*(views|stars|likes|repos|requests|commits|prs|users|%|x)\b", block, re.I))
 
 
 def _is_noise_text(text: str) -> bool:
@@ -757,14 +753,11 @@ def _important_lines(text: str) -> list[str]:
 
 def _looks_like_project_title(line: str, page_url: str, index: int, in_project_section: bool = False) -> bool:
     lower = _section_label(line)
-    path = urlparse(page_url).path.lower()
     if lower in PROJECT_SECTION_HEADINGS:
         return False
     if any(word in lower for word in ("project", "case study", "selected work", "featured work")) and len(line.split()) <= 9:
         return True
-    if in_project_section and _looks_like_standalone_title(line):
-        return True
-    return False
+    return bool(in_project_section and _looks_like_standalone_title(line))
 
 
 def _looks_like_standalone_title(line: str) -> bool:
@@ -776,9 +769,7 @@ def _looks_like_standalone_title(line: str) -> bool:
         return False
     if len(words) >= 7 and re.search(r"\b(for|with|using|powered|built)\b", clean, re.I):
         return False
-    if re.search(r"[.!?]$", clean) and len(words) > 4:
-        return False
-    return True
+    return not (re.search(r"[.!?]$", clean) and len(words) > 4)
 
 
 def _section_label(line: str) -> str:
@@ -981,9 +972,10 @@ def _nav_noise(line: str) -> bool:
         return True
     if lower in {"home", "about", "projects", "work", "portfolio", "contact", "resume", "blog", "menu", "close"}:
         return True
-    if len(lower.split()) <= 5 and re.fullmatch(r"(home|about|projects?|work|contact|resume|blog|services?)(\s+[a-z]+)*", lower):
-        return True
-    return False
+    return bool(
+        len(lower.split()) <= 5
+        and re.fullmatch(r"(home|about|projects?|work|contact|resume|blog|services?)(\s+[a-z]+)*", lower)
+    )
 
 
 def _is_concatenated_nav(value: str) -> bool:

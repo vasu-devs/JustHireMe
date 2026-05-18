@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import asyncio
 from dataclasses import dataclass, field
@@ -59,7 +60,8 @@ class RankingService:
                 scored = await self.evaluate_lead(lead, profile)
                 result.scored += 1
                 result.items.append({**lead, **scored})
-            except Exception:
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/ranking/service.py:reevaluate_all: %s', log_exc)
                 result.failed += 1
         return result
 

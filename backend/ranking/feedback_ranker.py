@@ -1,3 +1,4 @@
+import logging
 import re
 from urllib.parse import urlparse
 from core.logging import get_logger
@@ -55,13 +56,14 @@ def _company_key(lead: dict) -> str:
     url = str(lead.get("url") or "")
     try:
         host = urlparse(url if "://" in url else f"https://{url}").netloc.lower()
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/feedback_ranker.py:_company_key: %s', log_exc)
         host = ""
     return host.replace("www.", "").split(".")[0]
 
 
 def lead_features(lead: dict) -> set[str]:
-    meta = lead.get("source_meta") if isinstance(lead.get("source_meta"), dict) else {}
+    meta: dict = lead.get("source_meta") if isinstance(lead.get("source_meta"), dict) else {}
     features: set[str] = set()
 
     platform = _norm(lead.get("platform", ""))

@@ -1,17 +1,15 @@
+import logging
 import asyncio
-import html
-import json
 import re
-from datetime import datetime, timedelta, timezone
-from urllib.parse import quote_plus, urlparse
+import threading
+from contextvars import ContextVar
+from typing import Any
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from discovery.normalizer import (
     budget_from_text,
-    clean_text,
-    company_from_url,
     fit_bullets,
     followup_sequence,
     lead_id,
@@ -21,10 +19,6 @@ from discovery.normalizer import (
     signal_quality,
     tech_stack_from_text,
     urgency_from_text,
-    _hn_company_role,
-    _is_recent,
-    _looks_like_hn_job_post,
-    _strip_html_text,
     classify_job_seniority,
 )
 from discovery.sources.ats import scrape_ashby as _source_scrape_ashby
@@ -46,11 +40,28 @@ from core.logging import get_logger
 _log = get_logger(__name__)
 
 LAST_ERRORS: list[str] = []
-LAST_USAGE: dict = {}
+LAST_USAGE: dict[str, Any] = {}
+# STABILITY: thread-safe scout diagnostics snapshot
+_STATE_LOCK = threading.RLock()
+_ERROR_SINK: ContextVar[list[str] | None] = ContextVar("free_scout_error_sink", default=None)
 
 DEFAULT_TARGETS: list[str] = []
 
 _CONNECTOR_MAX_ITEMS = 60
+
+
+def _publish_state(errors: list[str], usage: dict[str, Any]) -> None:
+    global LAST_ERRORS, LAST_USAGE
+    snapshot = dict(usage)
+    if isinstance(snapshot.get("by_source"), dict):
+        snapshot["by_source"] = dict(snapshot["by_source"])
+    with _STATE_LOCK:
+        LAST_ERRORS = list(errors)
+        LAST_USAGE = snapshot
+
+
+def _error_sink(errors: list[str] | None = None) -> list[str]:
+    return errors if errors is not None else (_ERROR_SINK.get() or LAST_ERRORS)
 
 
 def rank_lead_by_feedback(lead: dict) -> dict:
@@ -90,12 +101,12 @@ def _dot_get(value, path: str, default=""):
     return _source_dot_get(value, path, default)
 
 
-def _parse_json_setting(raw: str | None, fallback):
-    return _source_parse_json_setting(raw, fallback, LAST_ERRORS)
+def _parse_json_setting(raw: str | None, fallback, errors: list[str] | None = None):
+    return _source_parse_json_setting(raw, fallback, _error_sink(errors))
 
 
-def _connector_headers(raw_headers: str | None, name: str) -> dict:
-    return _source_connector_headers(raw_headers, name, LAST_ERRORS)
+def _connector_headers(raw_headers: str | None, name: str, errors: list[str] | None = None) -> dict:
+    return _source_connector_headers(raw_headers, name, _error_sink(errors))
 
 
 def _source_error_detail(exc: Exception) -> str:
@@ -113,8 +124,11 @@ def _source_error_detail(exc: Exception) -> str:
     return str(exc).strip() or type(exc).__name__
 
 
-async def _scrape_custom_connector(connector: dict, raw_headers: str | None = None) -> list[dict]:
-    return await _source_scrape_custom_connector(connector, raw_headers, LAST_ERRORS)
+async def _scrape_custom_connector(
+    connector: dict,
+    raw_headers: str | None = None,
+) -> list[dict]:
+    return await _source_scrape_custom_connector(connector, raw_headers, _error_sink())
 
 
 def _ats_targets_from_watchlist(raw: str | None) -> list[str]:
@@ -271,25 +285,27 @@ def run(
     max_requests: int = 20,
     min_signal_score: int = MIN_DEFAULT_QUALITY,
 ) -> list[dict]:
-    global LAST_ERRORS, LAST_USAGE
-    LAST_ERRORS = []
+    errors: list[str] = []
+    error_token = _ERROR_SINK.set(errors)
     wanted = "job"
     all_targets = targets or targets_from_settings(raw_targets, raw_watchlist)
     custom_connectors = []
     if custom_connectors_enabled:
-        parsed = _parse_json_setting(raw_custom_connectors, [])
+        parsed = _parse_json_setting(raw_custom_connectors, [], errors)
         custom_connectors = parsed if isinstance(parsed, list) else []
         if parsed and not isinstance(parsed, list):
-            LAST_ERRORS.append("custom connectors must be a JSON array")
+            errors.append("custom connectors must be a JSON array")
     try:
         cap = max(1, min(int(max_requests or 20), 80))
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/automation/free_scout.py:run: %s', log_exc)
         cap = 20
     try:
         min_score = max(0, min(int(min_signal_score or 45), 100))
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/automation/free_scout.py:run: %s', log_exc)
         min_score = MIN_DEFAULT_QUALITY
-    LAST_USAGE = {
+    usage: dict[str, Any] = {
         "configured": len(all_targets) + len(custom_connectors),
         "executed": 0,
         "candidates": 0,
@@ -301,7 +317,9 @@ def run(
         "by_source": {},
     }
     if not all_targets and not custom_connectors:
-        LAST_ERRORS.append("No free-source targets configured. Add profile context, source targets, a company watchlist, or custom connectors.")
+        errors.append("No free-source targets configured. Add profile context, source targets, a company watchlist, or custom connectors.")
+        _publish_state(errors, usage)
+        _ERROR_SINK.reset(error_token)
         return []
 
     leads: list[dict] = []
@@ -310,35 +328,36 @@ def run(
     for target in all_targets[:cap]:
         try:
             batch = asyncio.run(_scrape_target(target))
-            LAST_USAGE["executed"] += 1
-            LAST_USAGE["candidates"] += len(batch)
-            LAST_USAGE["by_source"][target] = len(batch)
+            usage["executed"] += 1
+            usage["candidates"] += len(batch)
+            usage["by_source"][target] = len(batch)
         except Exception as exc:
-            LAST_USAGE["errors"] += 1
-            LAST_ERRORS.append(f"{target}: {_source_error_detail(exc)}")
+            logging.getLogger(__name__).warning('suppressed exception in backend/automation/free_scout.py:run: %s', exc)
+            usage["errors"] += 1
+            errors.append(f"{target}: {_source_error_detail(exc)}")
             continue
 
         for item in batch:
             if wanted and item.get("kind") != wanted:
-                LAST_USAGE["filtered"] += 1
+                usage["filtered"] += 1
                 continue
             item = rank_lead_by_feedback(item)
             quality = evaluate_lead_quality(item, min_quality=min_score)
             item = attach_quality_metadata(item, quality)
             if not quality.get("accepted"):
-                LAST_USAGE["filtered"] += 1
-                LAST_ERRORS.append(f"filtered {item.get('platform', 'free')}:{item.get('url', '')} - {quality.get('reason', 'quality gate')}")
+                usage["filtered"] += 1
+                errors.append(f"filtered {item.get('platform', 'free')}:{item.get('url', '')} - {quality.get('reason', 'quality gate')}")
                 continue
             if (item.get("signal_score") or 0) < min_score:
-                LAST_USAGE["filtered"] += 1
+                usage["filtered"] += 1
                 continue
             url = item.get("url", "")
             if not url:
-                LAST_USAGE["missing_url"] += 1
+                usage["missing_url"] += 1
                 continue
             jid = lead_id(item.get("platform", "free"), url)
             if jid in seen or url_exists(jid):
-                LAST_USAGE["duplicates"] += 1
+                usage["duplicates"] += 1
                 continue
             seen.add(jid)
             item["job_id"] = jid
@@ -369,47 +388,48 @@ def run(
                 learning_reason=item.get("learning_reason", ""),
                 source_meta=item.get("source_meta", {}),
             )
-            LAST_USAGE["saved"] += 1
+            usage["saved"] += 1
             leads.append(item)
 
-    remaining = max(0, cap - LAST_USAGE["executed"])
+    remaining = max(0, cap - usage["executed"])
     for connector in custom_connectors[:remaining]:
         if not isinstance(connector, dict):
-            LAST_ERRORS.append("custom connector skipped: each connector must be an object")
+            errors.append("custom connector skipped: each connector must be an object")
             continue
         try:
             batch = asyncio.run(_scrape_custom_connector(connector, raw_custom_headers))
-            LAST_USAGE["executed"] += 1
+            usage["executed"] += 1
             name = str(connector.get("name") or connector.get("url") or "custom")
-            LAST_USAGE["candidates"] += len(batch)
-            LAST_USAGE["by_source"][name] = len(batch)
+            usage["candidates"] += len(batch)
+            usage["by_source"][name] = len(batch)
         except Exception as exc:
-            LAST_USAGE["errors"] += 1
+            logging.getLogger(__name__).warning('suppressed exception in backend/automation/free_scout.py:run: %s', exc)
+            usage["errors"] += 1
             name = str(connector.get("name") or "custom")
-            LAST_ERRORS.append(f"{name}: {_source_error_detail(exc)}")
+            errors.append(f"{name}: {_source_error_detail(exc)}")
             continue
 
         for item in batch:
             if wanted and item.get("kind") != wanted:
-                LAST_USAGE["filtered"] += 1
+                usage["filtered"] += 1
                 continue
             item = rank_lead_by_feedback(item)
             quality = evaluate_lead_quality(item, min_quality=min_score)
             item = attach_quality_metadata(item, quality)
             if not quality.get("accepted"):
-                LAST_USAGE["filtered"] += 1
-                LAST_ERRORS.append(f"filtered {item.get('platform', 'connector')}:{item.get('url', '')} - {quality.get('reason', 'quality gate')}")
+                usage["filtered"] += 1
+                errors.append(f"filtered {item.get('platform', 'connector')}:{item.get('url', '')} - {quality.get('reason', 'quality gate')}")
                 continue
             if (item.get("signal_score") or 0) < min_score:
-                LAST_USAGE["filtered"] += 1
+                usage["filtered"] += 1
                 continue
             url = item.get("url", "")
             if not url:
-                LAST_USAGE["missing_url"] += 1
+                usage["missing_url"] += 1
                 continue
             jid = lead_id(item.get("platform", "connector"), url)
             if jid in seen or url_exists(jid):
-                LAST_USAGE["duplicates"] += 1
+                usage["duplicates"] += 1
                 continue
             seen.add(jid)
             item["job_id"] = jid
@@ -440,11 +460,13 @@ def run(
                 learning_reason=item.get("learning_reason", ""),
                 source_meta=item.get("source_meta", {}),
             )
-            LAST_USAGE["saved"] += 1
+            usage["saved"] += 1
             leads.append(item)
 
     if len(all_targets) > cap:
-        LAST_ERRORS.append(f"Free-source cap hit: ran {cap} of {len(all_targets)} targets")
+        errors.append(f"Free-source cap hit: ran {cap} of {len(all_targets)} targets")
     if len(custom_connectors) > remaining:
-        LAST_ERRORS.append(f"Custom connector cap hit: ran {remaining} of {len(custom_connectors)} connectors")
+        errors.append(f"Custom connector cap hit: ran {remaining} of {len(custom_connectors)} connectors")
+    _publish_state(errors, usage)
+    _ERROR_SINK.reset(error_token)
     return leads

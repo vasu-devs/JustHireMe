@@ -4,6 +4,7 @@ import os
 import sqlite3
 import threading
 from pathlib import Path
+from typing import Any
 
 from core.logging import get_logger
 
@@ -114,7 +115,7 @@ class ConnectionPool:
 
     def __init__(self) -> None:
         self._local = threading.local()
-        self._connections: set[object] = set()
+        self._connections: set[Any] = set()
 
     def get_connection(self, db_path: str | None = None):
         resolved = _resolve_db_path(db_path)
@@ -194,7 +195,7 @@ def _lock_file(lock_file) -> None:
     else:
         import fcntl
 
-        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        fcntl.flock(lock_file, fcntl.LOCK_EX)  # type: ignore[attr-defined]
 
 
 def _unlock_file(lock_file) -> None:
@@ -205,7 +206,7 @@ def _unlock_file(lock_file) -> None:
     else:
         import fcntl
 
-        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        fcntl.flock(lock_file, fcntl.LOCK_UN)  # type: ignore[attr-defined]
 
 
 def _run_migrations_inner(db_path: str | None = None) -> None:
@@ -222,7 +223,7 @@ def _run_migrations_inner(db_path: str | None = None) -> None:
             """
         )
         rows = conn.execute("SELECT name FROM schema_migrations").fetchall()
-        applied = {row["name"] if hasattr(row, "keys") else tuple(row)[0] for row in rows}
+        applied = {row["name"] if hasattr(row, "keys") else next(iter(row)) for row in rows}
 
         for path in _migration_files():
             if path.name in applied:

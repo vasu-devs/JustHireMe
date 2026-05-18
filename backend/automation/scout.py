@@ -1,10 +1,9 @@
 import asyncio
 import hashlib
 import re
-import sys
+import threading
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional
-from urllib.parse import urlparse
+from typing import Any
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -26,7 +25,19 @@ url_exists = _repo.leads.url_exists
 _MAX_AGE_DAYS = 7
 
 LAST_ERRORS: list[str] = []
-LAST_USAGE: dict = {}
+LAST_USAGE: dict[str, Any] = {}
+# STABILITY: thread-safe scout diagnostics snapshot
+_STATE_LOCK = threading.RLock()
+
+
+def _publish_state(errors: list[str], usage: dict[str, Any]) -> None:
+    global LAST_ERRORS, LAST_USAGE
+    snapshot = dict(usage)
+    if isinstance(snapshot.get("by_source"), dict):
+        snapshot["by_source"] = dict(snapshot["by_source"])
+    with _STATE_LOCK:
+        LAST_ERRORS = list(errors)
+        LAST_USAGE = snapshot
 
 _SOURCE_CAPS = {
     "hn_hiring": 25,
@@ -357,31 +368,8 @@ async def apify(actor: str, inp: dict, tok: str) -> list:
     return await apify_sources.run_actor(actor, inp, tok)
 
 
-def _ensure_scheme(u: str) -> str:
-    """Prepend https:// if the URL has no scheme — Playwright requires a full URL."""
-    if u.startswith("site:") or u.startswith("http://") or u.startswith("https://"):
-        return u
-    return "https://" + u
-
-
 def _is_rss_target(u: str) -> bool:
     return rss_sources.is_rss_target(u)
-
-
-def _ensure_scheme(u: str) -> str:
-    """Prepend https:// for bare domains but keep pseudo targets intact."""
-    lower = u.lower()
-    if (
-        lower.startswith("site:")
-        or lower.startswith("ats:")
-        or lower.startswith("github:")
-        or lower.startswith("hn:")
-        or lower.startswith("reddit:")
-        or lower.startswith("http://")
-        or lower.startswith("https://")
-    ):
-        return u
-    return "https://" + u
 
 
 def _platform_from_url(u: str, fallback: str = "scout") -> str:
@@ -447,12 +435,6 @@ def _is_ats_target(target: str) -> bool:
 
 async def _scrape_ats_target(target: str) -> list[dict]:
     return await ats_sources.scrape_target(target)
-
-
-def scrape(u: str, headed: bool = False) -> list:
-    u = _ensure_scheme(u)
-    md = asyncio.run(_crawl(u, headed=headed))
-    return _parse(md, u)
 
 
 def _ensure_scheme(u: str) -> str:
@@ -538,14 +520,13 @@ def run(
     headed: bool = False,
     min_quality: int = MIN_DEFAULT_QUALITY,
 ) -> list:
-    global LAST_ERRORS, LAST_USAGE
-    LAST_ERRORS = []
+    errors: list[str] = []
     leads = []
-    
+
     # Handle Special Targets (RSS/API)
     all_targets = urls or []
     processed_leads = []
-    LAST_USAGE = {
+    usage: dict[str, Any] = {
         "configured": len(all_targets),
         "executed": 0,
         "candidates": 0,
@@ -581,13 +562,13 @@ def run(
             else:
                 # Standard Web Scrape
                 processed_leads.extend(scrape(target, headed=headed))
-            LAST_USAGE["executed"] += 1
+            usage["executed"] += 1
             source_count = len(processed_leads) - before
-            LAST_USAGE["candidates"] += max(0, source_count)
-            LAST_USAGE["by_source"][target] = source_count
+            usage["candidates"] += max(0, source_count)
+            usage["by_source"][target] = source_count
         except Exception as _e:
-            LAST_USAGE["errors"] += 1
-            LAST_ERRORS.append(f"{target}: {_source_error_detail(_e)}")
+            usage["errors"] += 1
+            errors.append(f"{target}: {_source_error_detail(_e)}")
             _log.warning("Skipping %s: %s", target, _e)
 
     # Apify fallback
@@ -605,11 +586,11 @@ def run(
     for item in processed_leads:
         u = item.get("url", "")
         if not u:
-            LAST_USAGE["missing_url"] += 1
+            usage["missing_url"] += 1
             continue
         jid = _h(u)
         if url_exists(jid):
-            LAST_USAGE["duplicates"] += 1
+            usage["duplicates"] += 1
             continue
         t    = item.get("title", "")
         co   = item.get("company", "")
@@ -625,16 +606,17 @@ def run(
         quality = evaluate_lead_quality(item, min_quality=min_quality)
         item = attach_quality_metadata(item, quality)
         if not quality.get("accepted"):
-            LAST_USAGE["filtered"] += 1
-            LAST_ERRORS.append(f"filtered {plat}:{u} - {quality.get('reason', 'quality gate')}")
+            usage["filtered"] += 1
+            errors.append(f"filtered {plat}:{u} - {quality.get('reason', 'quality gate')}")
             continue
         source_meta = item["source_meta"]
         save_lead(jid, t, co, u, plat, desc, source_meta=source_meta)
-        LAST_USAGE["saved"] += 1
+        usage["saved"] += 1
         leads.append({
             "job_id": jid, "title": t, "company": co, "url": u,
             "platform": plat, "description": desc, "source_meta": source_meta,
             "seniority_level": source_meta["seniority_level"],
         })
 
+    _publish_state(errors, usage)
     return leads

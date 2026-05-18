@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -71,6 +72,7 @@ def create_ghost_tick(manager):
             leads = result.leads
             await manager.broadcast({"type": "agent", "event": "ghost_scout", "msg": f"Ghost scout complete - {len(leads)} new leads found"})
         except Exception as exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/api/scheduler.py:ghost_tick: %s', exc)
             await manager.broadcast({"type": "agent", "event": "ghost_error", "msg": f"Scout failed: {exc}"})
             job_store.update(ghost_job.job_id, status="failed", error=str(exc))
             return
@@ -97,6 +99,7 @@ def create_ghost_tick(manager):
                         "msg": f"Approved: {lead.get('title','')} @ {lead.get('company','')} [{result['score']}/100]",
                     })
             except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/api/scheduler.py:ghost_tick: %s', exc)
                 await manager.broadcast({"type": "agent", "event": "ghost_error", "msg": f"Eval failed for {lead.get('title','?')}: {exc}"})
 
         await manager.broadcast({"type": "agent", "event": "ghost_eval", "msg": f"Evaluation done - {len(approved)}/{len(discovered)} approved"})
@@ -129,6 +132,7 @@ def create_ghost_tick(manager):
                 })
                 await manager.broadcast({"type": "agent", "event": "ghost_gen", "msg": f"Generated resume and cover letter for {lead.get('title','?')}"})
             except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/api/scheduler.py:ghost_tick: %s', exc)
                 await manager.broadcast({"type": "agent", "event": "ghost_error", "msg": f"Generation failed for {lead.get('title','?')}: {exc}"})
 
         if repo.settings.get_setting("auto_apply", "false") != "true":
@@ -156,6 +160,7 @@ def create_ghost_tick(manager):
                 else:
                     await manager.broadcast({"type": "agent", "event": "ghost_error", "msg": f"Submission failed: {item.get('title','?')}"})
             except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/api/scheduler.py:ghost_tick: %s', exc)
                 await manager.broadcast({"type": "agent", "event": "ghost_error", "msg": f"Actuator error for {item.get('title','?')}: {exc}"})
 
         await manager.broadcast({"type": "agent", "event": "ghost_done", "msg": "Ghost cycle complete."})

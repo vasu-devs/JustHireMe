@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import asyncio
 import os
@@ -62,6 +63,7 @@ async def actuate_job(job_id: str, manager, repo: Repository | None = None, serv
         })
         ok = await service.submit_application(lead, asset)
     except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/automation.py:actuate_job: %s', exc)
         await manager.broadcast({
             "type": "agent",
             "event": "failed",
@@ -146,7 +148,8 @@ def create_router(manager) -> APIRouter:
                         cover_letter = file.read()
                 else:
                     cover_letter = ""
-            except Exception:
+            except Exception as log_exc:
+                logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/automation.py:read_lead_form: %s', log_exc)
                 cover_letter = ""
 
         return await service.read_form(url, identity, cover_letter=cover_letter)

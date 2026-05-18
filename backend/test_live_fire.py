@@ -113,7 +113,7 @@ def main():
 
     mode = "DRY RUN (submit button highlighted but NOT clicked)" if dry_run else "LIVE — WILL SUBMIT"
     print(f"\n{'═'*60}", flush=True)
-    print(f"  JustHireMe Live Fire Test", flush=True)
+    print("  JustHireMe Live Fire Test", flush=True)
     print(f"  URL  : {url}", flush=True)
     print(f"  Mode : {mode}", flush=True)
     print(f"{'═'*60}", flush=True)

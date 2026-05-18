@@ -152,11 +152,11 @@ def _sample_scoring_profile():
 
 
 __all__ = [
+    "Path",
     "_FakeSemanticStore",
     "_install_storage_fakes",
     "_sample_scoring_profile",
     "mock",
-    "Path",
     "tempfile",
     "unittest",
 ]

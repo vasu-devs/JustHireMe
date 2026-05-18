@@ -62,8 +62,8 @@ class LocalServiceSupervisor:
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         log_dir = Path(os.environ.get("JHM_APP_DATA_DIR") or os.environ.get("LOCALAPPDATA", str(self.backend_dir))) / "JustHireMe" / "logs" / "services"
         log_dir.mkdir(parents=True, exist_ok=True)
-        stdout = open(log_dir / f"{name}.out.log", "a", encoding="utf-8")
-        stderr = open(log_dir / f"{name}.err.log", "a", encoding="utf-8")
+        stdout = open(log_dir / f"{name}.out.log", "a", encoding="utf-8")  # noqa: SIM115
+        stderr = open(log_dir / f"{name}.err.log", "a", encoding="utf-8")  # noqa: SIM115
         old_handles = self.log_handles.pop(name, None)
         if old_handles:
             for handle in old_handles:

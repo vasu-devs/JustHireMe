@@ -8,10 +8,11 @@ rubric with visible criteria, caps, and evidence.
 """
 
 from __future__ import annotations
+import logging
 
 import re
 from dataclasses import dataclass
-from typing import Iterable
+from collections.abc import Iterable
 
 from core.types import CandidateEvidence, CriterionScore, ScoreResult
 from core.logging import get_logger
@@ -68,7 +69,7 @@ class PostingSignals:
 
 
 def clamp(n: float, lo: int = 0, hi: int = 100) -> int:
-    return max(lo, min(hi, int(round(n))))
+    return max(lo, min(hi, round(n)))
 
 
 def build_proof_text(candidate_data: dict) -> str:
@@ -591,11 +592,13 @@ def _semantic_criterion(jd: str, candidate_data: dict, weight: int) -> Criterion
     """
     try:
         from ranking.semantic import semantic_fit
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/scoring_engine.py:_semantic_criterion: %s', log_exc)
         return None
     try:
         result = semantic_fit(jd, candidate_data=candidate_data)
-    except Exception:
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/scoring_engine.py:_semantic_criterion: %s', log_exc)
         return None
     if not result:
         return None

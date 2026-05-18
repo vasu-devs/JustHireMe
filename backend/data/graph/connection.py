@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import os
 import re
@@ -17,6 +18,7 @@ _log = get_logger(__name__)
 try:
     import kuzu
 except Exception as exc:
+    logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/connection.py:<module>: %s', exc)
     kuzu = None
     _KUZU_IMPORT_ERROR = str(exc)
 else:
@@ -328,13 +330,15 @@ def _ensure_skill(name: str, category: str) -> str:
             "CREATE (:Skill {id: $id, n: $n, cat: $cat})",
             {"id": skill_id, "n": clean, "cat": category},
         )
-    except Exception:
+    except Exception as exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/connection.py:_ensure_skill: %s', exc)
         try:
             execute_query(
                 "MATCH (s:Skill {id: $id}) SET s.n = $n, s.cat = $cat",
                 {"id": skill_id, "n": clean, "cat": category},
             )
-        except Exception:
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/connection.py:_ensure_skill: %s', log_exc)
             pass
     return skill_id
 
