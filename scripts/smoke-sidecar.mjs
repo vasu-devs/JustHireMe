@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import process from "node:process";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -25,6 +25,20 @@ function bytes(path) {
   const stat = statSync(path);
   if (stat.isFile()) return stat.size;
   return 0;
+}
+
+function vectorRuntimeAssetName() {
+  if (process.platform === "win32") return "JustHireMe-vector-runtime-windows.zip";
+  if (process.platform === "darwin") return "JustHireMe-vector-runtime-macos.zip";
+  return "JustHireMe-vector-runtime-linux.zip";
+}
+
+function localVectorRuntimeArchive() {
+  return join(repoRoot, "release-assets", vectorRuntimeAssetName());
+}
+
+function localVectorRuntimeUrl() {
+  return pathToFileURL(localVectorRuntimeArchive()).href;
 }
 
 function remove(path, options = {}) {
@@ -225,8 +239,9 @@ async function readHealth(port, token) {
   throw lastError || new Error("/health did not become available");
 }
 
-async function readApi(port, token, path) {
+async function readApi(port, token, path, options = {}) {
   const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+    ...options,
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {
@@ -256,7 +271,7 @@ async function smokeCoreApi(port, token) {
   }
 }
 
-function requireHealth(health) {
+function requireHealth(health, options = {}) {
   const components = health.components || health.checks || {};
   const sqlite = components.sqlite?.status;
   const graph = components.graph?.status;
@@ -268,11 +283,30 @@ function requireHealth(health) {
   if (graph !== "ok") {
     fail(`Graph health must be ok, got ${graph || "(missing)"}: ${JSON.stringify(components.graph || {})}`);
   }
-  if (!["ok", "disabled"].includes(vector)) {
-    fail(`Vector health must be ok or disabled, got ${vector || "(missing)"}`);
+  if (options.vectorRequired && vector !== "ok") {
+    fail(`Vector health must be ok in release sidecars, got ${vector || "(missing)"}`);
   }
 
   return { sqlite, graph, vector, app: health.status };
+}
+
+async function ensureVectorRuntime(port, token) {
+  const archive = localVectorRuntimeArchive();
+  const initial = await readApi(port, token, "/api/v1/runtime/vector");
+  if (initial.ready) {
+    return initial;
+  }
+  if (!existsSync(archive)) {
+    const message = `Vector runtime archive not found at ${archive}; semantic OTA install smoke skipped.`;
+    if (process.env.JHM_VECTOR_RUNTIME_REQUIRED === "1") fail(message);
+    console.warn(message);
+    return initial;
+  }
+  const installed = await readApi(port, token, "/api/v1/runtime/vector/install", { method: "POST" });
+  if (!installed.ready) {
+    fail(`Vector runtime install did not become ready: ${JSON.stringify(installed)}`);
+  }
+  return installed;
 }
 
 const explicitSidecar = resolveExplicitSidecar();
@@ -298,6 +332,8 @@ const child = spawn(sidecar, ["--no-services"], {
   env: {
     ...process.env,
     JHM_APP_DATA_DIR: appDataDir,
+    JHM_VECTOR_RUNTIME_DIR: join(appDataDir, "vector-runtime"),
+    JHM_VECTOR_RUNTIME_URL: localVectorRuntimeUrl(),
     LOCALAPPDATA: appDataDir,
     PYTHONUNBUFFERED: "1",
   },
@@ -344,13 +380,16 @@ try {
   const health = await readHealth(handshake.port, handshake.token);
   const summary = requireHealth(health);
   await smokeCoreApi(handshake.port, handshake.token);
+  const vectorRuntime = await ensureVectorRuntime(handshake.port, handshake.token);
+  const healthAfterRuntime = await readHealth(handshake.port, handshake.token);
+  const summaryAfterRuntime = requireHealth(healthAfterRuntime, { vectorRequired: vectorRuntime.ready });
 
   console.log(`Sidecar smoke passed: ${sidecar}`);
   console.log(`- port: ${handshake.port}`);
   console.log(`- app: ${summary.app}`);
   console.log(`- sqlite: ${summary.sqlite}`);
   console.log(`- graph: ${summary.graph}`);
-  console.log(`- vector: ${summary.vector}`);
+  console.log(`- vector: ${summaryAfterRuntime.vector || summary.vector}`);
   console.log("- api: settings, leads, profile, diagnostics");
   passed = true;
 } finally {

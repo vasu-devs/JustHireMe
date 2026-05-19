@@ -1,21 +1,16 @@
 from __future__ import annotations
+import importlib
 import logging
 
 import os
 import threading
 
 from core.logging import get_logger
+from data.vector.runtime import add_vector_runtime_to_path, vector_runtime_ready
 
 _log = get_logger(__name__)
-
-try:
-    import lancedb
-except Exception as exc:
-    logging.getLogger(__name__).warning('suppressed exception in backend/data/vector/connection.py:<module>: %s', exc)
-    lancedb = None
-    _LANCEDB_IMPORT_ERROR = str(exc)
-else:
-    _LANCEDB_IMPORT_ERROR = ""
+lancedb = None
+_LANCEDB_IMPORT_ERROR = ""
 
 def default_base_dir() -> str:
     root = os.environ.get("JHM_APP_DATA_DIR") or os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
@@ -53,20 +48,56 @@ class NullVectorStore:
         return None
 
 
+def _try_import_lancedb(*, log_warning: bool = True):
+    global lancedb, _LANCEDB_IMPORT_ERROR
+    add_vector_runtime_to_path()
+    try:
+        module = importlib.import_module("lancedb")
+    except Exception as exc:
+        if log_warning:
+            logging.getLogger(__name__).warning(
+                "suppressed exception in backend/data/vector/connection.py:_try_import_lancedb: %s",
+                exc,
+            )
+        lancedb = None
+        _LANCEDB_IMPORT_ERROR = str(exc)
+        return None
+    lancedb = module
+    _LANCEDB_IMPORT_ERROR = ""
+    return module
+
+
 def _connect_vector_store():
     global BASE_DIR, VECTOR_DIR
     with _vector_lock:
         BASE_DIR = default_base_dir()
         VECTOR_DIR = default_vector_dir()
         os.makedirs(VECTOR_DIR, exist_ok=True)
-        if lancedb is None:
+        module = lancedb or _try_import_lancedb()
+        if module is None:
             raise RuntimeError(_LANCEDB_IMPORT_ERROR or "LanceDB is not available")
-        return lancedb.connect(VECTOR_DIR)
+        return module.connect(VECTOR_DIR)
 
 
-def vector_status() -> dict:
+def refresh_vector_store() -> dict:
+    global vec
+    with _vector_lock:
+        try:
+            vec = _connect_vector_store()
+        except Exception as exc:
+            if lancedb is None:
+                _log.info("vector store disabled: %s", exc)
+            else:
+                _log.warning("vector store disabled: %s", exc)
+            vec = NullVectorStore(str(exc))
+    return vector_status(refresh=False)
+
+
+def vector_status(*, refresh: bool = True) -> dict:
     with _vector_lock:
         if getattr(vec, "available", True) is False:
+            if refresh and vector_runtime_ready():
+                return refresh_vector_store()
             return {
                 "status": "disabled",
                 "error": getattr(vec, "reason", "") or "vector store is unavailable",
@@ -79,11 +110,6 @@ def vector_status() -> dict:
             return {"status": "degraded", "error": str(exc), "tables": []}
 
 
-try:
-    vec = _connect_vector_store()
-except Exception as exc:
-    if lancedb is None:
-        _log.info("vector store disabled: %s", exc)
-    else:
-        _log.warning("vector store disabled: %s", exc)
-    vec = NullVectorStore(str(exc))
+_try_import_lancedb(log_warning=False)
+vec = NullVectorStore(_LANCEDB_IMPORT_ERROR or "LanceDB is not available")
+refresh_vector_store()

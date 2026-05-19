@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import process from "node:process";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -30,6 +30,14 @@ function staticChecks() {
   console.log("Windows update static smoke passed.");
   console.log("Set JHM_WINDOWS_INSTALLER_SMOKE=1 with JHM_NEW_INSTALLER for installed package smoke.");
   console.log("Set JHM_WINDOWS_UPDATE_SMOKE=1 with JHM_OLD_INSTALLER and JHM_NEW_INSTALLER for installer-over-existing smoke.");
+}
+
+function localVectorRuntimeArchive() {
+  return join(repoRoot, "release-assets", "JustHireMe-vector-runtime-windows.zip");
+}
+
+function localVectorRuntimeUrl() {
+  return pathToFileURL(localVectorRuntimeArchive()).href;
 }
 
 function resolveInstaller(envName) {
@@ -183,6 +191,17 @@ async function readHealth(port, token) {
   throw lastError || new Error("health timeout");
 }
 
+async function readApi(port, token, path, options = {}) {
+  const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+    ...options,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error(`${path} returned HTTP ${response.status}: ${await response.text()}`);
+  }
+  return response.json();
+}
+
 async function requestShutdown(port, token) {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/v1/shutdown`, {
@@ -209,19 +228,32 @@ async function stopSidecar(child, handshake) {
   await sleep(1000);
 }
 
-function requireHealth(health) {
+function requireHealth(health, options = {}) {
   const components = health.components || health.checks || {};
   const rawApp = components.app?.status || health.status;
   if (!["ok", "alive"].includes(rawApp)) fail(`App health is ${rawApp || "missing"}`);
   if (components.sqlite?.status !== "ok") fail(`SQLite health is ${components.sqlite?.status || "missing"}`);
   if (components.graph?.status !== "ok") fail(`Graph health is ${components.graph?.status || "missing"}`);
-  if (!["ok", "disabled"].includes(components.vector?.status)) fail(`Vector health is ${components.vector?.status || "missing"}`);
+  if (options.vectorRequired && components.vector?.status !== "ok") fail(`Vector health is ${components.vector?.status || "missing"}`);
   return {
     app: rawApp === "alive" ? "ok" : rawApp,
     sqlite: components.sqlite.status,
     graph: components.graph.status,
     vector: components.vector.status,
   };
+}
+
+async function ensureVectorRuntime(port, token) {
+  const archive = localVectorRuntimeArchive();
+  const initial = await readApi(port, token, "/api/v1/runtime/vector");
+  if (initial.ready) return initial;
+  if (!existsSync(archive)) {
+    console.warn(`Vector runtime archive not found at ${archive}; installed package semantic OTA smoke skipped.`);
+    return initial;
+  }
+  const installed = await readApi(port, token, "/api/v1/runtime/vector/install", { method: "POST" });
+  if (!installed.ready) fail(`Vector runtime install did not become ready: ${JSON.stringify(installed)}`);
+  return installed;
 }
 
 async function smokeInstalledSidecar(installDir, appDataDir) {
@@ -240,6 +272,8 @@ async function smokeInstalledSidecar(installDir, appDataDir) {
     env: {
       ...process.env,
       JHM_APP_DATA_DIR: appDataDir,
+      JHM_VECTOR_RUNTIME_DIR: join(appDataDir, "vector-runtime"),
+      JHM_VECTOR_RUNTIME_URL: localVectorRuntimeUrl(),
       LOCALAPPDATA: appDataDir,
       PYTHONUNBUFFERED: "1",
     },
@@ -252,7 +286,10 @@ async function smokeInstalledSidecar(installDir, appDataDir) {
     handshake = await waitForHandshake(child, stdoutLines, stderrLines);
     const health = await readHealth(handshake.port, handshake.token);
     const summary = requireHealth(health);
-    console.log(`Installed sidecar health passed: app=${summary.app}, sqlite=${summary.sqlite}, graph=${summary.graph}, vector=${summary.vector}`);
+    const runtime = await ensureVectorRuntime(handshake.port, handshake.token);
+    const runtimeHealth = await readHealth(handshake.port, handshake.token);
+    const runtimeSummary = requireHealth(runtimeHealth, { vectorRequired: runtime.ready });
+    console.log(`Installed sidecar health passed: app=${summary.app}, sqlite=${summary.sqlite}, graph=${summary.graph}, vector=${runtimeSummary.vector || summary.vector}`);
   } finally {
     await stopSidecar(child, handshake);
   }

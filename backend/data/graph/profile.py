@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from core.logging import get_logger
 from data.graph.connection import execute_query
 from data.sqlite.settings import get_setting, save_settings
-from data.vector.connection import vec
+from data.vector import connection as vector_connection
 from graph_service.helpers import is_bad_vector_label
 
 _log = get_logger(__name__)
@@ -25,6 +25,10 @@ _BULK_IMPORT_DEPTH: contextvars.ContextVar[int] = contextvars.ContextVar("profil
 _URL_RE = re.compile(r"https?://\S+|www\.\S+", re.I)
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
 _PHONE_RE = re.compile(r"(?:\+?\d[\d\s().-]{7,}\d)")
+
+
+def _vec():
+    return vector_connection.vec
 
 
 def hash_id(text: str) -> str:
@@ -480,6 +484,13 @@ def purge_profile_deletion_tombstones(db_path: str | None = None) -> dict:
 
 
 def sync_vectors_from_graph() -> dict:
+    store = _vec()
+    if getattr(store, "available", True) is False:
+        return {
+            "status": "disabled",
+            "synced": 0,
+            "error": getattr(store, "reason", "") or "vector store is unavailable",
+        }
     purge_profile_deletion_tombstones()
     deleted_bad_rows = prune_bad_vector_rows()
     candidates = []
@@ -627,7 +638,7 @@ def delete_vec_rows(table_name: str, ids: list[str]) -> None:
         if table_name not in vec_table_names():
             return
         quoted = ["'" + item.replace("'", "''") + "'" for item in ids]
-        vec.open_table(table_name).delete("id IN (" + ", ".join(quoted) + ")")
+        _vec().open_table(table_name).delete("id IN (" + ", ".join(quoted) + ")")
     except Exception as log_exc:
         logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:delete_vec_rows: %s', log_exc)
         pass
@@ -644,7 +655,7 @@ def prune_bad_vector_rows() -> int:
         try:
             if table_name not in vec_table_names():
                 continue
-            table = vec.open_table(table_name)
+            table = _vec().open_table(table_name)
             if hasattr(table, "to_arrow"):
                 rows = table.to_arrow().to_pylist()
             elif hasattr(table, "to_pandas"):
@@ -669,7 +680,10 @@ def prune_bad_vector_rows() -> int:
 
 
 def vec_table_names() -> list[str]:
-    raw = vec.list_tables()
+    store = _vec()
+    if getattr(store, "available", True) is False:
+        return []
+    raw = store.list_tables()
     if isinstance(raw, list):
         return [str(item) for item in raw]
     if hasattr(raw, "tables"):
@@ -692,21 +706,24 @@ def vec_table_names() -> list[str]:
 def put_vec_rows(table_name: str, rows: list[dict]) -> None:
     if not rows:
         return
+    store = _vec()
+    if getattr(store, "available", True) is False:
+        return
     ids = [str(row.get("id") or "").strip() for row in rows if str(row.get("id") or "").strip()]
     try:
         if table_name in vec_table_names():
             rows = _rows_for_existing_table(table_name, rows)
             delete_vec_rows(table_name, ids)
-            vec.open_table(table_name).add(rows)
+            store.open_table(table_name).add(rows)
         else:
-            vec.create_table(table_name, data=rows)
+            store.create_table(table_name, data=rows)
     except Exception as exc:
         _log.warning("vector write failed for %s: %s", table_name, exc)
 
 
 def _rows_for_existing_table(table_name: str, rows: list[dict]) -> list[dict]:
     try:
-        table = vec.open_table(table_name)
+        table = _vec().open_table(table_name)
         schema = table.to_arrow().schema
         field_names = set(schema.names)
         if not field_names:

@@ -644,6 +644,7 @@ fn spawn_sidecar(handle: AppHandle, restart_count: u8) -> Result<(), String> {
     }
     if let Ok(app_data_dir) = handle.path().app_data_dir() {
         let browser_cache = app_data_dir.join("browser-runtime").join("ms-playwright");
+        let vector_cache = app_data_dir.join("vector-runtime");
         sidecar_cmd = sidecar_cmd.env(
             "JHM_BROWSER_RUNTIME_DIR",
             browser_cache.to_string_lossy().to_string(),
@@ -651,9 +652,16 @@ fn spawn_sidecar(handle: AppHandle, restart_count: u8) -> Result<(), String> {
         if !browser_cache.exists() {
             let _ = std::fs::create_dir_all(&browser_cache);
         }
+        if !vector_cache.exists() {
+            let _ = std::fs::create_dir_all(&vector_cache);
+        }
         sidecar_cmd = sidecar_cmd.env(
             "PLAYWRIGHT_BROWSERS_PATH",
             browser_cache.to_string_lossy().to_string(),
+        );
+        sidecar_cmd = sidecar_cmd.env(
+            "JHM_VECTOR_RUNTIME_DIR",
+            vector_cache.to_string_lossy().to_string(),
         );
     }
 

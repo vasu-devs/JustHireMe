@@ -4691,6 +4691,66 @@ button.profile-map-node {
   animation: pop .22s ease-out;
 }
 
+.semantic-runtime-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(31, 26, 20, 0.42);
+  backdrop-filter: blur(3px);
+}
+
+.semantic-runtime-dialog {
+  width: min(560px, 100%);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  padding: 22px;
+  border: 1px solid rgba(31, 26, 20, 0.14);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--shadow-lg);
+  animation: pop .22s ease-out;
+}
+
+.semantic-runtime-mark {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--green-soft);
+  color: var(--green-ink);
+  font-weight: 850;
+  font-family: var(--font-mono);
+}
+
+.semantic-runtime-dialog h2 {
+  margin-top: 5px;
+  font-size: 25px;
+}
+
+.semantic-runtime-dialog p {
+  margin-top: 8px;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.semantic-runtime-note {
+  color: var(--green-ink) !important;
+  font-size: 12px;
+}
+
+.semantic-runtime-actions {
+  grid-column: 2;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
 .update-toast strong {
   display: block;
   margin-top: 3px;
@@ -4757,6 +4817,14 @@ button.profile-map-node {
 }
 
 @media (max-width: 680px) {
+  .semantic-runtime-dialog {
+    grid-template-columns: 1fr;
+  }
+
+  .semantic-runtime-actions {
+    grid-column: 1;
+  }
+
   .update-toast {
     grid-template-columns: 1fr;
   }

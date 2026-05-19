@@ -47,6 +47,8 @@ Do not spend local RC time trying to produce signed public installers. `npm run 
 | --- | --- |
 | `src-tauri/target/release/bundle/nsis/JustHireMe_<version>_x64-setup.exe` | GitHub Actions-built public Windows installer |
 | `src-tauri/target/release/justhireme.exe` | Unbundled release executable for local smoke tests |
+| `release-assets/JustHireMe-vector-runtime-windows.zip` | Mandatory first-run semantic matching runtime OTA asset |
+| `release-assets/JustHireMe-browser-runtime-windows.zip` | Optional browser automation runtime OTA asset |
 
 Build MSI only when managed Windows deployment is explicitly needed:
 
@@ -62,12 +64,13 @@ Tagged releases must verify:
 - the Windows NSIS installer is produced by Tauri
 - `latest.json` matches the tag, uploaded artifacts, and `.sig` files
 - the newly built Windows installer installs into a temp directory
-- the installed sidecar reports `/health` with app, sqlite, and graph OK, and vector OK or disabled
+- the slim installed sidecar reports `/health` with app, sqlite, and graph OK
+- the mandatory vector runtime OTA installs and then reports vector OK
 - update-over-existing smoke passes when a previous stable Windows installer is available
 
 ## Stable Core Scope
 
-The stable core installer supports app launch, settings, profile/lead workflows, deterministic ranking, profile-aware graph/vector matching, local CRM, and document/outreach generation. Semantic matching must fail soft when optional local embedding packages are unavailable.
+The stable core installer supports app launch, settings, profile/lead workflows, deterministic ranking, local CRM, and document/outreach generation. Semantic matching is mandatory but delivered as a first-run OTA runtime so the installer stays small while LanceDB, PyArrow, and native vector search are installed only once per machine.
 
 Browser automation and auto-apply are experimental, opt-in lab features. They are not part of the stable core promise and should not be described as the primary workflow in release notes.
 
@@ -75,6 +78,7 @@ Browser automation and auto-apply are experimental, opt-in lab features. They ar
 
 - Install on a clean Windows machine or VM.
 - Open the app without developer tools.
+- Accept the required semantic engine install prompt and wait for it to finish.
 - Enter a local/Ollama or API provider setting.
 - Import a profile or resume.
 - Run a scan.

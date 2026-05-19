@@ -3,8 +3,31 @@ import { motion } from "framer-motion";
 import Icon from "../../shared/components/Icon";
 import type { ApiFetch } from "../../types";
 
+async function responseErrorMessage(response: Response, fallback: string) {
+  try {
+    const data = await response.clone().json();
+    const detail = data?.detail ?? data?.error;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (detail) return JSON.stringify(detail);
+  } catch {
+    // Fall through to text/plain error bodies.
+  }
+  try {
+    const text = await response.text();
+    if (text.trim()) return text;
+  } catch {
+    // Fall through to the caller-provided fallback.
+  }
+  return fallback;
+}
+
+function requestErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export function IngestionView({ api }: { api: ApiFetch }) {
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"resume" | "manual" | "raw" | "template" | "linkedin" | "github" | "portfolio" | "json-import">("resume");
 
   // Forms
@@ -47,18 +70,28 @@ export function IngestionView({ api }: { api: ApiFetch }) {
 
   const saveTemplate = async () => {
     setStatus("loading");
+    setErrorMessage(null);
     try {
       const r = await api(`/api/v1/template`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ template }),
       });
-      setStatus(r.ok ? "done" : "error");
-    } catch { setStatus("error"); }
+      if (r.ok) {
+        setStatus("done");
+      } else {
+        setErrorMessage(await responseErrorMessage(r, "Could not save resume template."));
+        setStatus("error");
+      }
+    } catch (err) {
+      setErrorMessage(requestErrorMessage(err, "Could not save resume template."));
+      setStatus("error");
+    }
   };
 
   const addManual = async (type: string, data: any) => {
     setStatus("loading");
+    setErrorMessage(null);
     try {
       const endpointType = type === "exp" ? "experience" : type;
       const r = await api(`/api/v1/profile/${endpointType}`, {
@@ -75,12 +108,19 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         if (type === "achievement") setAchievementForm({ title: "" });
         window.dispatchEvent(new CustomEvent("profile-refresh"));
         window.dispatchEvent(new CustomEvent("graph-refresh"));
-      } else { setStatus("error"); }
-    } catch { setStatus("error"); }
+      } else {
+        setErrorMessage(await responseErrorMessage(r, "Could not save profile context."));
+        setStatus("error");
+      }
+    } catch (err) {
+      setErrorMessage(requestErrorMessage(err, "Could not save profile context."));
+      setStatus("error");
+    }
   };
 
   const ingestResume = async (file: File) => {
     setStatus("loading");
+    setErrorMessage(null);
     const fd = new FormData();
     fd.append("file", file);
     try {
@@ -91,9 +131,13 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         window.dispatchEvent(new CustomEvent("graph-refresh"));
         setStatus("done");
       } else {
+        setErrorMessage(await responseErrorMessage(r, "Could not import this resume."));
         setStatus("error");
       }
-    } catch { setStatus("error"); }
+    } catch (err) {
+      setErrorMessage(requestErrorMessage(err, "Could not import this resume."));
+      setStatus("error");
+    }
   };
 
   const ingestLinkedin = async () => {
@@ -271,6 +315,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
 
   const ingestRaw = async () => {
     setStatus("loading");
+    setErrorMessage(null);
     const fd = new FormData();
     fd.append("raw", rawText);
     try {
@@ -280,8 +325,14 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         window.dispatchEvent(new CustomEvent("graph-refresh"));
         setStatus("done");
         setRawText("");
-      } else { setStatus("error"); }
-    } catch { setStatus("error"); }
+      } else {
+        setErrorMessage(await responseErrorMessage(r, "Could not sync raw context."));
+        setStatus("error");
+      }
+    } catch (err) {
+      setErrorMessage(requestErrorMessage(err, "Could not sync raw context."));
+      setStatus("error");
+    }
   };
 
   const TABS = [
@@ -316,7 +367,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
 
         <div className="ingestion-tabs" role="tablist" aria-label="Context source">
           {TABS.map(t => (
-            <button key={t.id} onClick={() => { setActiveTab(t.id); setStatus("idle"); }}
+            <button key={t.id} onClick={() => { setActiveTab(t.id); setStatus("idle"); setErrorMessage(null); }}
               className={`ingestion-tab ingestion-accent-${t.accent} ${activeTab === t.id ? "active" : ""}`}
               role="tab"
               aria-selected={activeTab === t.id}>
@@ -336,7 +387,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         )}
         {status === "error" && (
           <motion.div initial={{opacity:0,y:-10}} animate={{opacity:1,y:0}} className="ingestion-alert error">
-            An error occurred.
+            {errorMessage || "An error occurred."}
           </motion.div>
         )}
 

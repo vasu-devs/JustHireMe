@@ -25,6 +25,7 @@ import { ApprovalDrawer } from "./features/pipeline/components/ApprovalDrawer";
 import { OnboardingWizard } from "./shared/components/OnboardingWizard";
 import { HelpChat } from "./shared/components/HelpChat";
 import { UpdatePrompt } from "./shared/components/UpdatePrompt";
+import { SemanticRuntimePrompt } from "./shared/components/SemanticRuntimePrompt";
 
 const PIPELINE_VIEW_TO_TAB: Partial<Record<View, PipelineTab>> = {
   pipeline: "all",
@@ -117,8 +118,10 @@ export default function App() {
     };
     load();
     const timer = window.setInterval(load, 30000);
+    window.addEventListener("subsystems-refresh", load);
     return () => {
       stopped = true;
+      window.removeEventListener("subsystems-refresh", load);
       window.clearInterval(timer);
     };
   }, [api]);
@@ -313,6 +316,7 @@ export default function App() {
         </AnimatePresence>
         {api && <HelpChat api={api} />}
       </div>
+      <SemanticRuntimePrompt api={api} />
       <UpdatePrompt />
     </>
   );

@@ -8,11 +8,13 @@ const profile = readFileSync(new URL("./profile/ProfileView.tsx", import.meta.ur
 const ingestion = readFileSync(new URL("./profile/IngestionView.tsx", import.meta.url), "utf8");
 const errorBoundary = readFileSync(new URL("../shared/components/ErrorBoundary.tsx", import.meta.url), "utf8");
 const approvalDrawer = readFileSync(new URL("./pipeline/components/ApprovalDrawer.tsx", import.meta.url), "utf8");
+const semanticRuntimePrompt = readFileSync(new URL("../shared/components/SemanticRuntimePrompt.tsx", import.meta.url), "utf8");
 
 describe("FIX.md frontend stability contracts", () => {
   it("keeps App wrapped with recovery and subsystem degradation surfaces", () => {
     expect(app).toContain("ErrorBoundary");
     expect(app).toContain("SubsystemBanner");
+    expect(app).toContain("SemanticRuntimePrompt");
     expect(app).toContain("/api/v1/health/subsystems");
   });
 
@@ -42,5 +44,11 @@ describe("FIX.md frontend stability contracts", () => {
     expect(approvalDrawer).toContain("/status");
     expect(approvalDrawer).toContain("/feedback");
     expect(approvalDrawer).toContain("Mark as applied");
+  });
+
+  it("keeps semantic matching runtime mandatory", () => {
+    expect(semanticRuntimePrompt).toContain("/api/v1/runtime/vector");
+    expect(semanticRuntimePrompt).toContain("/api/v1/runtime/vector/install");
+    expect(semanticRuntimePrompt).not.toContain("Later");
   });
 });

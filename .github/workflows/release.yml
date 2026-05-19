@@ -100,6 +100,9 @@ jobs:
       - name: Build sidecar with canonical script
         run: npm run build:sidecar
 
+      - name: Package mandatory vector runtime OTA asset
+        run: npm run build:vector-runtime
+
       - name: List sidecar output (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
@@ -129,6 +132,8 @@ jobs:
           cat src-tauri/resources/backend/sidecar-manifest.json
 
       - name: Smoke sidecar startup
+        env:
+          JHM_VECTOR_RUNTIME_REQUIRED: "1"
         run: npm run smoke:sidecar
 
       - name: Upload backend sidecar artifact
@@ -157,10 +162,10 @@ jobs:
           cd src-tauri/resources/bin
           zip -qr "../../../release-assets/JustHireMe-browser-runtime-${{ matrix.platform }}.zip" ms-playwright
 
-      - name: Upload browser runtime OTA asset
+      - name: Upload OTA runtime assets
         uses: actions/upload-artifact@v7
         with:
-          name: release-assets-browser-runtime-${{ matrix.platform }}
+          name: release-assets-runtime-${{ matrix.platform }}
           path: release-assets/
           retention-days: 1
 
@@ -326,7 +331,7 @@ jobs:
             throw "Sidecar manifest not found."
           }
           Write-Host "Sidecar verified: $sidecar ($(( Get-Item $sidecar ).Length / 1MB) MB)"
-          Write-Host "Browser runtime is shipped as an OTA asset, not bundled into the installer."
+          Write-Host "Browser runtime and mandatory vector runtime are shipped as OTA assets, not bundled into the installer."
 
       - name: Verify sidecar exists (Unix)
         if: matrix.platform != 'windows'
@@ -353,7 +358,7 @@ jobs:
           fi
           chmod +x "$sidecar"
           echo "Sidecar verified: $sidecar ($(du -h "$sidecar" | awk '{print $1}'))"
-          echo "Browser runtime is shipped as an OTA asset, not bundled into the installer."
+          echo "Browser runtime and mandatory vector runtime are shipped as OTA assets, not bundled into the installer."
 
       - name: Prepare macOS sidecar permissions
         if: matrix.platform == 'macos'
@@ -660,6 +665,7 @@ jobs:
             echo "- Profile-aware graph and vector matching"
             echo "- Resume, cover letter, and outreach draft generation"
             echo "- Bundled backend sidecar"
+            echo "- Mandatory semantic vector runtime as a first-run OTA download"
             echo "- Optional Playwright Chromium runtime as an on-demand OTA download"
             echo "- Signed in-app updates for future releases"
             echo

@@ -87,6 +87,7 @@ class TestBrowserRuntimePackaging(unittest.TestCase):
         spec = (Path(__file__).resolve().parents[1] / "backend.spec").read_text(encoding="utf-8")
 
         self.assertIn('"core,graph,browser"', spec)
+        self.assertNotIn('"core,graph,vector,browser"', spec)
 
     def test_browser_runtime_asset_name_is_platform_specific(self):
         from automation import browser_runtime
@@ -107,3 +108,13 @@ class TestBrowserRuntimePackaging(unittest.TestCase):
             self.assertFalse(browser_runtime_ready(runtime))
             (runtime / "chromium-1200").mkdir()
             self.assertTrue(browser_runtime_ready(runtime))
+
+    def test_vector_runtime_asset_name_is_platform_specific(self):
+        from data.vector import runtime
+
+        with mock.patch.object(runtime, "sys_platform", return_value="windows"):
+            self.assertEqual(runtime.vector_runtime_asset_name(), "JustHireMe-vector-runtime-windows.zip")
+        with mock.patch.object(runtime, "sys_platform", return_value="darwin"):
+            self.assertEqual(runtime.vector_runtime_asset_name(), "JustHireMe-vector-runtime-macos.zip")
+        with mock.patch.object(runtime, "sys_platform", return_value="linux"):
+            self.assertEqual(runtime.vector_runtime_asset_name(), "JustHireMe-vector-runtime-linux.zip")
