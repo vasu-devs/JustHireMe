@@ -6,6 +6,8 @@ import contextvars
 import hashlib
 import json
 import re
+import functools
+import threading
 from urllib.parse import unquote
 from collections.abc import Iterable
 
@@ -25,6 +27,16 @@ _BULK_IMPORT_DEPTH: contextvars.ContextVar[int] = contextvars.ContextVar("profil
 _URL_RE = re.compile(r"https?://\S+|www\.\S+", re.I)
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
 _PHONE_RE = re.compile(r"(?:\+?\d[\d\s().-]{7,}\d)")
+
+_profile_write_lock = threading.RLock()
+
+
+def _profile_write_locked(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with _profile_write_lock:
+            return func(*args, **kwargs)
+    return wrapper
 
 
 def hash_id(text: str) -> str:
@@ -184,6 +196,7 @@ def _delete_tokens(*values) -> set[str]:
     return {_norm_key(item) for item in out if _norm_key(item)}
 
 
+@_profile_write_locked
 def _remember_profile_deletion(key: str, values: Iterable, db_path: str | None = None) -> None:
     if key not in PROFILE_DELETE_KEYS:
         return
@@ -192,6 +205,7 @@ def _remember_profile_deletion(key: str, values: Iterable, db_path: str | None =
     _save_profile_deletions(deletions, db_path)
 
 
+@_profile_write_locked
 def _forget_profile_deletion(key: str, values: Iterable, db_path: str | None = None) -> None:
     if key not in PROFILE_DELETE_KEYS:
         return
@@ -296,6 +310,7 @@ def load_profile_snapshot(db_path: str | None = None) -> dict:
         return {}
 
 
+@_profile_write_locked
 def save_profile_snapshot(profile: dict, db_path: str | None = None, *, allow_empty: bool = False) -> None:
     profile = apply_profile_deletions(profile, db_path)
     if not allow_empty and not profile_has_data(profile):
@@ -847,6 +862,7 @@ def update_skill(skill_id: str, name: str, category: str, db_path: str | None = 
     return {"id": skill_id, "n": name, "cat": category}
 
 
+@_profile_write_locked
 def delete_skill(skill_id: str, db_path: str | None = None) -> None:
     value = unquote(str(skill_id or "")).strip()
     delete_ids = _skill_delete_ids(value)
@@ -1158,6 +1174,7 @@ def _text_node_ids(label: str, entry: str) -> list[str]:
     return list(dict.fromkeys(ids))
 
 
+@_profile_write_locked
 def _delete_text_node(label: str, profile_key: str, entry: str, db_path: str | None = None) -> None:
     entry = unquote(str(entry or "")).strip()
     if not entry:
