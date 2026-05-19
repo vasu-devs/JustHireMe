@@ -4677,7 +4677,7 @@ button.profile-map-node {
   position: fixed;
   right: 18px;
   bottom: 18px;
-  z-index: 120;
+  z-index: 260;
   width: min(420px, calc(100vw - 36px));
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
