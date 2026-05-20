@@ -63,6 +63,11 @@ def _runtime_package_installed() -> bool:
     return any((root / "lancedb" / "__init__.py").exists() for root in vector_runtime_roots())
 
 
+def _is_pyo3_reinit_error(exc: BaseException) -> bool:
+    """Detect the PyO3 'may only be initialized once per interpreter process' error."""
+    return "initialized once per interpreter" in str(exc).lower()
+
+
 def _try_import_lancedb(*, log_warning: bool = True):
     global lancedb, _LANCEDB_IMPORT_ERROR
     add_vector_runtime_to_path()
@@ -77,6 +82,17 @@ def _try_import_lancedb(*, log_warning: bool = True):
     try:
         module = importlib.import_module("lancedb")
     except Exception as exc:
+        # PyO3 native extensions can only be initialized once per process.
+        # If this is a reinit error, the module may already be partially loaded
+        # and usable in sys.modules — check before discarding it.
+        cached = sys.modules.get("lancedb")
+        if _is_pyo3_reinit_error(exc) and _usable_lancedb_module(cached):
+            lancedb = cached
+            _LANCEDB_IMPORT_ERROR = ""
+            _log.info(
+                "lancedb import raised PyO3 reinit warning but the cached module is usable — continuing",
+            )
+            return cached
         _clear_lancedb_modules()
         if log_warning:
             logging.getLogger(__name__).warning(

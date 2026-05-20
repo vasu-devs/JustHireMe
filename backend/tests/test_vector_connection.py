@@ -197,3 +197,102 @@ def test_embedding_loader_does_not_log_suppressed_exception_noise():
     text = Path(__file__).resolve().parents[1].joinpath("data", "vector", "embeddings.py").read_text(encoding="utf-8")
 
     assert "suppressed exception" not in text
+
+
+def test_pyo3_reinit_error_uses_cached_module(monkeypatch):
+    """PyO3 'initialized once per interpreter' should not discard a usable cached module."""
+    from data.vector import connection
+
+    fake_lancedb = types.SimpleNamespace(connect=lambda path: types.SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "lancedb", fake_lancedb)
+    monkeypatch.setattr(connection, "lancedb", None)
+    monkeypatch.setattr(connection, "_LANCEDB_IMPORT_ERROR", "")
+
+    pyo3_msg = "PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process"
+
+    def raise_pyo3(*_args, **_kwargs):
+        raise ImportError(pyo3_msg)
+
+    monkeypatch.setattr(importlib, "import_module", raise_pyo3)
+
+    result = connection._try_import_lancedb(log_warning=False)
+
+    assert result is fake_lancedb
+    assert connection.lancedb is fake_lancedb
+    assert connection._LANCEDB_IMPORT_ERROR == ""
+
+
+def test_pyo3_reinit_error_without_cached_module_still_fails(monkeypatch):
+    """PyO3 reinit error without a usable cached module should still report failure."""
+    from data.vector import connection
+
+    monkeypatch.setattr(connection, "lancedb", None)
+    monkeypatch.setattr(connection, "_LANCEDB_IMPORT_ERROR", "")
+    for key in list(sys.modules):
+        if key == "lancedb" or key.startswith("lancedb."):
+            monkeypatch.delitem(sys.modules, key, raising=False)
+
+    pyo3_msg = "PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process"
+
+    def raise_pyo3(*_args, **_kwargs):
+        raise ImportError(pyo3_msg)
+
+    monkeypatch.setattr(importlib, "import_module", raise_pyo3)
+
+    result = connection._try_import_lancedb(log_warning=False)
+
+    assert result is None
+    assert connection.lancedb is None
+    assert pyo3_msg in connection._LANCEDB_IMPORT_ERROR
+
+
+def test_pyo3_reinit_error_uses_cached_module(monkeypatch):
+    """PyO3 'initialized once per interpreter' should not discard a usable cached module."""
+    import importlib
+    import sys
+    import types
+    from data.vector import connection
+
+    fake_lancedb = types.SimpleNamespace(connect=lambda path: types.SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "lancedb", fake_lancedb)
+    monkeypatch.setattr(connection, "lancedb", None)
+    monkeypatch.setattr(connection, "_LANCEDB_IMPORT_ERROR", "")
+
+    pyo3_msg = "PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process"
+
+    def raise_pyo3(*_args, **_kwargs):
+        raise ImportError(pyo3_msg)
+
+    monkeypatch.setattr(importlib, "import_module", raise_pyo3)
+
+    result = connection._try_import_lancedb(log_warning=False)
+
+    assert result is fake_lancedb
+    assert connection.lancedb is fake_lancedb
+    assert connection._LANCEDB_IMPORT_ERROR == ""
+
+
+def test_pyo3_reinit_error_without_cached_module_still_fails(monkeypatch):
+    """PyO3 reinit error without a usable cached module should still report failure."""
+    import importlib
+    import sys
+    from data.vector import connection
+
+    monkeypatch.setattr(connection, "lancedb", None)
+    monkeypatch.setattr(connection, "_LANCEDB_IMPORT_ERROR", "")
+    for key in list(sys.modules):
+        if key == "lancedb" or key.startswith("lancedb."):
+            monkeypatch.delitem(sys.modules, key, raising=False)
+
+    pyo3_msg = "PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process"
+
+    def raise_pyo3(*_args, **_kwargs):
+        raise ImportError(pyo3_msg)
+
+    monkeypatch.setattr(importlib, "import_module", raise_pyo3)
+
+    result = connection._try_import_lancedb(log_warning=False)
+
+    assert result is None
+    assert connection.lancedb is None
+    assert pyo3_msg in connection._LANCEDB_IMPORT_ERROR
