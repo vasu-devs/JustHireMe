@@ -7,6 +7,9 @@ import process from "node:process";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const backendDir = join(repoRoot, "backend");
 const pythonVersion = readFileSync(join(backendDir, ".python-version"), "utf8").trim();
+const python = process.platform === "win32"
+  ? join(backendDir, ".venv", "Scripts", "python.exe")
+  : join(backendDir, ".venv", "bin", "python");
 const sitePackages = process.platform === "win32"
   ? join(backendDir, ".venv", "Lib", "site-packages")
   : join(backendDir, ".venv", "lib", `python${pythonVersion}`, "site-packages");
@@ -119,6 +122,7 @@ function psQuote(value) {
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd || repoRoot,
+    env: options.env || process.env,
     shell: false,
     stdio: "inherit",
   });
@@ -141,13 +145,35 @@ function archiveDirectory(sourceDir, archivePath) {
   }
 }
 
-function assertBrowserRuntimeReady() {
+function hasChromiumRuntime() {
   if (!existsSync(browserRuntimeSource)) {
-    throw new Error(`Playwright Chromium runtime is missing: ${browserRuntimeSource}`);
+    return false;
   }
-  const hasChromium = readdirSync(browserRuntimeSource, { withFileTypes: true })
+  return readdirSync(browserRuntimeSource, { withFileTypes: true })
     .some((entry) => entry.isDirectory() && entry.name.toLowerCase().startsWith("chromium"));
-  if (!hasChromium) {
+}
+
+function installBrowserRuntime() {
+  if (!existsSync(python)) {
+    throw new Error(`Python virtual environment not found: ${python}`);
+  }
+  mkdirSync(browserRuntimeSource, { recursive: true });
+  console.log(`Installing Playwright Chromium runtime: ${browserRuntimeSource}`);
+  run(python, ["-m", "playwright", "install", "chromium"], {
+    cwd: backendDir,
+    env: {
+      ...process.env,
+      PLAYWRIGHT_BROWSERS_PATH: browserRuntimeSource,
+      PYTHONNOUSERSITE: "1",
+    },
+  });
+}
+
+function assertBrowserRuntimeReady() {
+  if (!hasChromiumRuntime()) {
+    installBrowserRuntime();
+  }
+  if (!hasChromiumRuntime()) {
     throw new Error(`Playwright Chromium runtime does not contain a Chromium payload: ${browserRuntimeSource}`);
   }
 }

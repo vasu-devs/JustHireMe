@@ -110,6 +110,13 @@ def test_ci_enforces_manifest_guardrails():
     assert "macos-latest" in ci
 
 
+def test_runtime_pack_installs_browser_runtime_for_clean_ci_checkout():
+    runtime_pack = _read(ROOT / "scripts/package-runtime-pack.mjs")
+    assert "PLAYWRIGHT_BROWSERS_PATH" in runtime_pack
+    assert '"playwright", "install", "chromium"' in runtime_pack
+    assert "hasChromiumRuntime" in runtime_pack
+
+
 def test_release_includes_frozen_backend_and_windows_smoke():
     release = _read(ROOT / ".github/workflows/release.yml")
     assert "uv sync --dev --frozen" in release
