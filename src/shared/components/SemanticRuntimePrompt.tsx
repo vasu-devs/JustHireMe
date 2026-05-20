@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { relaunch } from "@tauri-apps/plugin-process";
 import type { ApiFetch } from "../../types";
 
 type RuntimeProgress = {
@@ -15,15 +16,20 @@ type RuntimeProgress = {
 
 type RuntimePayload = {
   ready?: boolean;
+  required?: boolean;
+  restart_required?: boolean;
   runtime?: {
     status?: string;
+    ready?: boolean;
     asset?: string;
     dir?: string;
     url?: string;
+    restart_required?: boolean;
   };
   vector?: {
     status?: string;
     error?: string;
+    restart_required?: boolean;
   };
   progress?: RuntimeProgress;
   sync?: {
@@ -34,7 +40,7 @@ type RuntimePayload = {
   install_error?: string;
 };
 
-type PromptState = "checking" | "waiting" | "required" | "installing" | "ready" | "error";
+type PromptState = "checking" | "waiting" | "required" | "installing" | "restart_required" | "restarting" | "ready" | "error";
 
 const ACTIVE_PROGRESS = new Set(["starting", "downloading", "extracting", "copying", "verifying", "syncing"]);
 
@@ -53,6 +59,20 @@ function isActiveProgress(progress?: RuntimeProgress) {
   return Boolean(progress?.active || (progress?.status && ACTIVE_PROGRESS.has(progress.status)));
 }
 
+function isPyo3RestartMessage(message?: string) {
+  return Boolean(message?.toLowerCase().includes("initialized once per interpreter"));
+}
+
+function runtimeNeedsRestart(payload: RuntimePayload | null) {
+  return Boolean(
+    payload?.restart_required ||
+    payload?.runtime?.restart_required ||
+    payload?.vector?.restart_required ||
+    isPyo3RestartMessage(payload?.install_error) ||
+    isPyo3RestartMessage(payload?.progress?.error),
+  );
+}
+
 function isBackendConnectivityError(message: string) {
   const normalized = message.toLowerCase();
   return normalized.includes("local backend timed out") || normalized.includes("local backend is unreachable") || normalized.includes("failed to fetch");
@@ -67,6 +87,12 @@ function statusMessage(state: PromptState, payload: RuntimePayload | null, error
   if (state === "installing") {
     return payload?.progress?.message || "Installing LanceDB, PyArrow, embeddings, and Playwright Chromium.";
   }
+  if (state === "restart_required") {
+    return error || payload?.vector?.error || "The runtime pack installed successfully. Restart JustHireMe to finish loading native vector search.";
+  }
+  if (state === "restarting") {
+    return "Reopening JustHireMe so native vector search can load cleanly.";
+  }
   if (error) return error;
   const vectorError = payload?.vector?.error || payload?.install_error;
   if (vectorError) return vectorError;
@@ -77,6 +103,7 @@ function statusMessage(state: PromptState, payload: RuntimePayload | null, error
 function progressLabel(state: PromptState, progress: RuntimeProgress | undefined, now: number) {
   if (state === "checking") return "Checking required runtime pack.";
   if (state === "waiting") return "Waiting for the local backend; retrying every few seconds.";
+  if (state === "restarting") return "Reopening JustHireMe.";
   if (!progress) return "Preparing JustHireMe runtime pack.";
 
   const message = progress.message || "Installing JustHireMe runtime pack.";
@@ -142,6 +169,14 @@ export function SemanticRuntimePrompt({ api }: { api: ApiFetch }) {
     }
     if (isActiveProgress(next.progress)) {
       updateState("installing");
+      return;
+    }
+    if (runtimeNeedsRestart(next)) {
+      updateState("restart_required");
+      return;
+    }
+    if (next.required === false || next.runtime?.ready) {
+      markReady();
       return;
     }
     if (next.progress?.status === "error") {
@@ -216,13 +251,25 @@ export function SemanticRuntimePrompt({ api }: { api: ApiFetch }) {
     }
   };
 
+  const restartApp = async () => {
+    updateState("restarting");
+    setError("");
+    try {
+      await relaunch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      updateState("restart_required");
+    }
+  };
+
   const message = useMemo(() => statusMessage(state, payload, error), [state, payload, error]);
   const label = useMemo(() => progressLabel(state, payload?.progress, now), [state, payload?.progress, now]);
   const progress = payload?.progress;
   const progressPercent = Number.isFinite(progress?.percent) ? Math.min(100, Math.max(0, Math.round(progress?.percent || 0))) : null;
-  const isBusy = state === "checking" || state === "waiting" || state === "installing";
-  const canInstall = state === "required" || (state === "error" && Boolean(payload));
-  const title = state === "waiting" ? "Starting local service" : "Install required runtime pack";
+  const needsRestart = runtimeNeedsRestart(payload);
+  const isBusy = state === "checking" || state === "waiting" || state === "installing" || state === "restarting";
+  const canInstall = !needsRestart && (state === "required" || (state === "error" && Boolean(payload) && payload?.required !== false));
+  const title = state === "waiting" ? "Starting local service" : needsRestart || state === "restarting" ? "Restart JustHireMe" : "Install required runtime pack";
 
   if (state === "ready") return null;
 
@@ -245,6 +292,11 @@ export function SemanticRuntimePrompt({ api }: { api: ApiFetch }) {
           )}
         </div>
         <div className="semantic-runtime-actions">
+          {needsRestart && (
+            <button className="btn btn-accent" onClick={() => void restartApp()} disabled={state === "restarting"}>
+              {state === "restarting" ? "Restarting..." : "Restart"}
+            </button>
+          )}
           {canInstall && (
             <button className="btn btn-accent" onClick={install} disabled={isBusy}>
               Install now

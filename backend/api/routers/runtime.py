@@ -24,10 +24,14 @@ def _runtime_payload(sync: dict | None = None) -> dict:
     runtime = vector_runtime_status()
     vector = connection.vector_status(refresh=False)
     progress = vector_runtime_progress()
-    ready = bool(runtime.get("ready")) and vector.get("status") == "ok"
+    runtime_ready = bool(runtime.get("ready"))
+    last_error_requires_restart = "initialized once per interpreter" in _LAST_ERROR.lower()
+    restart_required = bool(vector.get("restart_required")) or last_error_requires_restart
+    ready = runtime_ready and vector.get("status") == "ok"
     payload = {
         "ready": ready,
-        "required": True,
+        "required": not runtime_ready and not restart_required,
+        "restart_required": restart_required,
         "runtime": runtime,
         "vector": vector,
         "progress": progress | {"active": _job_running() or progress.get("active", False)},
@@ -36,7 +40,7 @@ def _runtime_payload(sync: dict | None = None) -> dict:
     if current_sync is not None:
         payload["sync"] = current_sync
     if _LAST_ERROR:
-        payload["install_error"] = _LAST_ERROR
+        payload["install_error"] = connection.PYO3_RESTART_MESSAGE if last_error_requires_restart else _LAST_ERROR
     return payload
 
 

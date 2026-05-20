@@ -12,6 +12,9 @@ from data.vector.runtime import add_vector_runtime_to_path, vector_runtime_ready
 _log = get_logger(__name__)
 lancedb = None
 _LANCEDB_IMPORT_ERROR = ""
+_LANCEDB_RESTART_REQUIRED = False
+PYO3_RESTART_MESSAGE = "Runtime pack is installed. Restart JustHireMe to finish loading vector search."
+
 
 def default_base_dir() -> str:
     root = os.environ.get("JHM_APP_DATA_DIR") or os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
@@ -68,14 +71,27 @@ def _is_pyo3_reinit_error(exc: BaseException) -> bool:
     return "initialized once per interpreter" in str(exc).lower()
 
 
+def _set_lancedb_module(module):
+    global lancedb, _LANCEDB_IMPORT_ERROR, _LANCEDB_RESTART_REQUIRED
+    lancedb = module
+    _LANCEDB_IMPORT_ERROR = ""
+    _LANCEDB_RESTART_REQUIRED = False
+    return module
+
+
 def _try_import_lancedb(*, log_warning: bool = True):
-    global lancedb, _LANCEDB_IMPORT_ERROR
+    global lancedb, _LANCEDB_IMPORT_ERROR, _LANCEDB_RESTART_REQUIRED
+    if _usable_lancedb_module(lancedb):
+        _LANCEDB_IMPORT_ERROR = ""
+        _LANCEDB_RESTART_REQUIRED = False
+        return lancedb
     add_vector_runtime_to_path()
     importlib.invalidate_caches()
     if getattr(sys, "frozen", False) and not _runtime_package_installed():
         _clear_lancedb_modules()
         lancedb = None
         _LANCEDB_IMPORT_ERROR = "LanceDB runtime is not installed"
+        _LANCEDB_RESTART_REQUIRED = False
         return None
     if not _usable_lancedb_module(sys.modules.get("lancedb")):
         _clear_lancedb_modules()
@@ -83,16 +99,11 @@ def _try_import_lancedb(*, log_warning: bool = True):
         module = importlib.import_module("lancedb")
     except Exception as exc:
         # PyO3 native extensions can only be initialized once per process.
-        # If this is a reinit error, the module may already be partially loaded
-        # and usable in sys.modules — check before discarding it.
+        # If this is a reinit error, a module may already be loaded and usable.
         cached = sys.modules.get("lancedb")
         if _is_pyo3_reinit_error(exc) and _usable_lancedb_module(cached):
-            lancedb = cached
-            _LANCEDB_IMPORT_ERROR = ""
-            _log.info(
-                "lancedb import raised PyO3 reinit warning but the cached module is usable — continuing",
-            )
-            return cached
+            _log.info("lancedb import raised PyO3 reinit warning but the cached module is usable; continuing")
+            return _set_lancedb_module(cached)
         _clear_lancedb_modules()
         if log_warning:
             logging.getLogger(__name__).warning(
@@ -100,17 +111,21 @@ def _try_import_lancedb(*, log_warning: bool = True):
                 exc,
             )
         lancedb = None
-        _LANCEDB_IMPORT_ERROR = str(exc)
+        if _is_pyo3_reinit_error(exc):
+            _LANCEDB_IMPORT_ERROR = PYO3_RESTART_MESSAGE
+            _LANCEDB_RESTART_REQUIRED = True
+        else:
+            _LANCEDB_IMPORT_ERROR = str(exc)
+            _LANCEDB_RESTART_REQUIRED = False
         return None
     if not _usable_lancedb_module(module):
         location = getattr(module, "__file__", "") or ",".join(map(str, getattr(module, "__path__", []))) or "unknown location"
         _clear_lancedb_modules()
         lancedb = None
         _LANCEDB_IMPORT_ERROR = f"LanceDB runtime is incomplete at {location}"
+        _LANCEDB_RESTART_REQUIRED = False
         return None
-    lancedb = module
-    _LANCEDB_IMPORT_ERROR = ""
-    return module
+    return _set_lancedb_module(module)
 
 
 def _connect_vector_store():
@@ -142,13 +157,16 @@ def refresh_vector_store() -> dict:
 def vector_status(*, refresh: bool = True) -> dict:
     with _vector_lock:
         if getattr(vec, "available", True) is False:
-            if refresh and vector_runtime_ready():
+            if refresh and not _LANCEDB_RESTART_REQUIRED and vector_runtime_ready():
                 return refresh_vector_store()
-            return {
+            status = {
                 "status": "disabled",
                 "error": getattr(vec, "reason", "") or "vector store is unavailable",
                 "tables": [],
             }
+            if _LANCEDB_RESTART_REQUIRED:
+                status["restart_required"] = True
+            return status
         try:
             return {"status": "ok", "tables": list(vec.list_tables() or [])}
         except Exception as exc:

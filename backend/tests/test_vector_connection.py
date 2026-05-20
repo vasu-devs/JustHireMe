@@ -222,12 +222,31 @@ def test_pyo3_reinit_error_uses_cached_module(monkeypatch):
     assert connection._LANCEDB_IMPORT_ERROR == ""
 
 
-def test_pyo3_reinit_error_without_cached_module_still_fails(monkeypatch):
-    """PyO3 reinit error without a usable cached module should still report failure."""
+def test_try_import_lancedb_reuses_global_module_without_reimport(monkeypatch):
+    from data.vector import connection
+
+    fake_lancedb = types.SimpleNamespace(connect=lambda path: types.SimpleNamespace())
+    monkeypatch.setattr(connection, "lancedb", fake_lancedb)
+    monkeypatch.setattr(connection, "_LANCEDB_IMPORT_ERROR", "")
+
+    def fail_import(*_args, **_kwargs):
+        raise AssertionError("usable global module should not be reimported")
+
+    monkeypatch.setattr(importlib, "import_module", fail_import)
+
+    result = connection._try_import_lancedb(log_warning=False)
+
+    assert result is fake_lancedb
+    assert connection._LANCEDB_IMPORT_ERROR == ""
+
+
+def test_pyo3_reinit_error_without_cached_module_requests_restart(monkeypatch):
+    """PyO3 reinit error without a usable cached module should ask for restart, not reinstall."""
     from data.vector import connection
 
     monkeypatch.setattr(connection, "lancedb", None)
     monkeypatch.setattr(connection, "_LANCEDB_IMPORT_ERROR", "")
+    monkeypatch.setattr(connection, "_LANCEDB_RESTART_REQUIRED", False)
     for key in list(sys.modules):
         if key == "lancedb" or key.startswith("lancedb."):
             monkeypatch.delitem(sys.modules, key, raising=False)
@@ -243,6 +262,45 @@ def test_pyo3_reinit_error_without_cached_module_still_fails(monkeypatch):
 
     assert result is None
     assert connection.lancedb is None
-    assert pyo3_msg in connection._LANCEDB_IMPORT_ERROR
+    assert connection._LANCEDB_IMPORT_ERROR == connection.PYO3_RESTART_MESSAGE
+    assert connection._LANCEDB_RESTART_REQUIRED is True
 
+    monkeypatch.setattr(connection, "vec", connection.NullVectorStore(connection._LANCEDB_IMPORT_ERROR))
+    status = connection.vector_status(refresh=True)
+
+    assert status["status"] == "disabled"
+    assert status["restart_required"] is True
+    assert status["error"] == connection.PYO3_RESTART_MESSAGE
+
+
+def test_runtime_payload_marks_installed_pyo3_state_as_restart_not_reinstall(monkeypatch):
+    from api.routers import runtime as runtime_router
+    from data.vector import connection
+
+    monkeypatch.setattr(runtime_router, "vector_runtime_status", lambda: {"status": "installed", "ready": True})
+    monkeypatch.setattr(
+        runtime_router,
+        "vector_runtime_progress",
+        lambda: {"status": "installed", "active": False, "error": ""},
+    )
+    monkeypatch.setattr(
+        connection,
+        "vector_status",
+        lambda refresh=False: {
+            "status": "disabled",
+            "error": connection.PYO3_RESTART_MESSAGE,
+            "tables": [],
+            "restart_required": True,
+        },
+    )
+    monkeypatch.setattr(runtime_router, "_LAST_SYNC", None)
+    monkeypatch.setattr(runtime_router, "_LAST_ERROR", "")
+    monkeypatch.setattr(runtime_router, "_INSTALL_JOB", None)
+
+    payload = runtime_router._runtime_payload()
+
+    assert payload["ready"] is False
+    assert payload["required"] is False
+    assert payload["restart_required"] is True
+    assert payload["vector"]["restart_required"] is True
 

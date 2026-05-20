@@ -54,6 +54,7 @@ describe("FIX.md frontend stability contracts", () => {
     expect(semanticRuntimePrompt).toContain("installInFlightRef");
     expect(semanticRuntimePrompt).toContain("formatBytes");
     expect(semanticRuntimePrompt).toContain("Install required runtime pack");
+    expect(semanticRuntimePrompt).toContain("Restart JustHireMe");
     expect(semanticRuntimePrompt).toContain("Playwright Chromium");
     expect(semanticRuntimePrompt).not.toContain("Later");
   });

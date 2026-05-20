@@ -13,6 +13,16 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # pip-audit currently reports no fixed versions for these transitive ML advisories.
+  # Keep the audit strict for all other packages; remove entries as upstream fixes land.
+  PIP_AUDIT_IGNORE_VULNS: >-
+    PYSEC-2024-277 PYSEC-2026-89
+    PYSEC-2025-210 PYSEC-2025-194 PYSEC-2025-196 PYSEC-2025-195 PYSEC-2025-193 PYSEC-2025-192
+    PYSEC-2026-139 PYSEC-2025-191 PYSEC-2025-197 PYSEC-2025-189 PYSEC-2025-190
+    PYSEC-2025-217 PYSEC-2025-214 PYSEC-2025-218 PYSEC-2025-211 PYSEC-2025-212 PYSEC-2025-213
+    PYSEC-2025-215 PYSEC-2025-216
+
 jobs:
   dependency-audit:
     name: Dependency audit
@@ -37,7 +47,14 @@ jobs:
       - uses: astral-sh/setup-uv@v8.1.0
 
       - name: Audit backend dependencies
-        run: cd backend && uv sync --dev --frozen && uv run --with pip-audit pip-audit
+        run: |
+          cd backend
+          uv sync --dev --frozen
+          audit_args=()
+          for vuln in $PIP_AUDIT_IGNORE_VULNS; do
+            audit_args+=(--ignore-vuln "$vuln")
+          done
+          uv run --with pip-audit pip-audit "${audit_args[@]}"
 
       - uses: dtolnay/rust-toolchain@stable
 
