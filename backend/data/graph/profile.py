@@ -113,6 +113,20 @@ def profile_has_data(profile: dict | None) -> bool:
     )
 
 
+def profile_has_structured_data(profile: dict | None) -> bool:
+    if not isinstance(profile, dict):
+        return False
+    profile = normal_profile(profile)
+    return bool(
+        profile.get("skills")
+        or profile.get("projects")
+        or profile.get("exp")
+        or profile.get("certifications")
+        or profile.get("education")
+        or profile.get("achievements")
+    )
+
+
 def empty_profile() -> dict:
     return {
         "n": "",
@@ -380,24 +394,142 @@ def read_profile_from_graph(*, require_graph: bool = False) -> dict:
     })
 
 
+def _vector_rows(table_name: str, limit: int = 500) -> list[dict]:
+    try:
+        if table_name not in vec_table_names():
+            return []
+        table = _vec().open_table(table_name)
+        if hasattr(table, "to_arrow"):
+            rows = table.to_arrow().to_pylist()
+        elif hasattr(table, "to_pandas"):
+            rows = table.to_pandas().to_dict("records")
+        else:
+            rows = []
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:_vector_rows: %s', log_exc)
+        return []
+    return [row for row in rows[:limit] if isinstance(row, dict)]
+
+
+def _first_text(row: dict, *keys: str) -> str:
+    for key in keys:
+        value = row.get(key)
+        if isinstance(value, (list, tuple, set)):
+            value = ", ".join(str(item).strip() for item in value if str(item).strip())
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _vector_id(row: dict, fallback: str) -> str:
+    return _first_text(row, "id") or hash_id(fallback)
+
+
+def read_profile_from_vectors(db_path: str | None = None) -> dict:
+    profile = empty_profile()
+
+    for row in [*_vector_rows("candidates"), *_vector_rows("profile")]:
+        name = _first_text(row, "n", "name", "label")
+        summary = _first_text(row, "s", "summary", "text")
+        if name.lower() in {"complete profile", "profile", "candidate"}:
+            name = ""
+        if name and not is_bad_vector_label(name) and not profile["n"]:
+            profile["n"] = name
+        if summary and not is_bad_vector_label(summary) and not profile["s"]:
+            profile["s"] = clean_profile_summary(summary)
+        if profile["n"] and profile["s"]:
+            break
+
+    for row in _vector_rows("skills"):
+        name = _first_text(row, "n", "name", "label", "title")
+        if not name or is_bad_vector_label(name):
+            continue
+        profile["skills"].append({
+            "id": _vector_id(row, name),
+            "n": name,
+            "cat": _first_text(row, "cat", "category", "kind") or "vector",
+        })
+
+    for row in _vector_rows("projects"):
+        title = _first_text(row, "title", "name", "label", "n")
+        if not title or is_bad_vector_label(title):
+            continue
+        profile["projects"].append({
+            "id": _vector_id(row, title),
+            "title": title,
+            "stack": stack_list(row.get("stack") or row.get("tags") or ""),
+            "repo": _first_text(row, "repo", "url"),
+            "impact": _first_text(row, "impact", "description", "text", "summary"),
+        })
+
+    for row in _vector_rows("experiences"):
+        role = _first_text(row, "role", "title", "label", "name")
+        company = _first_text(row, "co", "company", "org", "subtitle")
+        if (not role and not company) or (is_bad_vector_label(role) and is_bad_vector_label(company)):
+            continue
+        profile["exp"].append({
+            "id": _vector_id(row, role + company),
+            "role": role,
+            "co": company,
+            "period": _first_text(row, "period", "dates", "range"),
+            "d": _first_text(row, "d", "description", "text", "summary"),
+        })
+
+    credential_keys = {
+        "education": "education",
+        "certification": "certifications",
+        "achievement": "achievements",
+    }
+    for row in _vector_rows("credentials"):
+        title = _first_text(row, "title", "label", "name", "n")
+        if not title or is_bad_vector_label(title):
+            continue
+        kind = _first_text(row, "kind", "type", "category").lower()
+        key = credential_keys.get(kind)
+        if key:
+            profile[key].append(title)
+        else:
+            profile["certifications"].append(title)
+
+    return apply_profile_deletions(profile, db_path)
+
+
 def get_profile(db_path: str | None = None, *, prefer_snapshot: bool = True) -> dict:
     snapshot = load_profile_snapshot(db_path)
-    if prefer_snapshot and profile_has_data(snapshot):
+    if prefer_snapshot and profile_has_structured_data(snapshot):
         return snapshot
+    merged = normal_profile(snapshot)
+    hydrated = False
+    source_has_data = False
+    read_error: Exception | None = None
     try:
-        profile = normal_profile(read_profile_from_graph(require_graph=True))
+        graph_profile = normal_profile(read_profile_from_graph(require_graph=True))
+        if profile_has_data(graph_profile):
+            source_has_data = True
+            merged = merge_profiles(merged, graph_profile)
+            hydrated = hydrated or profile_has_structured_data(graph_profile)
     except Exception as exc:
-        if snapshot:
-            return snapshot
-        _log.error("profile read failed: %s", exc)
-        return empty_profile()
+        _log.warning("profile graph read skipped: %s", exc)
+        read_error = exc
 
-    if profile_has_data(profile):
-        if snapshot:
-            profile = merge_profiles(snapshot, profile)
-        save_profile_snapshot(profile, db_path)
-        return profile
-    return snapshot or profile
+    vector_profile = read_profile_from_vectors(db_path)
+    if profile_has_data(vector_profile):
+        source_has_data = True
+        merged = merge_profiles(merged, vector_profile)
+        hydrated = hydrated or profile_has_structured_data(vector_profile)
+
+    if snapshot and not source_has_data:
+        return snapshot
+    if profile_has_data(merged):
+        if hydrated and profile_has_structured_data(merged):
+            save_profile_snapshot(merged, db_path)
+        return merged
+    if snapshot:
+        return snapshot
+    if read_error:
+        _log.error("profile read failed: %s", read_error)
+    return empty_profile()
 
 
 def merge_profiles(base: dict | None, incoming: dict | None) -> dict:
@@ -434,11 +566,19 @@ def merge_profiles(base: dict | None, incoming: dict | None) -> dict:
 
 
 def refresh_profile_snapshot(db_path: str | None = None) -> None:
+    graph_profile = {}
+    vector_profile = {}
     try:
-        save_profile_snapshot(read_profile_from_graph(), db_path)
-    except Exception as log_exc:
-        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:refresh_profile_snapshot: %s', log_exc)
-        pass
+        graph_profile = read_profile_from_graph()
+    except Exception as exc:
+        _log.warning("profile graph refresh skipped: %s", exc)
+    try:
+        vector_profile = read_profile_from_vectors(db_path)
+    except Exception as exc:
+        _log.warning("profile vector refresh skipped: %s", exc)
+    profile = merge_profiles(graph_profile, vector_profile)
+    if profile_has_data(profile):
+        save_profile_snapshot(profile, db_path)
 
 
 def purge_profile_deletion_tombstones(db_path: str | None = None) -> dict:

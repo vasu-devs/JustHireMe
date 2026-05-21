@@ -216,7 +216,7 @@ wheels = [
 
 [[package]]
 name = "backend"
-version = "1.0.24"
+version = "1.0.25"
 source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },

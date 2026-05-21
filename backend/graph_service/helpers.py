@@ -78,14 +78,25 @@ def embedding_space(repo: Repository, limit: int = 80) -> dict:
             label = row.get("label") or row.get("n") or row.get("title") or row.get("role") or row.get("id") or table_name
             if is_bad_vector_label(label):
                 continue
-            points.append({
+            point = {
                 "id": str(row.get("id") or f"{table_name}:{len(points)}"),
                 "label": str(label),
                 "type": vector_type(table_name, row),
                 "x": x / mag,
                 "y": y / mag,
                 "z": z / mag,
-            })
+                "source": table_name,
+            }
+            subtitle = row.get("cat") or row.get("category") or row.get("co") or row.get("company") or row.get("kind")
+            text = row.get("text") or row.get("impact") or row.get("d") or row.get("description") or row.get("summary")
+            stack = row.get("stack")
+            if subtitle:
+                point["subtitle"] = str(subtitle)
+            if text:
+                point["text"] = str(text)
+            if stack:
+                point["stack"] = stack
+            points.append(point)
             if len(points) >= limit:
                 break
     return {"available": bool(points), "points": points, "error": ""}

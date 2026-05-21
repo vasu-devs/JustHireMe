@@ -158,7 +158,7 @@ def graph_stats_payload(*, repair: bool = False) -> dict:
     profile_snapshot = {}
     if profile_repo:
         profile_snapshot = safe_graph_step(
-            lambda: profile_repo.load_profile_snapshot() or profile_repo.get_profile(),
+            lambda: profile_repo.get_profile() or profile_repo.load_profile_snapshot(),
             "profile snapshot",
             errors,
             default={},

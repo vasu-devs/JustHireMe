@@ -77,7 +77,18 @@ export interface GraphStats {
   };
   embedding?: {
     available?: boolean;
-    points: { id: string; label: string; type: string; x: number; y: number; z?: number }[];
+    points: {
+      id: string;
+      label: string;
+      type: string;
+      x: number;
+      y: number;
+      z?: number;
+      subtitle?: string;
+      text?: string;
+      source?: string;
+      stack?: string[] | string;
+    }[];
     error?: string;
   };
 }

@@ -79,7 +79,115 @@ const graphId = (id: unknown, prefix: string): string => {
 
 const goodLabel = (value: unknown): string => String(value || "").trim();
 
-export function profileFromGraphStats(stats: GraphStats | null | undefined) {
+const splitTerms = (value: unknown): string[] => {
+  if (Array.isArray(value)) return value.map(goodLabel).filter(Boolean);
+  return String(value || "")
+    .replace(/[;|]/g, ",")
+    .split(",")
+    .map(part => part.trim())
+    .filter(Boolean);
+};
+
+const mergeRows = (baseRows: unknown[], fallbackRows: unknown[]) => {
+  const seen = new Set<string>();
+  const rows: unknown[] = [];
+  for (const item of [...baseRows, ...fallbackRows]) {
+    const marker = String(profileDeleteKey(item) || entryTitle(item)).trim().toLowerCase();
+    if (!marker || seen.has(marker)) continue;
+    seen.add(marker);
+    rows.push(item);
+  }
+  return rows;
+};
+
+const mergeFallbackProfiles = (baseProfile: unknown, fallbackProfile: unknown) => {
+  const base = normalizeProfileResponse(baseProfile);
+  const fallback = normalizeProfileResponse(fallbackProfile);
+  return normalizeProfileResponse({
+    ...base,
+    n: base.n || fallback.n,
+    s: base.s || fallback.s,
+    skills: mergeRows(base.skills, fallback.skills),
+    projects: mergeRows(base.projects, fallback.projects),
+    exp: mergeRows(base.exp, fallback.exp),
+    education: mergeRows(base.education, fallback.education),
+    certifications: mergeRows(base.certifications, fallback.certifications),
+    achievements: mergeRows(base.achievements, fallback.achievements),
+    identity: { ...fallback.identity, ...Object.fromEntries(Object.entries(base.identity).filter(([, value]) => String(value || "").trim())) },
+  });
+};
+
+const pointText = (point: unknown, ...keys: string[]): string => {
+  const source = asRecord(point);
+  for (const key of keys) {
+    const text = goodLabel(source[key]);
+    if (text) return text;
+  }
+  return "";
+};
+
+function profileFromEmbeddingStats(stats: GraphStats | null | undefined) {
+  const points = stats?.embedding?.points || [];
+  if (!points.length) return null;
+
+  const candidate = points.find(point =>
+    point.type === "Candidate"
+    && !["candidate", "profile", "complete profile"].includes(point.label.trim().toLowerCase()),
+  );
+  const profilePoint = points.find(point => point.type === "Profile");
+  const profilePointLabel = profilePoint && !["candidate", "profile", "complete profile"].includes(profilePoint.label.trim().toLowerCase())
+    ? profilePoint.label
+    : "";
+
+  const skills = points
+    .filter(point => point.type === "Skill")
+    .map(point => ({ id: graphId(point.id, "skill"), n: goodLabel(point.label), cat: goodLabel(point.subtitle) || "vector" }))
+    .filter(skill => skill.n);
+
+  const projects = points
+    .filter(point => point.type === "Project")
+    .map(point => {
+      const source = point as Record<string, unknown>;
+      return {
+        id: graphId(point.id, "project"),
+        title: goodLabel(point.label),
+        stack: splitTerms(source.stack || point.subtitle),
+        repo: "",
+        impact: pointText(source, "impact", "description", "text", "summary"),
+      };
+    })
+    .filter(project => project.title);
+
+  const exp = points
+    .filter(point => point.type === "Experience")
+    .map(point => {
+      const source = point as Record<string, unknown>;
+      return {
+        id: graphId(point.id, "experience"),
+        role: goodLabel(point.label),
+        co: pointText(source, "company", "co", "subtitle"),
+        period: pointText(source, "period"),
+        d: pointText(source, "description", "d", "text", "summary"),
+      };
+    })
+    .filter(item => item.role || item.co);
+
+  const textPoints = (type: string) => points.filter(point => point.type === type).map(point => goodLabel(point.label)).filter(Boolean);
+
+  const profile = normalizeProfileResponse({
+    n: candidate?.label || profilePointLabel || "",
+    s: pointText(candidate as Record<string, unknown>, "summary", "text", "subtitle"),
+    skills,
+    projects,
+    exp,
+    education: textPoints("Education"),
+    certifications: textPoints("Certification"),
+    achievements: textPoints("Achievement"),
+  });
+  return profileHasContent(profile) ? profile : null;
+}
+
+function profileFromGraphNodes(stats: GraphStats | null | undefined) {
   const nodes = stats?.graph?.nodes || [];
   const edges = stats?.graph?.edges || [];
   if (!nodes.length) return null;
@@ -166,9 +274,21 @@ export function profileFromGraphStats(stats: GraphStats | null | undefined) {
   return profileHasContent(profile) ? profile : null;
 }
 
+export function profileFromGraphStats(stats: GraphStats | null | undefined) {
+  const graphProfile = profileFromGraphNodes(stats);
+  const embeddingProfile = profileFromEmbeddingStats(stats);
+  if (!graphProfile) return embeddingProfile;
+  if (!embeddingProfile) return graphProfile;
+  const merged = mergeFallbackProfiles(graphProfile, embeddingProfile);
+  return profileHasContent(merged) ? merged : null;
+}
+
 export function mergeProfileWithGraphFallback(profile: unknown, stats: GraphStats | null | undefined) {
   const base = normalizeProfileResponse(profile);
-  const graphProfile = profileHasContent(stats?.profile) ? normalizeProfileResponse(stats?.profile) : profileFromGraphStats(stats);
+  const statsProfile = profileHasContent(stats?.profile) ? normalizeProfileResponse(stats?.profile) : null;
+  const graphProfile = statsProfile && profileFromGraphStats(stats)
+    ? mergeFallbackProfiles(statsProfile, profileFromGraphStats(stats))
+    : statsProfile || profileFromGraphStats(stats);
   if (!graphProfile) return base;
   return normalizeProfileResponse({
     ...base,

@@ -14,6 +14,7 @@ from core.telemetry import log_error, redact_sensitive, redact_text
 from data.graph.connection import run_graph
 from data.repository import Repository
 from gateway.clients import graph_client
+from graph_service.helpers import is_bad_vector_label
 
 
 router = APIRouter(prefix="/api/v1", tags=["misc"])
@@ -57,7 +58,7 @@ async def graph_stats(repo: Repository = Depends(get_repository), repair: bool =
     profile_snapshot = {}
     if profile_repo:
         profile_snapshot = await _safe_graph_step_async(
-            lambda: profile_repo.load_profile_snapshot() or profile_repo.get_profile(),
+            lambda: profile_repo.get_profile() or profile_repo.load_profile_snapshot(),
             "profile snapshot",
             errors,
             default={},
@@ -150,14 +151,27 @@ def _embedding_space(repo: Repository, limit: int = 80) -> dict:
             x, y, z = _project_vector(vector)
             mag = math.sqrt(x * x + y * y + z * z) or 1.0
             label = row.get("label") or row.get("n") or row.get("title") or row.get("role") or row.get("id") or table_name
-            points.append({
+            if is_bad_vector_label(label):
+                continue
+            point = {
                 "id": str(row.get("id") or f"{table_name}:{len(points)}"),
                 "label": str(label),
                 "type": _vector_type(table_name, row),
                 "x": x / mag,
                 "y": y / mag,
                 "z": z / mag,
-            })
+                "source": table_name,
+            }
+            subtitle = row.get("cat") or row.get("category") or row.get("co") or row.get("company") or row.get("kind")
+            text = row.get("text") or row.get("impact") or row.get("d") or row.get("description") or row.get("summary")
+            stack = row.get("stack")
+            if subtitle:
+                point["subtitle"] = str(subtitle)
+            if text:
+                point["text"] = str(text)
+            if stack:
+                point["stack"] = stack
+            points.append(point)
             if len(points) >= limit:
                 break
     return {"available": bool(points), "points": points, "error": ""}

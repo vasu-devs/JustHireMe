@@ -78,6 +78,33 @@ describe("graph profile fallback", () => {
     expect(profile.skills.length).toBe(2);
     expect(profile.projects.length).toBe(1);
   });
+
+  it("derives profile rows from vector-backed embedding points when graph links are missing", () => {
+    const profile = mergeProfileWithGraphFallback(
+      { n: "Vasu", s: "AI engineer", skills: [], projects: [], exp: [] },
+      {
+        candidate: 0,
+        skill: 0,
+        project: 0,
+        experience: 0,
+        joblead: 0,
+        graph: { nodes: [], edges: [] },
+        embedding: {
+          available: true,
+          points: [
+            { id: "typescript", label: "TypeScript", type: "Skill", subtitle: "seed", x: 0.1, y: 0.2 },
+            { id: "gitart", label: "GitArt", type: "Project", stack: "TypeScript, React", text: "Generated art workflow", x: 0.2, y: 0.3 },
+            { id: "cert-1", label: "Cloud Cert", type: "Certification", x: 0.3, y: 0.4 },
+          ],
+        },
+      },
+    );
+
+    expect(profile.n).toBe("Vasu");
+    expect(profile.skills.map((skill) => fieldText(skill, "n"))).toEqual(["TypeScript"]);
+    expect(profile.projects.map((project) => fieldText(project, "title"))).toEqual(["GitArt"]);
+    expect(profile.certifications).toEqual(["Cloud Cert"]);
+  });
 });
 
 describe("removeProfileItem", () => {

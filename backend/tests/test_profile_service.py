@@ -250,6 +250,7 @@ def test_graph_profile_get_profile_merges_snapshot_with_existing_graph(monkeypat
 
     monkeypatch.setattr(graph_profile, "load_profile_snapshot", lambda _db_path=None: snapshot)
     monkeypatch.setattr(graph_profile, "read_profile_from_graph", lambda **_kwargs: graph)
+    monkeypatch.setattr(graph_profile, "read_profile_from_vectors", lambda _db_path=None: {})
     monkeypatch.setattr(graph_profile, "save_profile_snapshot", lambda profile, _db_path=None: saved.update(profile))
 
     merged = graph_profile.get_profile(prefer_snapshot=False)
@@ -276,6 +277,95 @@ def test_graph_profile_get_profile_prefers_saved_snapshot(monkeypatch):
     assert graph_profile.get_profile() == snapshot
 
 
+def test_graph_profile_get_profile_hydrates_sparse_snapshot_from_graph(monkeypatch):
+    from data.graph import profile as graph_profile
+
+    snapshot = {
+        "n": "Jane Doe",
+        "s": "Imported resume",
+        "skills": [],
+        "projects": [],
+        "exp": [],
+    }
+    graph = {
+        "n": "Candidate",
+        "s": "",
+        "skills": [{"id": "python", "n": "Python", "cat": "graph"}],
+        "projects": [{"id": "ops", "title": "Ops Console", "stack": ["Python"], "repo": "", "impact": "Built it"}],
+        "exp": [],
+    }
+    saved = {}
+
+    monkeypatch.setattr(graph_profile, "load_profile_snapshot", lambda _db_path=None: snapshot)
+    monkeypatch.setattr(graph_profile, "read_profile_from_graph", lambda **_kwargs: graph)
+    monkeypatch.setattr(graph_profile, "read_profile_from_vectors", lambda _db_path=None: {})
+    monkeypatch.setattr(graph_profile, "save_profile_snapshot", lambda profile, _db_path=None: saved.update(profile))
+
+    merged = graph_profile.get_profile()
+
+    assert merged["n"] == "Jane Doe"
+    assert [skill["n"] for skill in merged["skills"]] == ["Python"]
+    assert [project["title"] for project in merged["projects"]] == ["Ops Console"]
+    assert saved["projects"][0]["title"] == "Ops Console"
+
+
+def test_graph_profile_get_profile_hydrates_sparse_snapshot_from_vectors(monkeypatch):
+    from data.graph import profile as graph_profile
+
+    class FakeArrow:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def to_pylist(self):
+            return self._rows
+
+    class FakeTable:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def to_arrow(self):
+            return FakeArrow(self._rows)
+
+    class FakeVec:
+        def __init__(self, tables):
+            self._tables = tables
+
+        def list_tables(self):
+            return list(self._tables)
+
+        def open_table(self, table_name):
+            return FakeTable(self._tables.get(table_name, []))
+
+    snapshot = {
+        "n": "Jane Doe",
+        "s": "Imported resume",
+        "skills": [],
+        "projects": [],
+        "exp": [],
+    }
+    tables = {
+        "skills": [{"id": "typescript", "label": "TypeScript", "cat": "seed"}],
+        "projects": [{"id": "gitart", "label": "GitArt", "stack": "TypeScript", "impact": "Generated art workflow"}],
+        "experiences": [],
+        "credentials": [{"id": "cert-1", "label": "Cloud Cert", "kind": "certification"}],
+    }
+    saved = {}
+
+    monkeypatch.setattr(graph_profile, "load_profile_snapshot", lambda _db_path=None: snapshot)
+    monkeypatch.setattr(graph_profile, "read_profile_from_graph", lambda **_kwargs: graph_profile.empty_profile())
+    monkeypatch.setattr(graph_profile, "_vec", lambda: FakeVec(tables))
+    monkeypatch.setattr(graph_profile, "get_setting", lambda _key, default="", *_args: default)
+    monkeypatch.setattr(graph_profile, "save_profile_snapshot", lambda profile, _db_path=None: saved.update(profile))
+
+    merged = graph_profile.get_profile()
+
+    assert merged["n"] == "Jane Doe"
+    assert [skill["n"] for skill in merged["skills"]] == ["TypeScript"]
+    assert [project["title"] for project in merged["projects"]] == ["GitArt"]
+    assert merged["certifications"] == ["Cloud Cert"]
+    assert saved["skills"][0]["n"] == "TypeScript"
+
+
 def test_graph_profile_get_profile_returns_snapshot_when_strict_graph_read_is_busy(monkeypatch):
     from data.graph import profile as graph_profile
 
@@ -289,6 +379,7 @@ def test_graph_profile_get_profile_returns_snapshot_when_strict_graph_read_is_bu
 
     monkeypatch.setattr(graph_profile, "load_profile_snapshot", lambda _db_path=None: snapshot)
     monkeypatch.setattr(graph_profile, "read_profile_from_graph", lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("graph query unavailable")))
+    monkeypatch.setattr(graph_profile, "read_profile_from_vectors", lambda _db_path=None: {})
 
     assert graph_profile.get_profile(prefer_snapshot=False) == snapshot
 
