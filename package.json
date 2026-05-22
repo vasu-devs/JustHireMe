@@ -61,7 +61,7 @@
     "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.0.0",
+    "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2.11.1",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
