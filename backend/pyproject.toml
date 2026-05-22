@@ -26,7 +26,7 @@ dependencies = [
     "apscheduler>=3.11.2",
     "python-multipart>=0.0.27",
     "tenacity>=9.1.4",
-    "langsmith>=0.8.0",
+    "langsmith>=0.8.5",
     "urllib3>=2.7.0",
     "starlette>=1.0.1",
 ]
