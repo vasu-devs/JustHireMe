@@ -36,7 +36,7 @@ dev = [
     "mypy>=1.19.0",
     "pyinstaller>=6.20.0",
     "pytest>=9.0.3",
-    "pytest-cov>=6.0.0",
+    "pytest-cov>=7.1.0",
     "ruff>=0.14.0",
 ]
 
