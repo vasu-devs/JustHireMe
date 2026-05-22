@@ -36,20 +36,31 @@
   DetailPrint "Repairing JustHireMe Windows install metadata..."
   SetShellVarContext current
 
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\JustHireMe" "DisplayName" "JustHireMe"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\JustHireMe" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\JustHireMe" "DisplayIcon" "$INSTDIR\justhireme.exe"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\JustHireMe" "UninstallString" '"$INSTDIR\uninstall.exe"'
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\JustHireMe" "QuietUninstallString" '"$INSTDIR\uninstall.exe" /S'
+  WriteRegStr SHCTX "${UNINSTKEY}" "DisplayName" "${PRODUCTNAME}"
+  WriteRegStr SHCTX "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
+  WriteRegStr SHCTX "${UNINSTKEY}" "Publisher" "${MANUFACTURER}"
+  WriteRegStr SHCTX "${UNINSTKEY}" "InstallLocation" "$\"$INSTDIR$\""
+  WriteRegStr SHCTX "${UNINSTKEY}" "DisplayIcon" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\""
+  WriteRegStr SHCTX "${UNINSTKEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
+  WriteRegStr SHCTX "${UNINSTKEY}" "QuietUninstallString" "$\"$INSTDIR\uninstall.exe$\" /S"
+
+  IfFileExists "$INSTDIR\${MAINBINARYNAME}.exe" 0 jhm_postinstall_skip_shortcuts
+  SetOutPath "$INSTDIR"
 
   CreateDirectory "$SMPROGRAMS"
-  CreateShortCut "$SMPROGRAMS\JustHireMe.lnk" "$INSTDIR\justhireme.exe" "" "$INSTDIR\justhireme.exe" 0 SW_SHOWNORMAL "" "JustHireMe"
+  CreateShortCut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 SW_SHOWNORMAL "" "${PRODUCTNAME}"
 
-  IfFileExists "$DESKTOP\JustHireMe.lnk" 0 +2
-    CreateShortCut "$DESKTOP\JustHireMe.lnk" "$INSTDIR\justhireme.exe" "" "$INSTDIR\justhireme.exe" 0 SW_SHOWNORMAL "" "JustHireMe"
+  IfFileExists "$DESKTOP\${PRODUCTNAME}.lnk" 0 +2
+    CreateShortCut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 SW_SHOWNORMAL "" "${PRODUCTNAME}"
 
-  IfFileExists "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\JustHireMe.lnk" 0 +2
-    CreateShortCut "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\JustHireMe.lnk" "$INSTDIR\justhireme.exe" "" "$INSTDIR\justhireme.exe" 0 SW_SHOWNORMAL "" "JustHireMe"
+  IfFileExists "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\${PRODUCTNAME}.lnk" 0 +2
+    CreateShortCut "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 SW_SHOWNORMAL "" "${PRODUCTNAME}"
 
+  Goto jhm_postinstall_done
+
+  jhm_postinstall_skip_shortcuts:
+    DetailPrint "Skipping shortcut repair because $INSTDIR\${MAINBINARYNAME}.exe does not exist."
+
+  jhm_postinstall_done:
   DetailPrint "JustHireMe Windows install metadata repaired."
 !macroend

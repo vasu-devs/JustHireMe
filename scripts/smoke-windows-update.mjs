@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import process from "node:process";
 
@@ -8,7 +8,9 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const updateSmokeEnabled = process.env.JHM_WINDOWS_UPDATE_SMOKE === "1";
 const installerSmokeEnabled = process.env.JHM_WINDOWS_INSTALLER_SMOKE === "1";
 const timeoutMs = Number(process.env.JHM_WINDOWS_UPDATE_TIMEOUT_MS || 120_000);
-const uninstallRegistryKey = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\JustHireMe";
+const uninstallRegistryKeySuffix = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\JustHireMe";
+const vendorRegistryKeySuffix = "Software\\vasudev-siddh\\JustHireMe";
+const uninstallRegistryKey = `HKCU\\${uninstallRegistryKeySuffix}`;
 
 function fail(message) {
   throw new Error(message);
@@ -28,10 +30,13 @@ function staticChecks() {
   if (!hooks.includes("NSIS_HOOK_POSTINSTALL")) {
     fail("NSIS postinstall hook must repair Windows install metadata.");
   }
-  for (const required of ["CreateShortCut", "InstallLocation", "QuietUninstallString", "User Pinned\\TaskBar"]) {
+  for (const required of ["CreateShortCut", "DisplayVersion", "InstallLocation", "QuietUninstallString", "User Pinned\\TaskBar"]) {
     if (!hooks.includes(required)) {
       fail(`NSIS postinstall hook is missing ${required}.`);
     }
+  }
+  if (!hooks.includes("SetOutPath \"$INSTDIR\"")) {
+    fail("NSIS postinstall hook must set the shortcut working directory to the install dir.");
   }
   const tauriConfigPath = join(repoRoot, "src-tauri", "tauri.conf.json");
   const tauriConfig = JSON.parse(readFileSync(tauriConfigPath, "utf8"));
@@ -63,6 +68,12 @@ function resolveInstaller(envName) {
   return installer;
 }
 
+function expectedVersionFromInstaller(installer) {
+  const explicit = process.env.JHM_EXPECTED_VERSION || "";
+  if (explicit) return explicit;
+  return basename(installer).match(/_(\d+\.\d+\.\d+)(?:[_-]|\.exe$)/i)?.[1] || "";
+}
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     stdio: "inherit",
@@ -81,11 +92,61 @@ function runQuiet(command, args) {
   });
 }
 
-function snapshotUninstallRegistry(root) {
+function registryKeyExists(key) {
+  if (process.platform !== "win32") return false;
+  return runQuiet("reg", ["query", key]).status === 0;
+}
+
+function findProfileSid() {
+  if (process.platform !== "win32" || !process.env.USERPROFILE) return "";
+  const result = spawnSync("reg", ["query", "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList", "/s", "/v", "ProfileImagePath"], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.status !== 0) return "";
+
+  const expected = normalizeFsPath(process.env.USERPROFILE);
+  let currentKey = "";
+  for (const line of result.stdout.split(/\r?\n/)) {
+    const keyMatch = line.match(/^HKEY_LOCAL_MACHINE\\.+\\([^\\]+)$/i);
+    if (keyMatch) {
+      currentKey = keyMatch[1];
+      continue;
+    }
+    const valueMatch = line.match(/^\s*ProfileImagePath\s+REG_\w+\s+(.+)$/i);
+    if (valueMatch && currentKey && normalizeFsPath(valueMatch[1]) === expected) {
+      return currentKey;
+    }
+  }
+  return "";
+}
+
+function smokeRegistryKeys() {
+  if (process.platform !== "win32") return [];
+  const roots = ["HKCU"];
+  const profileSid = findProfileSid();
+  if (profileSid) roots.push(`HKEY_USERS\\${profileSid}`);
+  return [...new Set(roots.flatMap((root) => [
+    `${root}\\${uninstallRegistryKeySuffix}`,
+    `${root}\\${vendorRegistryKeySuffix}`,
+  ]))];
+}
+
+function snapshotRegistryFiles(root) {
   if (process.platform !== "win32") return null;
-  const snapshot = join(root, "previous-justhireme-uninstall.reg");
-  const result = runQuiet("reg", ["export", uninstallRegistryKey, snapshot, "/y"]);
-  return result.status === 0 ? snapshot : null;
+  const snapshotDir = join(root, "registry-snapshot");
+  mkdirSync(snapshotDir, { recursive: true });
+  return smokeRegistryKeys().map((key, index) => {
+    const snapshot = join(snapshotDir, `${index}.reg`);
+    const existed = registryKeyExists(key);
+    if (!existed) return { key, snapshot, existed: false };
+
+    const result = runQuiet("reg", ["export", key, snapshot, "/y"]);
+    if (result.status !== 0) {
+      fail(`Could not snapshot existing registry key before smoke: ${key}`);
+    }
+    return { key, snapshot, existed: true };
+  });
 }
 
 function windowsShortcutPaths() {
@@ -121,16 +182,20 @@ function restoreShortcutFiles(records) {
   }
 }
 
-function restoreUninstallRegistry(snapshot) {
+function restoreRegistryFiles(records) {
   if (process.platform !== "win32") return;
-  if (snapshot && existsSync(snapshot)) {
-    const result = runQuiet("reg", ["import", snapshot]);
-    if (result.status !== 0) {
-      console.warn("Cleanup warning: could not restore previous JustHireMe uninstall registry entry.");
+  for (const record of records || []) {
+    if (record.existed && existsSync(record.snapshot)) {
+      const result = runQuiet("reg", ["import", record.snapshot]);
+      if (result.status !== 0) {
+        console.warn(`Cleanup warning: could not restore previous registry entry ${record.key}.`);
+      }
+      continue;
     }
-    return;
+    if (registryKeyExists(record.key)) {
+      runQuiet("reg", ["delete", record.key, "/f"]);
+    }
   }
-  runQuiet("reg", ["delete", uninstallRegistryKey, "/f"]);
 }
 
 function stripOuterQuotes(value) {
@@ -165,12 +230,21 @@ function readShortcutTarget(shortcut) {
   return stripOuterQuotes(result.stdout);
 }
 
-function assertInstalledMetadata(installDir) {
+function assertInstalledMetadata(installDir, expectedVersion = "") {
   if (process.platform !== "win32") return;
   const expectedApp = join(installDir, "justhireme.exe");
+  if (!existsSync(expectedApp)) {
+    fail(`Installed app executable is missing: ${expectedApp}`);
+  }
   const installLocation = readRegistryValue("InstallLocation");
   if (normalizeFsPath(installLocation) !== normalizeFsPath(installDir)) {
     fail(`Registry InstallLocation points to ${installLocation || "(missing)"}, expected ${installDir}.`);
+  }
+  if (expectedVersion) {
+    const displayVersion = readRegistryValue("DisplayVersion");
+    if (displayVersion !== expectedVersion) {
+      fail(`Registry DisplayVersion is ${displayVersion || "(missing)"}, expected ${expectedVersion}.`);
+    }
   }
   const uninstallString = readRegistryValue("UninstallString");
   if (!normalizeFsPath(uninstallString.replace(/\\uninstall\.exe.*$/i, "")).startsWith(normalizeFsPath(installDir))) {
@@ -188,10 +262,13 @@ function assertInstalledMetadata(installDir) {
     if (normalizeFsPath(target) !== normalizeFsPath(expectedApp)) {
       fail(`Shortcut ${shortcut} points to ${target || "(missing)"}, expected ${expectedApp}.`);
     }
+    if (!existsSync(target)) {
+      fail(`Shortcut ${shortcut} points to missing executable: ${target || "(missing)"}.`);
+    }
   }
 }
 
-async function cleanupInstalledPackage(installDir, registrySnapshot) {
+async function cleanupInstalledPackage(installDir, registrySnapshots) {
   if (process.platform !== "win32") return;
   const uninstaller = join(installDir, "uninstall.exe");
   if (existsSync(uninstaller)) {
@@ -199,9 +276,9 @@ async function cleanupInstalledPackage(installDir, registrySnapshot) {
     if (result.status !== 0) {
       console.warn(`Cleanup warning: JustHireMe uninstaller exited with ${result.status}.`);
     }
-    await sleep(1500);
+    await sleep(2500);
   }
-  restoreUninstallRegistry(registrySnapshot);
+  restoreRegistryFiles(registrySnapshots);
 }
 
 function killImage(name) {
@@ -456,6 +533,7 @@ async function freshInstallerSmoke() {
     fail("Installed Windows package smoke must run on Windows.");
   }
   const newInstaller = resolveInstaller("JHM_NEW_INSTALLER");
+  const expectedVersion = expectedVersionFromInstaller(newInstaller);
 
   const root = newSmokeRoot("windows-installer-smoke");
   const installDir = join(root, "install");
@@ -463,12 +541,12 @@ async function freshInstallerSmoke() {
   await removeWithRetry(root);
   mkdirSync(installDir, { recursive: true });
   mkdirSync(appDataDir, { recursive: true });
-  const registrySnapshot = snapshotUninstallRegistry(root);
+  const registrySnapshot = snapshotRegistryFiles(root);
   const shortcutSnapshot = snapshotShortcutFiles(root);
 
   try {
     run(newInstaller, ["/S", `/D=${installDir}`]);
-    assertInstalledMetadata(installDir);
+    assertInstalledMetadata(installDir, expectedVersion);
     await smokeInstalledSidecar(installDir, appDataDir);
     console.log(`Windows installed package smoke passed: ${installDir}`);
   } finally {
@@ -477,6 +555,8 @@ async function freshInstallerSmoke() {
     killImage("backend.exe");
     await cleanupInstalledPackage(installDir, registrySnapshot);
     restoreShortcutFiles(shortcutSnapshot);
+    await sleep(3000);
+    restoreRegistryFiles(registrySnapshot);
     await removeWithRetry(root, { allowFailure: true, label: "Windows installed package smoke temp dir" });
   }
 }
@@ -487,6 +567,7 @@ async function updateInstallerSmoke() {
   }
   const oldInstaller = resolveInstaller("JHM_OLD_INSTALLER");
   const newInstaller = resolveInstaller("JHM_NEW_INSTALLER");
+  const expectedVersion = expectedVersionFromInstaller(newInstaller);
 
   const root = newSmokeRoot("windows-update-smoke");
   const installDir = join(root, "install");
@@ -494,7 +575,7 @@ async function updateInstallerSmoke() {
   await removeWithRetry(root);
   mkdirSync(installDir, { recursive: true });
   mkdirSync(appDataDir, { recursive: true });
-  const registrySnapshot = snapshotUninstallRegistry(root);
+  const registrySnapshot = snapshotRegistryFiles(root);
   const shortcutSnapshot = snapshotShortcutFiles(root);
 
   try {
@@ -512,7 +593,7 @@ async function updateInstallerSmoke() {
     }
 
     run(newInstaller, ["/S", `/D=${installDir}`]);
-    assertInstalledMetadata(installDir);
+    assertInstalledMetadata(installDir, expectedVersion);
     if (appProcess && appProcess.exitCode === null) {
       killProcessTree(appProcess);
       await waitForChildClose(appProcess, 5_000);
@@ -527,6 +608,8 @@ async function updateInstallerSmoke() {
     killImage("backend.exe");
     await cleanupInstalledPackage(installDir, registrySnapshot);
     restoreShortcutFiles(shortcutSnapshot);
+    await sleep(3000);
+    restoreRegistryFiles(registrySnapshot);
     await removeWithRetry(root, { allowFailure: true, label: "Windows update smoke temp dir" });
   }
 }
