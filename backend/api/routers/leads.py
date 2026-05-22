@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from api.dependencies import get_generation_service, get_job_runner, get_ranking_service, get_repository
 from api.rate_limit import RateLimiter, require_rate_limit
+from core.paths import app_data_path
 from core.types import FeedbackBody, FollowupBody, ManualLeadBody, StatusBody
 from data.repository import Repository
 
@@ -26,8 +27,7 @@ def _track_background_task(task: asyncio.Task) -> None:
 
 
 def default_assets_dir() -> str:
-    root = os.environ.get("JHM_APP_DATA_DIR") or os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-    return os.path.join(root, "JustHireMe", "assets")
+    return str(app_data_path("assets"))
 
 
 def annotate_job_lead(lead: dict) -> dict:

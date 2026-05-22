@@ -12,6 +12,7 @@ from pathlib import Path
 
 import httpx
 
+from core.paths import app_data_path
 from gateway.clients import ServiceEndpoint, ServiceRegistry, set_service_registry
 
 SERVICE_NAMES = ("profile", "discovery", "ranking", "generation", "automation", "graph")
@@ -60,7 +61,7 @@ class LocalServiceSupervisor:
         creationflags = 0
         if os.name == "nt":
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        log_dir = Path(os.environ.get("JHM_APP_DATA_DIR") or os.environ.get("LOCALAPPDATA", str(self.backend_dir))) / "JustHireMe" / "logs" / "services"
+        log_dir = app_data_path("logs", "services")
         log_dir.mkdir(parents=True, exist_ok=True)
         stdout = open(log_dir / f"{name}.out.log", "a", encoding="utf-8")  # noqa: SIM115
         stderr = open(log_dir / f"{name}.err.log", "a", encoding="utf-8")  # noqa: SIM115

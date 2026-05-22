@@ -4,6 +4,24 @@ from profile.service import ProfileService
 from models.schema import C, S, E, P
 
 
+def test_run_graph_propagates_bulk_profile_import_context():
+    from data.graph import profile as graph_profile
+    from data.graph.connection import run_graph
+
+    async def read_bulk_import_state():
+        with graph_profile.bulk_profile_import():
+            return await run_graph(graph_profile._bulk_import_active)
+
+    assert asyncio.run(read_bulk_import_state()) is True
+
+
+def test_resume_ingestor_strips_unicode_and_legacy_bullets():
+    from profile import ingestor
+
+    assert ingestor._strip_md("\u2022 FastAPI") == "FastAPI"
+    assert ingestor._strip_md("\u00e2\u20ac\u00a2 FastAPI") == "FastAPI"
+
+
 def test_resume_ingestor_put_node_updates_existing_without_duplicate_create(monkeypatch):
     from profile import ingestor
     from data.graph import connection

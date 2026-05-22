@@ -209,7 +209,7 @@ async def run_scan(
     market_focus = cfg.get("job_market_focus", "global")
     raw_urls = job_targets(cfg.get("job_boards", ""), market_focus)
     await run_x_signal_scan(manager, cfg, "job", profile, discovery_service=discovery_service)
-    await run_free_source_scan(manager, cfg, "job", profile, force=True, discovery_service=discovery_service)
+    await run_free_source_scan(manager, cfg, "job", profile, discovery_service=discovery_service)
 
     await manager.broadcast({"type": "agent", "event": "query_gen_start", "msg": "Generating profile-tailored search queries..."})
     try:

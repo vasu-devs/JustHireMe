@@ -7,13 +7,13 @@ from pathlib import Path
 from typing import Any, cast
 
 from core.logging import get_logger
+from core.paths import app_data_dir
 
 _log = get_logger(__name__)
 
 
 def default_base_dir() -> str:
-    root = os.environ.get("JHM_APP_DATA_DIR") or os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-    return os.path.join(root, "JustHireMe")
+    return str(app_data_dir())
 
 
 def default_db_path() -> str:

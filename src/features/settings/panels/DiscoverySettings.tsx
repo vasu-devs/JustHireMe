@@ -43,16 +43,16 @@ export function DiscoverySettings({ cfg, set, onChange }: { cfg: Cfg; set: (k: k
               </LabelledField>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <LabelledField label="Apify Token" hint="for LinkedIn/X scraping">
-                  <input type="password" placeholder="apify_api_•••" value={cfg.apify_token} onChange={set("apify_token")} className="mono field-input"
+                  <input type="password" placeholder="apify_api_***" value={cfg.apify_token} onChange={set("apify_token")} className="mono field-input"
                     style={{ width: "100%", padding: "9px 12px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--card)", fontSize: 12 }} />
                 </LabelledField>
                 <LabelledField label="Apify Actor ID" hint="actor to run">
-                  <input type="text" placeholder="drobnikj/…" value={cfg.apify_actor} onChange={set("apify_actor")} className="mono field-input"
+                  <input type="text" placeholder="drobnikj/..." value={cfg.apify_actor} onChange={set("apify_actor")} className="mono field-input"
                     style={{ width: "100%", padding: "9px 12px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--card)", fontSize: 12 }} />
                 </LabelledField>
               </div>
               <LabelledField label="LinkedIn session cookie" hint="li_at value">
-                <input type="password" placeholder="li_at=•••" value={cfg.linkedin_cookie} onChange={set("linkedin_cookie")} className="mono field-input"
+                <input type="password" placeholder="li_at=***" value={cfg.linkedin_cookie} onChange={set("linkedin_cookie")} className="mono field-input"
                   style={{ width: "100%", padding: "9px 12px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--card)", fontSize: 12 }} />
               </LabelledField>
               <div style={{ padding: 13, borderRadius: 13, background: "var(--paper-2)", border: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -302,7 +302,7 @@ export function DiscoverySettings({ cfg, set, onChange }: { cfg: Cfg; set: (k: k
                           border: `1px solid ${already ? "var(--blue)" : "var(--line)"}`,
                           opacity: already ? 0.7 : 1,
                         }}>
-                          {already ? "✓ " : "+ "}{p.label}
+                          {already ? "Added " : "+ "}{p.label}
                         </button>
                       );
                     })}

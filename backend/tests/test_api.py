@@ -10,6 +10,7 @@ from starlette.websockets import WebSocketDisconnect
 
 # ── Must run before any backend module is imported ───────────────────────────
 os.environ["LOCALAPPDATA"] = str(Path(__file__).resolve().parent)
+os.environ["JHM_APP_DATA_DIR"] = str(Path(__file__).resolve().parent)
 os.makedirs = lambda *_args, **_kwargs: None
 
 

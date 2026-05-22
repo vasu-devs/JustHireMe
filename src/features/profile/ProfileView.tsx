@@ -8,6 +8,9 @@ const stackItems = (stack: any): string[] =>
     .map((s: string) => s.trim())
     .filter(Boolean);
 
+const EMPTY_PROFILE_LIST: unknown[] = [];
+const profileList = (value: unknown): unknown[] => Array.isArray(value) ? value : EMPTY_PROFILE_LIST;
+
 export function ProfileView({ api, setView, stats }: { api: ApiFetch; setView: (v: View) => void; stats?: GraphStats }) {
   const [profile, setProfile] = useState<any>(null);
   const [profileErr, setProfileErr] = useState<string | null>(null);
@@ -122,14 +125,25 @@ export function ProfileView({ api, setView, stats }: { api: ApiFetch; setView: (
   };
 
   const saveEdit = async (type: string, id: string) => {
-    const res = await api(`/api/v1/profile/${type}/${id}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(editData),
-    });
-    if (!res.ok) throw new Error(`Save failed (${res.status})`);
-    setEditId(null);
-    await fetchProfile();
-    window.dispatchEvent(new CustomEvent("profile-refresh"));
-    window.dispatchEvent(new CustomEvent("graph-refresh"));
+    if (!id) {
+      setProfileErr("This profile row needs a graph id before it can be edited. Delete it or re-import profile context.");
+      return;
+    }
+    try {
+      const res = await api(`/api/v1/profile/${type}/${id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(editData),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.detail || `Save failed (${res.status})`);
+      setEditId(null);
+      setEditData(null);
+      setProfileErr(null);
+      await fetchProfile();
+      window.dispatchEvent(new CustomEvent("profile-refresh"));
+      window.dispatchEvent(new CustomEvent("graph-refresh"));
+    } catch (err: any) {
+      setProfileErr(err?.message || "Profile save failed");
+    }
   };
 
   const saveCandidate = async () => {
@@ -168,12 +182,12 @@ export function ProfileView({ api, setView, stats }: { api: ApiFetch; setView: (
     }
   };
 
-  const skills = profile?.skills || [];
-  const exp = profile?.exp || [];
-  const projects = profile?.projects || [];
-  const education = profile?.education || [];
-  const certifications = profile?.certifications || [];
-  const achievements = profile?.achievements || [];
+  const skills = useMemo(() => profileList(profile?.skills), [profile?.skills]);
+  const exp = useMemo(() => profileList(profile?.exp), [profile?.exp]);
+  const projects = useMemo(() => profileList(profile?.projects), [profile?.projects]);
+  const education = useMemo(() => profileList(profile?.education), [profile?.education]);
+  const certifications = useMemo(() => profileList(profile?.certifications), [profile?.certifications]);
+  const achievements = useMemo(() => profileList(profile?.achievements), [profile?.achievements]);
   const identity = profile?.identity || {};
   const identityItems = [
     ["email", identity.email, "mail"],
@@ -389,9 +403,12 @@ export function ProfileView({ api, setView, stats }: { api: ApiFetch; setView: (
                 {activeProfileTab === "experience" && (
                   <div className="profile-timeline">
                     {exp.length === 0 && <div className="profile-empty">No experience recorded.</div>}
-                    {previewExp.map((e: any, idx: number) => (
-                      <div key={e.id} className="profile-timeline-item">
-                        {editId === e.id ? (
+                    {previewExp.map((e: any, idx: number) => {
+                      const rowId = String(e?.id || "");
+                      const rowKey = profileDeleteKey(e) || `experience-${idx}`;
+                      return (
+                      <div key={rowKey} className="profile-timeline-item">
+                        {rowId && editId === rowId ? (
                           <div className="col gap-3">
                             <div className="grid-2 gap-3">
                               <input className="field-input" value={editData.role} placeholder="Role" onChange={v => setEditData({ ...editData, role: v.target.value })} />
@@ -400,7 +417,7 @@ export function ProfileView({ api, setView, stats }: { api: ApiFetch; setView: (
                             <input className="field-input" value={editData.period} placeholder="Period" onChange={v => setEditData({ ...editData, period: v.target.value })} />
                             <textarea className="field-input" value={editData.d} rows={4} placeholder="Description" onChange={v => setEditData({ ...editData, d: v.target.value })} />
                             <div className="row gap-2">
-                              <button className="btn btn-primary" onClick={() => saveEdit("experience", e.id)}>Save</button>
+                              <button className="btn btn-primary" onClick={() => saveEdit("experience", rowId)}>Save</button>
                               <button className="btn btn-ghost" onClick={() => setEditId(null)}>Cancel</button>
                             </div>
                           </div>
@@ -415,31 +432,35 @@ export function ProfileView({ api, setView, stats }: { api: ApiFetch; setView: (
                               </div>
                               <div className="row gap-2">
                                 <span className="profile-count-badge">{idx + 1}</span>
-                                <button className="btn-icon profile-mini-action" onClick={() => { setEditId(e.id); setEditData({ ...e }); }}><Icon name="edit" size={14} /></button>
-                                <button className="btn-icon profile-mini-action profile-danger" onClick={() => deleteItem("experience", profileDeleteKey(e))} disabled={deletingItems.has(`experience:${profileDeleteKey(e)}`)}><Icon name="trash" size={14} /></button>
+                                <button className="btn-icon profile-mini-action" onClick={() => { setEditId(rowId); setEditData({ ...e }); }} disabled={!rowId} title={rowId ? "Edit experience" : "Re-import or refresh graph before editing this row"}><Icon name="edit" size={14} /></button>
+                                <button className="btn-icon profile-mini-action profile-danger" onClick={() => deleteItem("experience", rowKey)} disabled={deletingItems.has(`experience:${rowKey}`)}><Icon name="trash" size={14} /></button>
                               </div>
                             </div>
                             {e.d && <div style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.6, marginTop: 10, whiteSpace: "pre-wrap" }}>{e.d}</div>}
                           </div>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
                 {activeProfileTab === "projects" && (
                   <div className="profile-project-grid">
                     {projects.length === 0 && <div className="profile-empty">No projects mapped.</div>}
-                    {previewProjects.map((p: any, idx: number) => (
-                      <div key={p.id} className="profile-project-card">
-                        {editId === p.id ? (
+                    {previewProjects.map((p: any, idx: number) => {
+                      const rowId = String(p?.id || "");
+                      const rowKey = profileDeleteKey(p) || `project-${idx}`;
+                      return (
+                      <div key={rowKey} className="profile-project-card">
+                        {rowId && editId === rowId ? (
                           <div className="col gap-3">
                             <input className="field-input" value={editData.title} placeholder="Title" onChange={v => setEditData({ ...editData, title: v.target.value })} />
                             <input className="field-input" value={editData.stack} placeholder="Stack (comma-separated)" onChange={v => setEditData({ ...editData, stack: v.target.value })} />
                             <input className="field-input" value={editData.repo} placeholder="Repo URL" onChange={v => setEditData({ ...editData, repo: v.target.value })} />
                             <textarea className="field-input" value={editData.impact} rows={4} placeholder="Impact" onChange={v => setEditData({ ...editData, impact: v.target.value })} />
                             <div className="row gap-2">
-                              <button className="btn btn-primary" onClick={() => saveEdit("project", p.id)}>Save</button>
+                              <button className="btn btn-primary" onClick={() => saveEdit("project", rowId)}>Save</button>
                               <button className="btn btn-ghost" onClick={() => setEditId(null)}>Cancel</button>
                             </div>
                           </div>
@@ -449,8 +470,8 @@ export function ProfileView({ api, setView, stats }: { api: ApiFetch; setView: (
                               <div className="profile-card-title">{p.title}</div>
                               <div className="row gap-2">
                                 <span className="profile-count-badge">{idx + 1}</span>
-                                <button className="btn-icon profile-mini-action" onClick={() => { setEditId(p.id); setEditData({ ...p, stack: stackItems(p.stack).join(", ") }); }}><Icon name="edit" size={14} /></button>
-                                <button className="btn-icon profile-mini-action profile-danger" onClick={() => deleteItem("project", profileDeleteKey(p))} disabled={deletingItems.has(`project:${profileDeleteKey(p)}`)}><Icon name="trash" size={14} /></button>
+                                <button className="btn-icon profile-mini-action" onClick={() => { setEditId(rowId); setEditData({ ...p, stack: stackItems(p.stack).join(", ") }); }} disabled={!rowId} title={rowId ? "Edit project" : "Re-import or refresh graph before editing this row"}><Icon name="edit" size={14} /></button>
+                                <button className="btn-icon profile-mini-action profile-danger" onClick={() => deleteItem("project", rowKey)} disabled={deletingItems.has(`project:${rowKey}`)}><Icon name="trash" size={14} /></button>
                               </div>
                             </div>
                             <div className="row gap-1" style={{ flexWrap: "wrap", margin: "8px 0 10px" }}>
@@ -463,7 +484,8 @@ export function ProfileView({ api, setView, stats }: { api: ApiFetch; setView: (
                           </div>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 {activeProfileTab === "education" && (
@@ -536,7 +558,3 @@ export function ProfileView({ api, setView, stats }: { api: ApiFetch; setView: (
     </div>
   );
 }
-
-/* ══════════════════════════════════════
-   INGESTION VIEW
-══════════════════════════════════════ */

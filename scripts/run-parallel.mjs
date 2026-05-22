@@ -2,27 +2,33 @@ import { spawn } from "node:child_process";
 import process from "node:process";
 
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+const backendPython = process.platform === "win32" ? ".venv\\Scripts\\python.exe" : ".venv/bin/python";
+const systemPython = process.platform === "win32" ? "python" : "python3";
+const npmOptions = (options = {}) => ({
+  ...options,
+  shell: process.platform === "win32",
+});
 
 const groups = {
   "check:all": [
-    ["version check", npm, ["run", "version:check"]],
-    ["frontend typecheck", npm, ["run", "typecheck"]],
-    ["frontend tests", npm, ["test"]],
-    ["frontend build", npm, ["run", "build"]],
-    ["website build", npm, ["run", "build"], { cwd: "website" }],
-    ["backend tests", ".venv\\Scripts\\python.exe", ["-m", "pytest", "tests", "-q"], { cwd: "backend", fallback: ["python", ["-m", "pytest", "tests", "-q"]] }],
+    ["version check", npm, ["run", "version:check"], npmOptions()],
+    ["frontend typecheck", npm, ["run", "typecheck"], npmOptions()],
+    ["frontend tests", npm, ["test"], npmOptions()],
+    ["frontend build", npm, ["run", "build"], npmOptions()],
+    ["website build", npm, ["run", "build"], npmOptions({ cwd: "website" })],
+    ["backend tests", backendPython, ["-m", "pytest", "tests", "-q"], { cwd: "backend", fallback: [systemPython, ["-m", "pytest", "tests", "-q"]] }],
     ["rust tests", "cargo", ["test", "--lib"], { cwd: "src-tauri" }],
     ["rust check", "cargo", ["check"], { cwd: "src-tauri" }],
   ],
   "build:all": [
-    ["frontend build", npm, ["run", "build"]],
-    ["website build", npm, ["run", "build"], { cwd: "website" }],
+    ["frontend build", npm, ["run", "build"], npmOptions()],
+    ["website build", npm, ["run", "build"], npmOptions({ cwd: "website" })],
     ["rust check", "cargo", ["check"], { cwd: "src-tauri" }],
   ],
   "release:smoke": [
-    ["frontend build", npm, ["run", "build"]],
-    ["sidecar build", npm, ["run", "build:sidecar"]],
-    ["runtime pack asset", npm, ["run", "build:runtime-pack"]],
+    ["frontend build", npm, ["run", "build"], npmOptions()],
+    ["sidecar build", npm, ["run", "build:sidecar"], npmOptions()],
+    ["runtime pack asset", npm, ["run", "build:runtime-pack"], npmOptions()],
   ],
 };
 
@@ -51,30 +57,52 @@ function prefixLine(name, index, chunk) {
 
 function startTask(task, index) {
   const [name, command, args, options = {}] = task;
+  return runTask(name, command, args, options, index);
+}
+
+function runTask(name, command, args, options, index) {
   const cwd = options.cwd || ".";
   const taskStartedAt = Date.now();
-  const child = spawn(command, args, {
-    cwd,
-    shell: true,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  child.stdout.on("data", (chunk) => prefixLine(name, index, chunk));
-  child.stderr.on("data", (chunk) => prefixLine(name, index, chunk));
-
-  child.on("error", (error) => {
-    if (options.fallback) {
-      const [fallbackCommand, fallbackArgs] = options.fallback;
-      tasks[index] = [name, fallbackCommand, fallbackArgs, { cwd }];
-      startTask(tasks[index], index).then(() => {}, () => {});
-      return;
-    }
-    failed = true;
-    console.error(`[${name}] failed to start: ${error.message}`);
-  });
+  let settled = false;
 
   return new Promise((resolve) => {
+    const handleStartError = (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (options.fallback) {
+        const [fallbackCommand, fallbackArgs] = options.fallback;
+        runTask(name, fallbackCommand, fallbackArgs, { cwd }, index).then(resolve);
+        return;
+      }
+      failed = true;
+      console.error(`[${name}] failed to start: ${error.message}`);
+      resolve();
+    };
+
+    let child;
+    try {
+      child = spawn(command, args, {
+        cwd,
+        shell: Boolean(options.shell),
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      handleStartError(error);
+      return;
+    }
+
+    child.stdout.on("data", (chunk) => prefixLine(name, index, chunk));
+    child.stderr.on("data", (chunk) => prefixLine(name, index, chunk));
+
+    child.on("error", handleStartError);
+
     child.on("close", (code) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       const seconds = ((Date.now() - taskStartedAt) / 1000).toFixed(1);
       if (code !== 0) {
         failed = true;

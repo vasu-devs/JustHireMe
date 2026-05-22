@@ -10,6 +10,7 @@ from pathlib import Path
 from collections.abc import Mapping
 from importlib import import_module
 
+from .paths import app_data_path
 
 SENSITIVE_KEY_RE = re.compile(
     r"(authorization|bearer|cookie|password|secret|token|api[_-]?key|private[_-]?key|resume|cover[_-]?letter|profile|email|phone)",
@@ -31,7 +32,7 @@ def telemetry_enabled() -> bool:
 
 
 def errors_path() -> Path:
-    base = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "JustHireMe"
+    base = app_data_path()
     return Path(os.environ.get("JHM_ERRORS_JSONL", base / "errors.jsonl"))
 
 

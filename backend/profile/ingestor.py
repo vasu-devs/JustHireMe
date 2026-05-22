@@ -217,7 +217,7 @@ def _strip_md(text: str) -> str:
     text = re.sub(r"\*([^*]+)\*", r"\1", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
     text = text.replace("\u2192", "->").replace("\u00b7", "-")
-    text = re.sub(r"^\s*[-*•]\s*", "", text)
+    text = re.sub(r"^\s*(?:[-*]|\u2022|\u00e2\u20ac\u00a2)\s*", "", text)
     text = _repair_pdf_spacing(text)
     return re.sub(r"\s+", " ", text).strip()
 
@@ -553,7 +553,7 @@ def _section_lines(text: str, headings: tuple[str, ...]) -> list[str]:
     )
     if end:
         tail = tail[:end.start()]
-    return [_strip_md(re.sub(r"^\s*[-*•]\s*", "", line)) for line in tail.splitlines() if _strip_md(line)]
+    return [_strip_md(re.sub(r"^\s*(?:[-*]|\u2022|\u00e2\u20ac\u00a2)\s*", "", line)) for line in tail.splitlines() if _strip_md(line)]
 
 
 def _parse_resume_heuristic(txt: str) -> C:
@@ -800,7 +800,7 @@ def _first_skill_position(line: str, known_skills: list[str]) -> int | None:
 
 
 def _split_project_title_detail(line: str) -> tuple[str, str]:
-    for separator in (" - ", " – ", " — ", " | ", ": "):
+    for separator in (" - ", " \u2013 ", " \u2014 ", " | ", ": "):
         if separator in line:
             title, detail = line.split(separator, 1)
             if len(title.split()) <= 8:

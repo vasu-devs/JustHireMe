@@ -36,6 +36,8 @@ def test_vector_store_falls_back_to_local_app_data(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "lancedb", fake_lancedb)
     monkeypatch.delenv("JHM_APP_DATA_DIR", raising=False)
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local-app-data"))
+    from core import paths
+    monkeypatch.setattr(paths.platform, "system", lambda: "Windows")
 
     from data.vector import connection
 

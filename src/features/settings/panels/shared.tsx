@@ -107,15 +107,15 @@ export const MODEL_HINTS: Record<string, string[]> = {
 
 export const STEPS = [
   { id: "scout",     label: "Scout",     icon: "search", tone: "blue",
-    desc: "Discovers job listings — a fast cheap model is ideal here" },
+    desc: "Discovers job listings - a fast cheap model is ideal here" },
   { id: "evaluator", label: "Evaluator", icon: "pulse",  tone: "purple",
-    desc: "Scores job fit — use a reasoning model (DeepSeek R1) for best results" },
+    desc: "Scores job fit - use a reasoning model (DeepSeek R1) for best results" },
   { id: "generator", label: "Generator", icon: "file",   tone: "orange",
-    desc: "Writes tailored resumes + cover letters — quality matters here" },
+    desc: "Writes tailored resumes + cover letters - quality matters here" },
   { id: "ingestor",  label: "Ingestor",  icon: "upload", tone: "green",
     desc: "Parses your resume into the knowledge graph" },
   { id: "actuator",  label: "Experimental Actuator",  icon: "ghost",  tone: "pink",
-    desc: "Unsupported browser automation lab — not part of the core OSS workflow" },
+    desc: "Unsupported browser automation lab - not part of the core OSS workflow" },
 ];
 
 export const GLOBAL_SOURCE_PRESET = [
@@ -266,7 +266,7 @@ export function ModelChips({ provider, value, onChange, extraModels = [] }: { pr
         </div>
       )}
       <input type="text" value={value} onChange={e => onChange(e.target.value)}
-        placeholder={`custom model — e.g. ${placeholder}`}
+        placeholder={`custom model - e.g. ${placeholder}`}
         className="mono field-input"
         style={{ width: "100%", padding: "8px 12px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--card)", fontSize: 12 }}
       />
@@ -279,11 +279,11 @@ export function ApiKeyInput({ value, onChange, provider, isStep, disabled = fals
 }) {
   if (provider === "ollama") return null;
   const ph: Record<string, string> = {
-    anthropic: "sk-ant-••••", gemini: "AIza••••", groq: "gsk_••••", nvidia: "nvapi-••••",
-    openai: "sk-••••", deepseek: "sk-••••", xai: "xai-••••", kimi: "sk-••••",
-    mistral: "••••", openrouter: "sk-or-••••", together: "••••", fireworks: "fw_••••",
-    cerebras: "csk-••••", perplexity: "pplx-••••", huggingface: "hf_••••", cohere: "co_••••",
-    sambanova: "••••", qwen: "sk-••••", azure: "Azure OpenAI key", custom: "API key",
+    anthropic: "sk-ant-****", gemini: "AIza****", groq: "gsk_****", nvidia: "nvapi-****",
+    openai: "sk-****", deepseek: "sk-****", xai: "xai-****", kimi: "sk-****",
+    mistral: "****", openrouter: "sk-or-****", together: "****", fireworks: "fw_****",
+    cerebras: "csk-****", perplexity: "pplx-****", huggingface: "hf_****", cohere: "co_****",
+    sambanova: "****", qwen: "sk-****", azure: "Azure OpenAI key", custom: "API key",
   };
   return (
     <input type="password" value={SECRET_MASKS.has(value) ? "" : value} onChange={e => onChange(e.target.value)} disabled={disabled}
@@ -319,7 +319,7 @@ export function StepCard({ step, cfg, onChange }: { step: typeof STEPS[0]; cfg: 
             <span style={{ fontSize: 13, fontWeight: 700 }}>{step.label}</span>
             {isCustom && (
               <span className="mono" style={{ fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", background: `var(--${step.tone}-soft)`, color: `var(--${step.tone}-ink)`, padding: "2px 8px", borderRadius: 999 }}>
-                {stepProv}{cfg[modelKey] ? ` · ${cfg[modelKey]}` : ""}
+                {stepProv}{cfg[modelKey] ? ` / ${cfg[modelKey]}` : ""}
               </span>
             )}
           </div>

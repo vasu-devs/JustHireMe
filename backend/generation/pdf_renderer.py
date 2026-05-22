@@ -3,9 +3,10 @@ from __future__ import annotations
 import os
 import re
 
+from core.paths import app_data_path
+
 def default_assets_dir() -> str:
-    root = os.environ.get("JHM_APP_DATA_DIR") or os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-    return os.path.join(root, "JustHireMe", "assets")
+    return str(app_data_path("assets"))
 
 
 _assets = default_assets_dir()

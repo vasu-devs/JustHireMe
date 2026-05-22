@@ -6,12 +6,14 @@ import re
 import threading
 import asyncio
 import concurrent.futures
+import contextvars
 import functools
 from datetime import datetime, timezone
 from hashlib import md5
 from itertools import combinations
 
 from core.logging import get_logger
+from core.paths import app_data_dir
 
 _log = get_logger(__name__)
 
@@ -25,8 +27,7 @@ else:
     _KUZU_IMPORT_ERROR = ""
 
 def default_base_dir() -> str:
-    root = os.environ.get("JHM_APP_DATA_DIR") or os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-    return os.path.join(root, "JustHireMe")
+    return str(app_data_dir())
 
 
 def default_graph_path() -> str:
@@ -95,7 +96,9 @@ def _ensure_connection() -> bool:
 
 async def run_graph(fn, *args, **kwargs):
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_graph_executor, functools.partial(fn, *args, **kwargs))
+    ctx = contextvars.copy_context()
+    call = functools.partial(ctx.run, fn, *args, **kwargs)
+    return await loop.run_in_executor(_graph_executor, call)
 
 
 def init_graph() -> None:
