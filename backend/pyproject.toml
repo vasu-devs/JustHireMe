@@ -33,7 +33,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "mypy>=1.19.0",
+    "mypy>=2.1.0",
     "pyinstaller>=6.20.0",
     "pytest>=9.0.3",
     "pytest-cov>=6.0.0",
