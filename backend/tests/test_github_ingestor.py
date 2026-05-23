@@ -81,12 +81,14 @@ def test_github_ingestor_imports_all_repos_and_enriches_top_without_token(monkey
     assert result["stats"]["repos_fetched"] == repo_count
     assert result["stats"]["projects_extracted"] == repo_count
     assert result["stats"]["repos_enriched"] == detail_limit
-    assert result["stats"]["file_indexes_read"] == detail_limit
     assert result["stats"]["readmes_read"] == detail_limit
     assert result["stats"]["languages_read"] == detail_limit
-    assert result["stats"]["manifests_read"] == detail_limit * 2
+    # Tokenless scans skip the recursive tree + manifest fetches to stay under
+    # GitHub's ~60 req/hour unauthenticated limit, so these stay at 0.
+    assert result["stats"]["file_indexes_read"] == 0
+    assert result["stats"]["manifests_read"] == 0
     assert result["stats"]["llm_projects"] == llm_limit
-    assert any(skill["n"] == "FastAPI" for skill in result["skills"])
+    # React still inferred from repo topics even without manifest analysis.
     assert any(skill["n"] == "React" for skill in result["skills"])
     assert "Add a GitHub token" in result["errors"][0]
 

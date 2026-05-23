@@ -191,7 +191,9 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: githubUsername, token: githubToken, max_repos: githubMaxRepos }),
-        timeoutMs: 180000,
+        // Backend caps the scan at 270s; wait a bit longer so the backend always
+        // returns (success or a clean message) before the client aborts.
+        timeoutMs: 300000,
       });
       if (r.ok) {
         const data = await r.json();

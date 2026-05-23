@@ -35,9 +35,14 @@ async def graph_stats(repo: Repository = Depends(get_repository), repair: bool =
 
     errors: list[str] = []
     profile_repo = getattr(repo, "profile", None)
-    if profile_repo and hasattr(profile_repo, "purge_profile_deletion_tombstones"):
-        await _safe_graph_step_async(profile_repo.purge_profile_deletion_tombstones, "profile deletion purge", errors, default={"status": "skipped"})
     if repair:
+        # The hard purge (DETACH DELETE of tombstoned nodes) is expensive and
+        # only needed to physically clean the graph. Read-time filtering
+        # (filter_graph_deletions / filter_embedding_deletions below) already
+        # hides deleted items, so keep the common read path fast and purge only
+        # on an explicit repair (and during ingest vector sync).
+        if profile_repo and hasattr(profile_repo, "purge_profile_deletion_tombstones"):
+            await _safe_graph_step_async(profile_repo.purge_profile_deletion_tombstones, "profile deletion purge", errors, default={"status": "skipped"})
         leads = await asyncio.to_thread(repo.leads.get_all_leads)
         sync = await _safe_graph_step_async(lambda: repo.graph.sync_job_leads(leads), "lead sync", errors)
         profile_sync = await _safe_graph_step_async(

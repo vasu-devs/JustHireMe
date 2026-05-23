@@ -1,7 +1,7 @@
 {
   "name": "justhireme-website",
   "private": true,
-  "version": "1.0.32",
+  "version": "1.0.33",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",

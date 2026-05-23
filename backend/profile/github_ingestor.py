@@ -44,10 +44,13 @@ MANIFEST_PATHS = [
 MANIFEST_NAMES = {path.lower() for path in MANIFEST_PATHS}
 MANIFEST_PRIORITY = {path.lower(): index for index, path in enumerate(MANIFEST_PATHS)}
 MAX_MANIFESTS_PER_REPO = 6
-NO_TOKEN_DETAIL_REPO_LIMIT = 30
+# Tokenless GitHub API is capped at ~60 requests/hour. With manifests skipped
+# (readme + languages = 2 calls/repo) this keeps a no-token scan to ~26 calls
+# total, well under the budget, so it actually completes instead of stalling.
+NO_TOKEN_DETAIL_REPO_LIMIT = 12
 NO_TOKEN_LLM_REPO_LIMIT = 10
 TOKEN_LLM_REPO_LIMIT = 40
-_GITHUB_SESSION_TIMEOUT = 300  # 5 min hard cap for the entire scan
+_GITHUB_SESSION_TIMEOUT = 270  # hard cap for the entire scan (frontend waits 300s)
 
 TOPIC_SKILLS = {
     "nextjs": "Next.js",
@@ -411,14 +414,23 @@ async def _repo_details(repo: dict, token: str | None) -> dict:
     full_name = repo.get("full_name", "")
     readme_task = asyncio.create_task(_safe_fetch(f"{GITHUB_API}/repos/{full_name}/readme", token))
     languages_task = asyncio.create_task(_safe_fetch(f"{GITHUB_API}/repos/{full_name}/languages", token))
-    manifest_paths = await _manifest_candidate_paths(repo, token)
 
     async def _manifest(path: str):
         safe_path = quote(path, safe="/")
         data = await _safe_fetch(f"{GITHUB_API}/repos/{full_name}/contents/{safe_path}", token)
         return path, _decode_content(data, max_chars=8000) if isinstance(data, dict) else ""
 
-    manifest_results = await asyncio.gather(*[_manifest(path) for path in manifest_paths])
+    # Unauthenticated GitHub allows only ~60 requests/hour. The recursive tree
+    # walk plus per-manifest fetches add ~7 calls/repo, which exhausts the budget
+    # and makes tokenless scans rate-limit and stall (the reported 180s failure).
+    # Without a token, rely on README + language signals only; full dependency
+    # analysis (manifests) runs when a token raises the limit to 5000/hour.
+    if token:
+        manifest_paths = await _manifest_candidate_paths(repo, token)
+        manifest_results = await asyncio.gather(*[_manifest(path) for path in manifest_paths])
+    else:
+        manifest_paths = []
+        manifest_results = []
     readme = _decode_content(await readme_task)
     languages = await languages_task
     if not isinstance(languages, dict):
@@ -538,7 +550,7 @@ async def _ingest_github_inner(username: str, token: str | None = None, max_repo
     repos = sorted(repos_data, key=_repo_signal, reverse=True)
     projects: list[dict] = []
     skill_counter: Counter[str] = Counter()
-    semaphore = asyncio.Semaphore(4)
+    semaphore = asyncio.Semaphore(8)
     stats_counter: Counter[str] = Counter()
     detail_limit = len(repos) if token else min(len(repos), NO_TOKEN_DETAIL_REPO_LIMIT)
     llm_limit = min(detail_limit, TOKEN_LLM_REPO_LIMIT if token else NO_TOKEN_LLM_REPO_LIMIT)

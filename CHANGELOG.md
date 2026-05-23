@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.33 - 2026-05-24
+
+- Fixed resume ingestion duplicating one job into several near-identical experience entries: experiences are now normalized and de-duplicated on a content key (role+company), and education de-dupes ignoring spacing/punctuation.
+- Fixed genuine projects being dropped during ingestion: a project with its own repo, real stack, or substantial impact is no longer absorbed into the previous entry or discarded for a detail-like title.
+- Fixed GitHub import stalling/timing out for users without a token: unauthenticated scans now skip the recursive tree + manifest fetches (which blew GitHub's ~60 requests/hour limit) and rely on README + language signals, completing reliably; full dependency analysis still runs when a token is provided. Increased scan concurrency and aligned client/backend timeouts.
+- Made the Knowledge graph reflect profile deletions faster by skipping the redundant per-read tombstone purge (read-time filtering already hides deleted items; the hard purge runs on repair/ingest).
+
 ## 1.0.32 - 2026-05-24
 
 - Fixed the profile delete bug: deleted skills/projects/experience no longer linger on the Knowledge page or reappear on the Profile page. Deletion tombstones are now applied to the graph snapshot and embedding-space read paths, and the delete UI keeps a loader until the backend-confirmed profile reloads.

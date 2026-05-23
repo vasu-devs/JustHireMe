@@ -100,3 +100,7 @@ test_resume_output.pdf
 # Test scratch + migration lock artifacts
 backend/tests/.scratch-templates/
 *.migration.lock
+
+# Kuzu test graph artifacts
+backend/tests/graph.kuzu
+*.kuzu

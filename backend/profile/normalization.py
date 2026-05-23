@@ -5,7 +5,7 @@ import re
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-from models.schema import C, P, S
+from models.schema import C, E, P, S
 
 # Canonical skill alias map now lives in the data layer so non-profile layers
 # (e.g. data/graph/connection.py) can use it without crossing import boundaries.
@@ -113,6 +113,7 @@ def normalize_profile_payload(data: dict[str, Any]) -> dict[str, Any]:
     candidate = _normalize_candidate(data.get("candidate") or data)
     identity = dict(data.get("identity") or {})
     skills = normalize_skills(data.get("skills") or [])
+    experience = normalize_experiences(data.get("experience") or [])
     projects = normalize_projects(data.get("projects") or [], known_skills=[item["name"] for item in skills])
     education = normalize_education_entries(data.get("education") or [])
     certifications = normalize_text_entries(data.get("certifications") or data.get("certs") or [], kind="certification")
@@ -123,6 +124,7 @@ def normalize_profile_payload(data: dict[str, Any]) -> dict[str, Any]:
         "candidate": candidate,
         "identity": identity,
         "skills": skills,
+        "experience": experience,
         "projects": projects,
         "education": [{"title": item} for item in education],
         "certifications": [{"title": item} for item in certifications],
@@ -151,7 +153,16 @@ def normalize_candidate_model(profile: C) -> C:
         n=clean_name or "Candidate",
         s=payload["candidate"].get("summary", "") or profile.s,
         skills=[S(n=item["name"], cat=item.get("category", "general")) for item in payload["skills"]],
-        exp=profile.exp,
+        exp=[
+            E(
+                role=item.get("role", ""),
+                co=item.get("company", ""),
+                period=item.get("period", ""),
+                d=item.get("description", ""),
+                s=list(item.get("skills") or []),
+            )
+            for item in payload["experience"]
+        ],
         projects=[
             P(
                 title=item["title"],
@@ -208,6 +219,52 @@ def split_skill_names(value: str) -> list[str]:
     return _dedupe(out)
 
 
+def normalize_experiences(raw_items: list[Any]) -> list[dict[str, Any]]:
+    """Clean and de-duplicate work experiences.
+
+    The same job is often extracted more than once (LLM pass + deterministic
+    heuristic, or a single block re-emitted), producing duplicate entries with
+    near-identical wording. De-duplicate on a normalized role+company key and
+    keep the richest variant (longest description, filled period, merged skills)
+    instead of repeating the role.
+    """
+    out: list[dict[str, Any]] = []
+    index: dict[str, dict[str, Any]] = {}
+    for raw in raw_items:
+        item = _as_dict(raw)
+        role = _clean_text(str(item.get("role") or "")).strip()
+        co = _clean_text(str(item.get("company") or item.get("co") or "")).strip()
+        if not role and not co:
+            continue
+        period = str(item.get("period") or "").strip()
+        description = str(item.get("description") or item.get("d") or "").strip()
+        skills = [str(s).strip() for s in (item.get("skills") or item.get("s") or []) if str(s).strip()]
+        key = _key(f"{role} {co}")
+        if not key:
+            continue
+        existing = index.get(key)
+        if existing is not None:
+            if len(description) > len(existing.get("description", "")):
+                existing["description"] = description
+            if not existing.get("period") and period:
+                existing["period"] = period
+            if skills:
+                existing["skills"] = _dedupe([*(existing.get("skills") or []), *skills])
+            continue
+        entry = {"role": role, "company": co, "period": period, "description": description, "skills": skills}
+        index[key] = entry
+        out.append(entry)
+    return out
+
+
+def _short_project_title(text: str) -> str:
+    """Salvage a concise project title from a longer detail/sentence string."""
+    base = _clean_text(str(text or ""))
+    base = re.split(r"[.\n;:|]", base)[0].strip(" -*•")
+    words = base.split()
+    return " ".join(words[:8]) if words else ""
+
+
 def normalize_projects(raw_items: list[Any], *, known_skills: list[str] | None = None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -234,13 +291,19 @@ def normalize_projects(raw_items: list[Any], *, known_skills: list[str] | None =
             stack_items = _dedupe(stack_items + split_skill_names(impact))
             impact = ""
 
-        if _looks_like_stack_cluster(title):
+        # A project with its own repo, a real stack, or a substantial impact
+        # paragraph is a standalone project, not a continuation line — never
+        # absorb it into the previous entry or drop it for a detail-like title.
+        # This is what caused genuine projects to go missing during ingest.
+        has_substance = bool(repo) or len(stack_items) >= 2 or len(impact.split()) >= 8
+
+        if _looks_like_stack_cluster(title) and not has_substance:
             if out:
                 merged_stack = _dedupe(_stack_list(out[-1].get("stack")) + split_skill_names(title) + stack_items)
                 out[-1]["stack"] = ", ".join(merged_stack)
             continue
 
-        if _looks_like_project_detail(title):
+        if _looks_like_project_detail(title) and not has_substance:
             if out:
                 detail = impact or title
                 if detail:
@@ -250,7 +313,14 @@ def normalize_projects(raw_items: list[Any], *, known_skills: list[str] | None =
             continue
 
         if not _valid_project_title(title, known):
-            continue
+            repo_title = _repo_title_from_url(repo)
+            if repo_title and _valid_project_title(repo_title, known):
+                title = repo_title
+            elif has_substance:
+                # Keep the project; salvage a concise title from its first clause.
+                title = _short_project_title(title) or _short_project_title(impact) or title
+            else:
+                continue
 
         if not (impact or repo or stack_items or _projectish_title(title)):
             continue

@@ -2,6 +2,7 @@ from __future__ import annotations
 import logging
 
 import asyncio
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -474,13 +475,24 @@ def _merge_profile_snapshots(existing: dict, incoming: dict) -> dict:
     return merged
 
 
+def _norm_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
 def _dedupe_dict_items(items: list[dict], id_key: str) -> list[dict]:
     seen: set[str] = set()
     out: list[dict] = []
     for item in items:
         if not isinstance(item, dict):
             continue
-        key = str(item.get(id_key) or item.get("n") or item.get("title") or item.get("role") or "").strip().lower()
+        # Content-based key so the same job/project extracted twice with minor
+        # text differences (which produce different id hashes) still de-dupes.
+        role = str(item.get("role") or "").strip()
+        company = str(item.get("co") or item.get("company") or "").strip()
+        if role or company:
+            key = _norm_key(f"{role} {company}")
+        else:
+            key = _norm_key(item.get("title") or item.get("n") or item.get(id_key) or "")
         if not key or key in seen:
             continue
         seen.add(key)
@@ -493,7 +505,7 @@ def _dedupe_text_items(items: list[Any]) -> list[str]:
     out: list[str] = []
     for item in items:
         text = _entry_title(item).strip()
-        key = text.lower()
+        key = _norm_key(text)
         if text and key not in seen:
             seen.add(key)
             out.append(text)
