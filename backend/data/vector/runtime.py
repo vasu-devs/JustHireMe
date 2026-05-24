@@ -42,6 +42,20 @@ def _app_version() -> str:
     return os.environ.get("JHM_APP_VERSION", "")
 
 
+def _expected_runtime_pack_version() -> str:
+    """Return the runtime pack *content* version this build requires.
+
+    The runtime pack (Chromium + vector libs + embedding model) changes far less
+    often than the app itself, so its identity is keyed off a content version
+    baked in at build time (``JHM_RUNTIME_PACK_VERSION``) rather than the app
+    version. This is what lets a routine app update reuse an already-installed
+    pack instead of re-downloading hundreds of MB on every release. When the
+    build env var is absent (dev, or older builds), fall back to the app version
+    so behaviour is unchanged.
+    """
+    return os.environ.get("JHM_RUNTIME_PACK_VERSION", "").strip() or _app_version()
+
+
 def _version_stamp_path() -> Path:
     return _data_root() / "runtime-pack-version"
 
@@ -58,8 +72,8 @@ def _installed_runtime_version() -> str:
 
 
 def _write_version_stamp() -> None:
-    """Write the current app version as the installed runtime pack version."""
-    version = _app_version()
+    """Stamp the installed runtime pack with the content version it satisfies."""
+    version = _expected_runtime_pack_version()
     if not version:
         return
     stamp = _version_stamp_path()
@@ -68,14 +82,19 @@ def _write_version_stamp() -> None:
 
 
 def _runtime_pack_is_stale() -> bool:
-    """Return True if the installed runtime pack was built for a different app version."""
-    app_version = _app_version()
-    if not app_version:
+    """Return True if the installed runtime pack predates the version this build needs.
+
+    Compares the installed stamp against the required *content* version, not the
+    app version, so a routine app update whose runtime pack is unchanged is not
+    treated as stale (and therefore not re-downloaded).
+    """
+    expected = _expected_runtime_pack_version()
+    if not expected:
         return False  # No version info available (dev mode), skip staleness check
     installed = _installed_runtime_version()
     if not installed:
         return False  # No stamp yet — first install, not stale
-    return installed != app_version
+    return installed != expected
 
 
 def _data_root() -> Path:

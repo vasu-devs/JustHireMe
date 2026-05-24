@@ -725,6 +725,26 @@ fn spawn_sidecar(handle: AppHandle, restart_count: u8) -> Result<(), String> {
                 bundled_browsers_path.to_string_lossy().to_string(),
             );
         }
+
+        // Forward the runtime pack's content version (baked into the bundled
+        // sidecar manifest at build time) so the backend only re-downloads the
+        // heavy runtime pack when its pinned contents actually change, instead
+        // of on every app update.
+        let manifest_path = resource_dir
+            .join("resources")
+            .join("backend")
+            .join("sidecar-manifest.json");
+        if let Ok(raw) = std::fs::read_to_string(&manifest_path) {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if let Some(version) = value
+                    .get("runtimePackVersion")
+                    .and_then(|v| v.as_str())
+                    .filter(|v| !v.is_empty())
+                {
+                    sidecar_cmd = sidecar_cmd.env("JHM_RUNTIME_PACK_VERSION", version);
+                }
+            }
+        }
     }
     if let Some(runtime_pack) = bundled_runtime_pack_path(&handle) {
         let runtime_pack = runtime_pack.to_string_lossy().to_string();

@@ -30,7 +30,8 @@
       "resources/backend/jhm-sidecar-next"
     ],
     "resources": [
-      "resources/runtime-pack/*"
+      "resources/runtime-pack/*",
+      "resources/backend/sidecar-manifest.json"
     ],
     "icon": [
       "icons/32x32.png",

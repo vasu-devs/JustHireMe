@@ -206,6 +206,61 @@ def test_vector_runtime_status_reports_stale(monkeypatch, tmp_path):
     assert status["app_version"] == "1.0.31"
 
 
+# ── Runtime pack content-version tests ────────────────────────────────────
+
+
+def test_expected_version_prefers_runtime_pack_env(monkeypatch):
+    """JHM_RUNTIME_PACK_VERSION (content version) wins over the app version."""
+    from data.vector import runtime
+
+    monkeypatch.setattr(runtime, "_app_version", lambda: "1.0.40")
+    monkeypatch.setenv("JHM_RUNTIME_PACK_VERSION", "rt-abc123")
+
+    assert runtime._expected_runtime_pack_version() == "rt-abc123"
+
+
+def test_expected_version_falls_back_to_app_version(monkeypatch):
+    """No content version env set → behave exactly as before (key off app version)."""
+    from data.vector import runtime
+
+    monkeypatch.delenv("JHM_RUNTIME_PACK_VERSION", raising=False)
+    monkeypatch.setattr(runtime, "_app_version", lambda: "1.0.40")
+
+    assert runtime._expected_runtime_pack_version() == "1.0.40"
+
+
+def test_runtime_pack_not_stale_across_app_update_when_content_unchanged(monkeypatch, tmp_path):
+    """The core fix: an app update must NOT re-download a pack whose content is unchanged."""
+    from data.vector import runtime
+
+    monkeypatch.setattr(runtime, "_data_root", lambda: tmp_path)
+    monkeypatch.setattr(runtime, "_app_version", lambda: "1.0.31")
+    monkeypatch.setenv("JHM_RUNTIME_PACK_VERSION", "rt-abc123")
+    runtime._write_version_stamp()
+
+    # App bumps to a new release, but the runtime pack content is identical.
+    monkeypatch.setattr(runtime, "_app_version", lambda: "1.0.40")
+    monkeypatch.setenv("JHM_RUNTIME_PACK_VERSION", "rt-abc123")
+
+    assert runtime._installed_runtime_version() == "rt-abc123"
+    assert runtime._runtime_pack_is_stale() is False
+
+
+def test_runtime_pack_stale_when_content_version_changes(monkeypatch, tmp_path):
+    """A pack whose pinned contents changed (Chromium bump, dep bump) is stale."""
+    from data.vector import runtime
+
+    monkeypatch.setattr(runtime, "_data_root", lambda: tmp_path)
+    monkeypatch.setattr(runtime, "_app_version", lambda: "1.0.31")
+    monkeypatch.setenv("JHM_RUNTIME_PACK_VERSION", "rt-abc123")
+    runtime._write_version_stamp()
+
+    # New build pins a newer Chromium → new content version.
+    monkeypatch.setenv("JHM_RUNTIME_PACK_VERSION", "rt-def456")
+
+    assert runtime._runtime_pack_is_stale() is True
+
+
 # ── NullVectorStore logging tests ─────────────────────────────────────────
 
 

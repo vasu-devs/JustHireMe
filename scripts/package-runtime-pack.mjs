@@ -3,6 +3,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statS
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
+import { computeRuntimePackContentVersion } from "./runtime-pack-version.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8"));
@@ -316,8 +317,13 @@ writeFileSync(join(vectorStageDir, "vector-runtime-manifest.json"), `${JSON.stri
   packages: vectorEntries,
 }, null, 2)}\n`, "utf8");
 
+const { version: runtimePackContentVersion } = computeRuntimePackContentVersion(repoRoot);
+
 writeFileSync(join(stageDir, "runtime-pack-manifest.json"), `${JSON.stringify({
   version: packageJson.version,
+  // Content version: identifies the pack by its pinned contents, independent of
+  // the app version, so clients only re-download when the contents change.
+  contentVersion: runtimePackContentVersion,
   platform: platformName(),
   builtAt: new Date().toISOString(),
   source: "GitHub Actions release build",

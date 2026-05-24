@@ -3,6 +3,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSy
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
+import { computeRuntimePackContentVersion } from "./runtime-pack-version.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const backendDir = join(repoRoot, "backend");
@@ -195,6 +196,7 @@ if (process.platform !== "win32") {
 const packageJson = readJson(join(repoRoot, "package.json"));
 const backendVersion = readTomlVersion(join(backendDir, "pyproject.toml"));
 const pythonVersion = await capture(python, ["--version"], { cwd: backendDir });
+const { version: runtimePackVersion } = computeRuntimePackContentVersion(repoRoot);
 const manifest = {
   appVersion: packageJson.version,
   backendVersion,
@@ -205,6 +207,10 @@ const manifest = {
   sidecarBinaryBytes: bytes(target),
   sidecarInternalBytes: bytes(sidecarInternalDir),
   sidecarLayout,
+  // Content version of the runtime pack this build expects. lib.rs forwards it
+  // to the sidecar as JHM_RUNTIME_PACK_VERSION so app updates reuse a cached
+  // pack instead of re-downloading it. See scripts/runtime-pack-version.mjs.
+  runtimePackVersion,
 };
 
 writeFileSync(manifestTarget, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
