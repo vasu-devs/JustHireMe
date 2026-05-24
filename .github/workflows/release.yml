@@ -386,6 +386,7 @@ jobs:
     name: Build Tauri installer (Windows)
     needs: [backend-windows, build-frontend]
     runs-on: windows-latest
+    timeout-minutes: 40
     permissions:
       contents: read
     steps:
@@ -569,6 +570,7 @@ jobs:
     name: Build Tauri installer (macOS)
     needs: [backend-macos, build-frontend]
     runs-on: macos-latest
+    timeout-minutes: 40
     permissions:
       contents: read
     steps:
@@ -751,6 +753,7 @@ jobs:
     name: Build Tauri installer (Linux)
     needs: [backend-linux, build-frontend]
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     permissions:
       contents: read
     steps:

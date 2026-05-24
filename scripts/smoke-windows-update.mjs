@@ -8,6 +8,9 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const updateSmokeEnabled = process.env.JHM_WINDOWS_UPDATE_SMOKE === "1";
 const installerSmokeEnabled = process.env.JHM_WINDOWS_INSTALLER_SMOKE === "1";
 const timeoutMs = Number(process.env.JHM_WINDOWS_UPDATE_TIMEOUT_MS || 120_000);
+// Hard cap on a single silent NSIS install so a stuck installer (e.g. blocked
+// on a locked binary) fails fast instead of hanging the job for hours.
+const installerTimeoutMs = Number(process.env.JHM_WINDOWS_INSTALLER_TIMEOUT_MS || 480_000);
 const uninstallRegistryKeySuffix = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\JustHireMe";
 const vendorRegistryKeySuffix = "Software\\vasudev-siddh\\JustHireMe";
 const uninstallRegistryKey = `HKCU\\${uninstallRegistryKeySuffix}`;
@@ -83,6 +86,11 @@ function run(command, args, options = {}) {
     windowsHide: true,
     ...options,
   });
+  if (result.error) {
+    // Includes ETIMEDOUT when a `timeout` option is hit — surface it clearly
+    // rather than reporting a confusing null exit status.
+    fail(`${command} ${args.join(" ")} failed: ${result.error.message}`);
+  }
   if (result.status !== 0) {
     fail(`${command} ${args.join(" ")} exited with ${result.status}`);
   }
@@ -582,7 +590,7 @@ async function updateInstallerSmoke() {
   const shortcutSnapshot = snapshotShortcutFiles(root);
 
   try {
-    run(oldInstaller, ["/S", `/D=${installDir}`]);
+    run(oldInstaller, ["/S", `/D=${installDir}`], { timeout: installerTimeoutMs });
     const app = join(installDir, "justhireme.exe");
     let appProcess = null;
     if (existsSync(app)) {
@@ -595,12 +603,19 @@ async function updateInstallerSmoke() {
       await sleep(5000);
     }
 
-    run(newInstaller, ["/S", `/D=${installDir}`]);
-    assertInstalledMetadata(installDir, expectedVersion);
+    // Stop the previous version (app + sidecar) BEFORE upgrading. Otherwise the
+    // new installer blocks indefinitely trying to overwrite the still-running,
+    // file-locked sidecar binary — which hung this smoke for 45+ minutes.
     if (appProcess && appProcess.exitCode === null) {
       killProcessTree(appProcess);
       await waitForChildClose(appProcess, 5_000);
     }
+    killImage("justhireme.exe");
+    killImage("jhm-sidecar-next.exe");
+    await sleep(1000);
+
+    run(newInstaller, ["/S", `/D=${installDir}`], { timeout: installerTimeoutMs });
+    assertInstalledMetadata(installDir, expectedVersion);
     killImage("justhireme.exe");
     killImage("jhm-sidecar-next.exe");
     await smokeInstalledSidecar(installDir, appDataDir);
