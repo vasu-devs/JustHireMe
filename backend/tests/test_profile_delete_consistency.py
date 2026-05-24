@@ -15,7 +15,7 @@ is wired to apply that filtering.
 import ast
 from pathlib import Path
 
-from data.graph import profile
+from data.graph import profile, profile_deletions
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -28,7 +28,7 @@ def _deletions(**kw):
 
 
 def test_filter_graph_deletions_removes_skill_and_orphan_edges(monkeypatch):
-    monkeypatch.setattr(profile, "_load_profile_deletions", lambda db_path=None: _deletions(skills=["React"]))
+    monkeypatch.setattr(profile_deletions, "_load_profile_deletions", lambda db_path=None: _deletions(skills=["React"]))
     graph = {
         "nodes": [
             {"id": "skill:abc", "label": "React", "type": "Skill", "subtitle": "frontend"},
@@ -52,7 +52,7 @@ def test_filter_graph_deletions_removes_skill_and_orphan_edges(monkeypatch):
 
 def test_filter_graph_deletions_matches_by_node_id(monkeypatch):
     # Tombstone recorded by node id (the common delete-by-id path).
-    monkeypatch.setattr(profile, "_load_profile_deletions", lambda db_path=None: _deletions(projects=["p1"]))
+    monkeypatch.setattr(profile_deletions, "_load_profile_deletions", lambda db_path=None: _deletions(projects=["p1"]))
     graph = {
         "nodes": [{"id": "project:p1", "label": "Renamed Title", "type": "Project"}],
         "edges": [],
@@ -64,7 +64,7 @@ def test_filter_graph_deletions_matches_by_node_id(monkeypatch):
 
 def test_filter_graph_deletions_handles_experience_and_credentials(monkeypatch):
     monkeypatch.setattr(
-        profile,
+        profile_deletions,
         "_load_profile_deletions",
         lambda db_path=None: _deletions(exp=["Engineer at Acme"], certifications=["AWS Cert"]),
     )
@@ -86,7 +86,7 @@ def test_filter_graph_deletions_handles_experience_and_credentials(monkeypatch):
 
 
 def test_filter_embedding_deletions_removes_point(monkeypatch):
-    monkeypatch.setattr(profile, "_load_profile_deletions", lambda db_path=None: _deletions(skills=["React"]))
+    monkeypatch.setattr(profile_deletions, "_load_profile_deletions", lambda db_path=None: _deletions(skills=["React"]))
     embedding = {
         "available": True,
         "error": "",
@@ -103,7 +103,7 @@ def test_filter_embedding_deletions_removes_point(monkeypatch):
 
 
 def test_filters_are_noop_without_tombstones(monkeypatch):
-    monkeypatch.setattr(profile, "_load_profile_deletions", lambda db_path=None: _deletions())
+    monkeypatch.setattr(profile_deletions, "_load_profile_deletions", lambda db_path=None: _deletions())
     graph = {"nodes": [{"id": "skill:a", "label": "Go", "type": "Skill"}], "edges": [], "available": True}
     embedding = {"available": True, "points": [{"id": "a", "label": "Go", "source": "skills"}], "error": ""}
     # No tombstones → returns the exact same objects (cheap identity short-circuit).

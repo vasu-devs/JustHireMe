@@ -760,8 +760,12 @@ def test_graph_profile_deleted_project_does_not_rehydrate_from_graph(monkeypatch
             return [[graph_profile.hash_id("Hiring Agent"), "Hiring Agent", "Python", "", "Built it"]]
         return []
 
+    from data.graph import profile_deletions
+
     monkeypatch.setattr(graph_profile, "get_setting", fake_get_setting)
     monkeypatch.setattr(graph_profile, "_query_rows", fake_query_rows)
+    # Tombstone lookup moved to profile_deletions; patch its get_setting too.
+    monkeypatch.setattr(profile_deletions, "get_setting", fake_get_setting)
 
     profile = graph_profile.read_profile_from_graph()
 
