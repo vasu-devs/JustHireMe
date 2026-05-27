@@ -4,11 +4,15 @@ import re
 
 
 _URL_RE = re.compile(r"https?://\S+|www\.\S+", re.I)
-_ROLE_OR_STACK_RE = re.compile(
-    r"\b(engineer|developer|designer|analyst|scientist|intern|software|backend|frontend|full[- ]?stack|"
-    r"data|ai|ml|python|fastapi|react|typescript|java|c\+\+|sql|api|llm|rag)\b",
-    re.I,
-)
+
+# A truthful tailored resume needs real role context to work from, not just a
+# bare title or URL. We gate on the *substance* of the non-URL text (its length
+# and word count) rather than a keyword whitelist. JustHireMe tailors resumes
+# for every field — finance, healthcare, education, trades, the arts — so an
+# earlier software/tech keyword requirement wrongly blocked legitimate non-tech
+# descriptions (e.g. a "Financial Aid Advisor" posting). See issue #92.
+_MIN_CONTEXT_CHARS = 40
+_MIN_CONTEXT_WORDS = 10
 
 
 def _clean(value: object) -> str:
@@ -44,6 +48,6 @@ def lead_generation_blocker(lead: dict) -> str:
         return "Paste the job description before generating. The current lead only contains a URL."
     if not description and not reason and not match_points:
         return "Paste the job description before generating. The current lead has no role requirements to tailor against."
-    if len(non_url_context) < 35 or not _ROLE_OR_STACK_RE.search(non_url_context):
+    if len(non_url_context) < _MIN_CONTEXT_CHARS or len(non_url_context.split()) < _MIN_CONTEXT_WORDS:
         return "Paste a fuller job description before generating so the resume can be tailored without guessing."
     return ""

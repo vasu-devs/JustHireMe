@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import Icon from "../../shared/components/Icon";
 import type { ApiFetch, GraphStats, View } from "../../types";
 import { applyProfileDeleteMarkers, entryTitle, mergeProfileWithGraphFallback, normalizeProfileResponse, profileDeleteKey, profileDeletePath, profileHasDeleteMarker, removeProfileItem, type ProfileDeleteMarker } from "./profileUtils";
@@ -82,10 +83,26 @@ export function ProfileView({ api, setView, stats }: { api: ApiFetch; setView: (
   }, [fetchProfile]);
   useEffect(() => { setExpandedProfileList(false); }, [activeProfileTab]);
   useEffect(() => {
-    const exportProfile = () => {
+    const exportProfile = async () => {
       if (!profile) return;
       const blob = new Blob([JSON.stringify(profile, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
+      // WebKitGTK (Tauri's Linux webview) silently ignores programmatic
+      // `<a download>` clicks, so the anchor approach never produces a file
+      // there — the button looked dead on Linux (issue #92). Inside the Tauri
+      // shell, hand the blob to the system opener instead, the same path the
+      // resume "Download PDF" button already uses on every desktop platform.
+      // Fall back to a real download anchor in a plain browser (dev).
+      const inTauri = typeof window !== "undefined"
+        && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+      if (inTauri) {
+        try {
+          await openUrl(url);
+        } finally {
+          setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        }
+        return;
+      }
       const a = document.createElement("a");
       a.href = url;
       a.download = `${profile.n || "identity-graph"}.json`.replace(/[^\w.-]+/g, "-");

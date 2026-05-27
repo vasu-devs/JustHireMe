@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.39 - 2026-05-25
+
+- Fixed "Customize One Job" rejecting valid non-technical roles with "Paste a fuller job description before generating." The pre-generation readiness check required software/engineering keywords (engineer, python, react, ...), so complete descriptions for non-tech roles — e.g. a "Financial Aid Advisor" posting — were wrongly blocked. Generation readiness now gates on the substance of the description (length and word count) instead of a tech-keyword whitelist, so any field is supported. (#92)
+- Fixed the "Export Graph" button doing nothing on Linux. Tauri's Linux webview (WebKitGTK) silently ignores programmatic `<a download>` clicks, so no file was ever produced. The export now hands the file to the system opener inside the desktop app — the same path the resume "Download PDF" button uses — and keeps the direct-download anchor for browser/dev use. (#92)
+
 ## 1.0.38 - 2026-05-25
 
 - Fixed first-run runtime pack download failing on macOS (and hardened the same path on Linux) with `SSL: CERTIFICATE_VERIFY_FAILED — unable to get local issuer certificate`. The bundled sidecar Python has no system CA store wired into OpenSSL, so the HTTPS download to GitHub could not verify the server certificate. The downloader now builds its SSL context from certifi's CA bundle, which is collected into the packaged sidecar. Windows was unaffected because it falls back to the OS certificate store.

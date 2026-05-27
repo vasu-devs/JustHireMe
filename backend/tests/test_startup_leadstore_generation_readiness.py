@@ -128,3 +128,21 @@ def test_generation_readiness_allows_substantive_role_context():
         "company": "Acme",
         "description": "Build Python, FastAPI, React, and LLM workflow software for internal automation.",
     }) == ""
+
+
+def test_generation_readiness_allows_non_tech_roles():
+    """A full non-technical description must not be blocked by a tech-keyword
+    filter. Regression for issue #92: a 'Financial Aid Advisor' posting has a
+    complete description but contains no software/engineering keywords."""
+    from core.generation_readiness import lead_generation_blocker
+
+    assert lead_generation_blocker({
+        "title": "Advisor Financial Aid",
+        "company": "Universal Technical Institute",
+        "description": (
+            "The Financial Aid Advisor delivers on our commitment of service "
+            "excellence by building rapport, delivering clear and accurate "
+            "information, offering effective solutions, and maintaining contact "
+            "with students about their financial aid options."
+        ),
+    }) == ""
