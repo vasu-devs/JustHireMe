@@ -171,7 +171,7 @@ Bachelor's in Computer Science (Expected) 2022 - 2026
             "job_id": "https://jobs.example.com/roles/applied?ref=mail",
             "title": "Software Engineer",
             "company": "Acme",
-            "description": "Build Python and React workflow software.",
+            "description": "Build Python and React workflow software for internal automation, owning backend services and frontend dashboards end to end.",
         }
         previous_assets = generator._assets
         generator._assets = str(Path(__file__).resolve().parent)

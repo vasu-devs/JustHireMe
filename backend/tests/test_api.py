@@ -708,7 +708,7 @@ class TestGenerateEndpoint(unittest.TestCase):
                     "job_id": "job-1",
                     "title": "AI Engineer",
                     "company": "Acme",
-                    "description": "Build FastAPI systems.",
+                    "description": "Build and operate FastAPI backend services for our internal automation platform, owning data pipelines, API integrations, and reliability work.",
                     "source_meta": {},
                 },
                 update_lead_status=lambda *_args, **_kwargs: None,

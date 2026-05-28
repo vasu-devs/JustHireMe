@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.42 - 2026-05-28
+
+- Fixed CI: two backend tests still used very short placeholder job descriptions that tripped the stricter generation-readiness check added in 1.0.39, turning the test suite red on main even though releases built fine. Gave those fixtures realistic descriptions. No change to app behavior.
+
 ## 1.0.41 - 2026-05-27
 
 - Reworked the dark theme so it no longer looks flat and muddy. Surfaces now sit on a clear elevation ramp (cards and panels visibly lift off a deeper base), borders are crisper, text contrast is stronger, and the dashboard's hero and stat cards use richer jewel-tone darks instead of washed-out browns. Light mode is unchanged.
