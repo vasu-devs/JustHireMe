@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = "AGPL-3.0-only"
 dependencies = [
-    "fastapi>=0.136.1",
+    "fastapi>=0.136.3",
     "uvicorn[standard]>=0.47.0",
     "websockets>=16.0",
     "anthropic~=0.104.1",
