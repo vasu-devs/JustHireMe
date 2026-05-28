@@ -57,15 +57,21 @@ JustHireMe is built and maintained by Vasudev Siddh - full-stack AI engineer, op
 
 ## Current Status
 
-JustHireMe's stable core is the local-first desktop workbench, Python sidecar API, lead ingestion, deterministic ranking, profile-aware matching, local CRM workflows, and document/outreach generation. The promoted stable installer target for this RC is Windows, built and signed by GitHub Actions from release tags.
+JustHireMe's stable core is the local-first desktop workbench, Python sidecar API, lead ingestion, deterministic ranking, profile-aware matching, local CRM workflows, and document/outreach generation. Every release is built by GitHub Actions from a `v*` tag and now ships installers for **Windows, macOS, and Linux**.
 
 | Area | Status |
 | --- | --- |
-| Frontend workbench | Stable v1 core |
-| Python sidecar API | Stable v1 core |
+| Frontend workbench | Stable |
+| Python sidecar API | Stable |
 | Scraper, ranking, vector matching, and customizer core | Supported open-source scope |
-| Windows desktop packaging | Primary stable installer target |
-| macOS and Linux packaging | CI build path exists; check release notes for support level |
+| Windows installer (`.exe`) | Released every version |
+| macOS installer (`.dmg` + `.app`) | Released every version (ad-hoc signed, **not yet notarized** — Gatekeeper may need "Open Anyway") |
+| Linux packages (`.deb` + AppImage) | Released every version |
+| Auto-update | Built in; the app updates itself from the latest GitHub release |
+| Thin installer + first-run runtime | Installer is ~100 MB; the heavy runtime (browser + vector libs + embedding model) downloads once on first run, then is cached |
+| Dark mode | Light / Dark / System, system-aware, shipped |
+| Local embeddings | Bundled ONNX model (`all-MiniLM-L6-v2`) — semantic matching runs locally with no API key |
+| Resume tailoring | Works for any field (engineering, design, finance, healthcare, education, trades, ...) |
 | Browser automation / auto-apply | Experimental lab, disabled by default |
 | API key storage | Local app settings; `.env` is for development overrides; OS keychain planned |
 
@@ -145,7 +151,7 @@ flowchart TD
     </td>
     <td width="50%">
       <h3>Generate Tailored Packages</h3>
-      <p>Create a resume PDF, cover letter PDF, founder message, LinkedIn note, cold email, keyword coverage summary, and selected-project rationale.</p>
+      <p>Create a resume PDF, cover letter PDF, founder message, LinkedIn note, cold email, keyword coverage summary, and selected-project rationale - for roles in any field, not just software.</p>
     </td>
   </tr>
 </table>
@@ -224,16 +230,19 @@ flowchart TB
 
 | Area | Technology |
 | --- | --- |
-| Desktop shell | Tauri 2 |
+| Desktop shell | Tauri 2 (auto-updating, Light/Dark/System theming) |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS |
 | Backend API | Python 3.13, FastAPI, WebSockets |
 | Local CRM | SQLite |
 | Profile graph | Kuzu |
 | Vector store | LanceDB |
-| Matching | Deterministic scoring, semantic search, optional LLM evaluation |
+| Embeddings | Local ONNX model (`all-MiniLM-L6-v2`) - no API key required |
+| Matching | Deterministic scoring, local semantic search, optional LLM evaluation |
 | Documents | Markdown/PDF rendering |
 | Experimental lab | Playwright browser automation |
-| Packaging | Tauri bundle + Python sidecar |
+| Packaging | Thin Tauri installer + first-run runtime pack (Windows / macOS / Linux) |
+
+**First-run runtime pack.** To keep installers small (~100 MB instead of ~450-700 MB), the heavy runtime - the Playwright browser, vector libraries, and the ONNX embedding model - is not bundled into the installer. The app downloads it once on first run, verifies it, and caches it. The pack is content-versioned, so routine app updates reuse the cached pack instead of re-downloading it.
 
 More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
@@ -271,17 +280,20 @@ JustHireMe/
 
 ## Quick Start
 
-### Install On Windows
+### Install The Desktop App
 
-Use this path if you are not a developer and just want to run JustHireMe.
+Use this path if you are not a developer and just want to run JustHireMe. Open the latest [GitHub Release](https://github.com/vasu-devs/JustHireMe/releases/latest) and grab the asset for your platform.
 
-1. Open the latest [GitHub Release](https://github.com/vasu-devs/JustHireMe/releases/latest).
-2. Download the `JustHireMe_*_x64-setup.exe` installer.
-3. Run the installer.
-4. If Windows SmartScreen appears, click **More info**, then **Run anyway**.
-5. Launch JustHireMe from the Start Menu and follow the setup wizard.
+| Platform | Download | Notes |
+| --- | --- | --- |
+| Windows | `JustHireMe_*_x64-setup.exe` | If SmartScreen appears, click **More info** -> **Run anyway** |
+| macOS (Apple Silicon) | `JustHireMe_*_aarch64.dmg` | Not yet notarized: if macOS says the app is damaged/unverified, allow it in **System Settings -> Privacy & Security -> Open Anyway** |
+| Linux (Debian/Ubuntu) | `JustHireMe_*_amd64.deb` | `sudo dpkg -i` the file |
+| Linux (portable) | `JustHireMe_*_amd64.AppImage` | `chmod +x` then run it |
 
-Release notes include SHA256 checksums for the installer assets. The Windows installer is built by GitHub Actions from the release tag so the published binary matches the repository source.
+**First launch downloads the runtime pack.** The first time you open the app it fetches the runtime (browser + vector libraries + embedding model) over HTTPS and caches it; this is a one-time download. After that, the app starts offline-ready and routine updates do not re-download it.
+
+The app updates itself automatically from the latest GitHub release. Release notes include SHA256 checksums, and every installer is built by GitHub Actions from the release tag so the published binary matches the repository source.
 
 ### Requirements
 
@@ -571,7 +583,7 @@ Planned improvement:
 
 ## Release Builds
 
-Windows is the primary stable installer target. macOS and Linux packaging scripts and CI release lanes exist; check each release's notes for the currently supported platform level. Public installers should be built and published by GitHub Actions from a `v*` tag, not uploaded from a maintainer workstation.
+Every release builds and publishes installers for **Windows, macOS, and Linux** from a single `v*` tag via GitHub Actions - never uploaded from a maintainer workstation. The pipeline builds each platform's sidecar and Tauri installer, runs an auto-update smoke test, generates SHA256 checksums, and publishes the assets. Windows and macOS builds are not yet code-signed/notarized, so the OS may warn on first launch (see the install table above); code signing and macOS notarization are the next packaging milestone.
 
 ```powershell
 npm run release:smoke
@@ -639,26 +651,27 @@ The repository contains browser automation and auto-apply code for experimentati
 ```mermaid
 timeline
     title JustHireMe Open-Source Roadmap
-    v0.1 : Open-source readiness
-         : Quality gate
-         : Source adapter docs
-    v0.2 : More ATS adapters
-         : Parser fixtures
-         : Better source quality dashboards
-    v0.3 : Ranking evaluation dataset
-         : Semantic matching visibility
-         : Feedback learning improvements
-    Future : OS keychain support
-           : Cross-platform installers
-           : Optional automation plugin
+    Shipped : Quality gate + source adapter docs
+            : Cross-platform installers (Win / macOS / Linux)
+            : Thin installer + first-run runtime download
+            : Auto-update
+            : Light / Dark / System theming
+            : Local ONNX embeddings (no API key)
+            : Any-field resume tailoring
+    Next : Code signing + macOS notarization
+         : More ATS adapters and parser fixtures
+         : OS keychain support for API keys
+    Later : Ranking evaluation dataset
+          : Clearer semantic-matching visibility in the UI
+          : Optional automation plugin
 ```
 
 Near-term priorities:
 
+- code signing for Windows and notarization for macOS (remove first-launch security warnings)
 - more high-quality ATS/company source adapters
 - stronger quality gate tests
 - clearer vector matching state in the UI
-- Windows installer polish
 - contributor-friendly source plugin boundaries
 - OS keychain support for API keys
 
