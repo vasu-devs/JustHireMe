@@ -28,7 +28,7 @@ dependencies = [
     "tenacity>=9.1.4",
     "langsmith>=0.8.5",
     "urllib3>=2.7.0",
-    "starlette>=1.0.1",
+    "starlette>=1.2.0",
 ]
 
 [dependency-groups]
