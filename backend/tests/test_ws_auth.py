@@ -37,9 +37,12 @@ def test_authorization_header_still_accepted():
     assert _check(ws) is True
 
 
-def test_query_token_accepted_as_deprecated_fallback():
+def test_query_token_no_longer_accepted():
+    # The deprecated URL-query token path was removed — tokens must ride in the
+    # subprotocol or Authorization header, never the URL.
     ws = _FakeWS(query={"token": TOKEN})
-    assert _check(ws) is True
+    assert _check(ws) is False
+    assert ws.closed_with[0] == 4401
 
 
 def test_invalid_token_closes_with_4401():

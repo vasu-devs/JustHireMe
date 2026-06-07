@@ -178,7 +178,7 @@ async def generate_one(
         })
         status_code = 503 if transient else 500
         headers = {"Retry-After": str(_GENERATION_RETRY_AFTER_SECONDS)} if transient else None
-        raise HTTPException(status_code=status_code, detail=f"Generation failed: {exc}", headers=headers) from exc
+        raise HTTPException(status_code=status_code, detail="Generation failed. See the activity log for details.", headers=headers) from exc
 
 
 def create_router(*, manager) -> APIRouter:

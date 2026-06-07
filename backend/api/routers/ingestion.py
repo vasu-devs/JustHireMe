@@ -185,7 +185,7 @@ def create_router(manager, logger) -> APIRouter:
             return await get_profile_service().ingest_linkedin(raw)
         except Exception as exc:
             logger.error("linkedin parse failed: %s", exc)
-            raise HTTPException(422, f"could not parse linkedin export: {exc}") from exc
+            raise HTTPException(422, "Could not parse the LinkedIn export.") from exc
 
     @router.post("/ingest/github")
     async def ingest_github_endpoint(body: GithubIngestBody):
@@ -197,7 +197,7 @@ def create_router(manager, logger) -> APIRouter:
             )
         except Exception as exc:
             logger.error("github ingest failed: %s", exc)
-            raise HTTPException(502, f"could not ingest github profile: {exc}") from exc
+            raise HTTPException(502, "Could not ingest the GitHub profile.") from exc
         if "error" in result:
             status_code = int(result.get("status_code") or (404 if result.get("error_kind") == "not_found" else 502))
             raise HTTPException(status_code, result["error"])

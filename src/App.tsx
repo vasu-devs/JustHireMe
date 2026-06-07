@@ -230,7 +230,7 @@ export default function App() {
         throw new Error(detail || "Cleanup failed");
       }
       const result = await r.json();
-      wsAddLog(`Cleanup discarded ${result.discarded ?? 0} bad rows after scanning ${result.scanned ?? 0}`, "system", "cleanup");
+      wsAddLog(`Cleanup discarded ${result.candidates ?? 0} bad rows after scanning ${result.scanned ?? 0}`, "system", "cleanup");
       window.dispatchEvent(new CustomEvent("leads-refresh"));
     } catch (e: any) {
       const msg = e.message || "Cleanup failed";

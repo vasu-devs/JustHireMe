@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from api.auth import LOCAL_ORIGIN_RE, require_http_token
 from api.dependencies import get_event_bus
@@ -59,6 +60,16 @@ def create_app(
         except Exception as exc:
             record_exception(exc, domain="api", request_id=request_id, path=request.url.path)
             raise
+
+    @app.exception_handler(Exception)
+    async def _unhandled_exception(request: Request, exc: Exception):
+        # Never leak internal exception text to the client; the middleware above
+        # already recorded the detail server-side. Return a generic 500 + the
+        # request id so a user-reported failure can be correlated to the log.
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error", "request_id": request.headers.get("x-request-id", "")},
+        )
 
     app.include_router(health.create_router(started_at))
     app.include_router(diagnostics.create_router(started_at))

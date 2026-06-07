@@ -272,7 +272,8 @@ class TestGraphEndpoint(unittest.TestCase):
         self.assertIn("Kuzu locked", data["error"])
 
     def test_websocket_valid_token_connects(self):
-        with CLIENT.websocket_connect("/ws?token=test-token-abc123") as ws:
+        # Token rides in the Sec-WebSocket-Protocol header (2nd subprotocol), not the URL.
+        with CLIENT.websocket_connect("/ws", subprotocols=["jhm.bearer", "test-token-abc123"]) as ws:
             msg = ws.receive_json()
         self.assertEqual(msg["type"], "heartbeat")
 
@@ -879,7 +880,7 @@ class TestIngestionEndpoints(unittest.TestCase):
             resp = post("/api/v1/ingest/github", json={"username": "example-candidate"})
 
         self.assertEqual(resp.status_code, 502)
-        self.assertIn("could not ingest github profile", resp.json()["detail"])
+        self.assertIn("Could not ingest the GitHub profile", resp.json()["detail"])
 
     def test_profile_import_empty_body(self):
         resp = post("/api/v1/ingest/profile", json={})
