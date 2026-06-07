@@ -34,14 +34,38 @@ async def require_http_token(request: Request, call_next, token_getter: Callable
     return await call_next(request)
 
 
+WS_TOKEN_SUBPROTOCOL = "jhm.bearer"
+
+
+def ws_token_from_subprotocol(ws: WebSocket) -> str:
+    """Extract the bearer token offered as the 2nd WebSocket subprotocol.
+
+    Browsers can't set custom WS headers, but they can offer subprotocols, which
+    travel in the ``Sec-WebSocket-Protocol`` *header* (not the URL). The client
+    offers ``["jhm.bearer", "<token>"]``; we read the token from there.
+    """
+    raw = ws.headers.get("sec-websocket-protocol", "")
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if len(parts) >= 2 and parts[0] == WS_TOKEN_SUBPROTOCOL:
+        return parts[1]
+    return ""
+
+
 async def require_ws_token(ws: WebSocket, token_getter: Callable[[], str]) -> bool:
-    token = ws.query_params.get("token", "")
     expected = token_getter()
-    if valid_token(token, expected):
+
+    # Preferred (browser-safe): token in the Sec-WebSocket-Protocol header.
+    if valid_token(ws_token_from_subprotocol(ws), expected):
         return True
 
+    # Non-browser clients (tests/tools): Authorization header.
     auth = ws.headers.get("authorization", "")
     if auth.startswith("Bearer ") and valid_token(auth[7:], expected):
+        return True
+
+    # Deprecated: token in the URL query string. Leaks the token into URLs/logs;
+    # kept only for backward compatibility — clients should use the subprotocol.
+    if valid_token(ws.query_params.get("token", ""), expected):
         return True
 
     await ws.close(code=4401, reason="invalid token")

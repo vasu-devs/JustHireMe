@@ -3,6 +3,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 from typing import Any
 from pydantic import BaseModel, Field
 from core.logging import get_logger
@@ -201,9 +202,57 @@ async def _fill_dom(p, j: dict, a: str):
 
 
 def _ready_to_submit(result: dict) -> bool:
-    return bool(result.get("uploaded")) and (
-        bool(result.get("fields")) or int(result.get("vision_actions") or 0) > 0
-    )
+    # SAFETY: only DOM-verified field fills authorize a real submit. Vision actions
+    # are clicks/types at LLM-proposed pixel coordinates that we cannot verify
+    # actually landed in the right field, so they must NOT by themselves make a
+    # form "ready to submit". A vision-only form is read/previewed, never auto-sent.
+    return bool(result.get("uploaded")) and bool(result.get("fields"))
+
+
+# Labels/controls the vision actuator must never click. The page is untrusted, so
+# a hallucinated or prompt-injected coordinate cannot be allowed to hit a submit,
+# payment, or authorization control — we enforce this, we don't just ask the model.
+_DANGEROUS_CLICK_RE = re.compile(
+    r"(submit|apply\b|pay\b|payment|purchase|checkout|order|authori[sz]e|confirm|"
+    r"continue|next|proceed|send application|place order|subscribe|donate|sign\s*up)",
+    re.I,
+)
+
+
+def _clamp(value: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, value))
+
+
+async def _safe_to_click(p, x: float, y: float) -> bool:
+    """Hit-test the element at (x, y); refuse submit/pay/authorize controls.
+
+    Default-deny: any error, empty point, or dangerous control returns False so
+    the vision action is skipped rather than risking an unintended submit.
+    """
+    try:
+        info = await p.evaluate(
+            """([x, y]) => {
+                const el = document.elementFromPoint(x, y);
+                if (!el) return { found: false };
+                const ctrl = el.closest('button, input[type=submit], input[type=button], a[role=button], [role=button]') || el;
+                return {
+                    found: true,
+                    type: (ctrl.getAttribute('type') || '').toLowerCase(),
+                    text: (ctrl.innerText || ctrl.value || ctrl.getAttribute('aria-label') || '').slice(0, 160),
+                };
+            }""",
+            [x, y],
+        )
+    except Exception as exc:
+        _log.debug("vision hit-test failed at (%s,%s): %s", x, y, exc)
+        return False
+    if not info or not info.get("found"):
+        return False
+    text = str(info.get("text") or "")
+    if info.get("type") == "submit" or _DANGEROUS_CLICK_RE.search(text):
+        _log.warning("vision blocked from clicking submit/dangerous control: %r", text[:80])
+        return False
+    return True
 
 
 class _Act(BaseModel):
@@ -336,16 +385,28 @@ async def _fill_vision(p, j: dict, a: str):
         f"Cover letter: {j.get('cover_letter','')[:1500]}"
     )
     acts = await asyncio.to_thread(_vision_actions, b64, ctx)
+    vp = p.viewport_size or {"width": 1280, "height": 900}
+    max_x, max_y = vp.get("width", 1280) - 1, vp.get("height", 900) - 1
+    executed = 0
     for act in acts.actions:
+        if act.kind not in ("click", "type"):
+            continue
+        # Clamp LLM-proposed coordinates into the viewport.
+        x = _clamp(act.x, 0, max_x)
+        y = _clamp(act.y, 0, max_y)
+        # Enforce (not just prompt) that vision never clicks submit/pay/authorize.
+        if not await _safe_to_click(p, x, y):
+            continue
         if act.kind == "click":
-            await p.mouse.click(act.x, act.y)
+            await p.mouse.click(x, y)
             await p.wait_for_timeout(_FILL_DELAY)
-        elif act.kind == "type":
-            await p.mouse.click(act.x, act.y)
+        else:  # type
+            await p.mouse.click(x, y)
             await p.wait_for_timeout(200)
             await p.keyboard.type(act.text, delay=40)
             await p.wait_for_timeout(_FILL_DELAY)
-    return len(acts.actions)
+        executed += 1
+    return executed
 
 
 async def _find_submit(p):

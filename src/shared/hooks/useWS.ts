@@ -116,7 +116,9 @@ export function useWS() {
     }
     manuallyClosedRef.current = false;
     setConn("connecting");
-    const ws = new WebSocket(`ws://127.0.0.1:${p}/ws?token=${encodeURIComponent(token)}`);
+    // Auth token rides in the Sec-WebSocket-Protocol header (2nd subprotocol),
+    // not the URL, so it never lands in logs/history. Server echoes "jhm.bearer".
+    const ws = new WebSocket(`ws://127.0.0.1:${p}/ws`, ["jhm.bearer", token]);
     wsRef.current = ws;
     wsEndpointRef.current = endpoint;
     const reconcileBackendStatus = () => {

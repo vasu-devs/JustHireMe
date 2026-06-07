@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
+from api.auth import WS_TOKEN_SUBPROTOCOL
 from core.logging import get_logger
 from core.telemetry import record_error
 
@@ -83,7 +84,11 @@ async def websocket_loop(
     started_at: float,
     logger,
 ) -> None:
-    await ws.accept()
+    # Echo the auth subprotocol the client offered so the browser handshake
+    # completes (the token rode in as the 2nd offered subprotocol).
+    offered = [p.strip() for p in ws.headers.get("sec-websocket-protocol", "").split(",") if p.strip()]
+    subprotocol = WS_TOKEN_SUBPROTOCOL if offered and offered[0] == WS_TOKEN_SUBPROTOCOL else None
+    await ws.accept(subprotocol=subprotocol)
     if not await manager.add(ws):
         return
     beat = 0

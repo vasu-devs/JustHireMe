@@ -30,6 +30,10 @@ async def ingest_portfolio_url(url: str) -> dict:
     optionally use the configured LLM to polish the structured profile.
     """
     start_url = _normalize_url(url)
+    # SSRF protection is enforced at the network egress (the crawl loops skip
+    # non-public hosts, the httpx hook blocks redirect hops, and a Playwright
+    # route aborts internal navigations) — see profile/portfolio_crawl.py. An
+    # internal URL simply yields no pages and a clean fetch-failure below.
     pages: list[PageSnapshot] = []
     screenshot_b64 = ""
     fetch_error: str | None = None

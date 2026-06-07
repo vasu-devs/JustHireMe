@@ -28,6 +28,22 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def _reserve_socket(preferred: int = 0) -> socket.socket:
+    """Bind and KEEP OPEN a listening socket so the port can't be stolen.
+
+    The old flow picked a port (bind+close) then let uvicorn re-bind it later,
+    leaving a window where another process could grab the port — after we'd
+    already announced it to the UI. Holding the open socket and handing it to
+    uvicorn eliminates that TOCTOU race: the port is ours from announce to serve.
+    """
+    # No SO_REUSEADDR: we hand this exact socket to uvicorn (never re-bind), and
+    # on Windows SO_REUSEADDR would let another process bind the same port,
+    # defeating the whole point of reserving it. Keep the bind exclusive.
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", preferred))
+    return s
+
+
 _UP = time.monotonic()
 _sched = create_scheduler()
 _API_TOKEN: str = create_api_token()
@@ -89,14 +105,18 @@ if __name__ == "__main__":
     import uvicorn
 
     args = _parse_args()
-    port = args.port or _free_port()
     if args.service:
+        port = args.port or _free_port()
         internal_token = args.token or secrets.token_urlsafe(32)
         service_app = create_service_app(args.service, internal_token=internal_token)
         uvicorn.run(service_app, host="127.0.0.1", port=port, log_level="warning")
     else:
         gateway_app = build_gateway_app(enable_services=not args.no_services)
+        # Hold the bound socket, announce the port only after we own it, then hand
+        # the same socket to uvicorn — no re-bind, no port-steal race (0.5).
+        sock = _reserve_socket(args.port)
+        port = sock.getsockname()[1]
         sys.stdout.write(f"JHM_TOKEN={_API_TOKEN}\n")
         sys.stdout.write(f"PORT:{port}\n")
         sys.stdout.flush()
-        uvicorn.run(gateway_app, host="127.0.0.1", port=port, log_level="warning")
+        uvicorn.Server(uvicorn.Config(gateway_app, log_level="warning")).run(sockets=[sock])

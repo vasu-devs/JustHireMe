@@ -8,6 +8,7 @@ the extraction layer.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import html
 import re
@@ -17,6 +18,7 @@ from urllib.parse import urljoin, urlparse, urlunparse
 from automation.browser_runtime import launch_chromium
 from core.logging import get_logger
 from profile.portfolio_models import PageSnapshot
+from profile.url_guard import BlockedUrlError, is_public_host
 from profile.portfolio_text import (
     _canonical_url,
     _dedupe_strings,
@@ -74,6 +76,9 @@ async def _crawl_portfolio_browser(url: str) -> tuple[list[PageSnapshot], str]:
             viewport={"width": 1440, "height": 1100},
             user_agent="JustHireMe portfolio importer",
         )
+        # SSRF guard: abort any document navigation (incl. HTTP redirects) that
+        # resolves to a non-public host, so a redirect can't reach internal IPs.
+        await context.route("**/*", _block_private_route)
         page = await context.new_page()
         queue = _seed_urls(url)
         seen: set[str] = set()
@@ -88,6 +93,9 @@ async def _crawl_portfolio_browser(url: str) -> tuple[list[PageSnapshot], str]:
             current = queue.pop(0)
             normalized = _canonical_url(current)
             if normalized in seen or not _same_origin(url, normalized):
+                continue
+            if not is_public_host(urlparse(normalized).hostname or ""):
+                _log.warning("portfolio crawl skipped non-public host: %s", normalized)
                 continue
             seen.add(normalized)
             try:
@@ -110,6 +118,25 @@ async def _crawl_portfolio_browser(url: str) -> tuple[list[PageSnapshot], str]:
                 _log.warning("portfolio page fetch failed %s: %s", normalized, exc)
         await browser.close()
     return pages, screenshot_b64
+
+
+async def _block_private_route(route):
+    """Abort browser document navigations to non-public hosts (SSRF/redirect guard)."""
+    try:
+        req = route.request
+        if req.resource_type == "document":
+            host = urlparse(req.url).hostname or ""
+            if not await asyncio.to_thread(is_public_host, host):
+                _log.warning("portfolio crawl aborted non-public navigation: %s", req.url)
+                await route.abort()
+                return
+        await route.continue_()
+    except Exception:
+        # Routing must never crash the crawl; let the request proceed normally.
+        try:
+            await route.continue_()
+        except Exception:
+            pass
 
 
 class contextlib_suppress:
@@ -145,13 +172,26 @@ async def _snapshot_playwright_page(page) -> PageSnapshot:
 def _crawl_portfolio_http(url: str) -> list[PageSnapshot]:
     import httpx
 
+    def _block_private_request(request):
+        # SSRF guard fires on every request incl. each redirect hop.
+        if not is_public_host(request.url.host):
+            raise BlockedUrlError(f"blocked non-public host during crawl: {request.url.host}")
+
     pages: list[PageSnapshot] = []
     queue = _seed_urls(url)
     seen: set[str] = set()
-    with httpx.Client(timeout=16, follow_redirects=True, headers={"User-Agent": "JustHireMe portfolio importer"}) as client:
+    with httpx.Client(
+        timeout=16,
+        follow_redirects=True,
+        headers={"User-Agent": "JustHireMe portfolio importer"},
+        event_hooks={"request": [_block_private_request]},
+    ) as client:
         while queue and len(pages) < MAX_PAGES:
             current = _canonical_url(queue.pop(0))
             if current in seen or not _same_origin(url, current):
+                continue
+            if not is_public_host(urlparse(current).hostname or ""):
+                _log.warning("portfolio HTTP crawl skipped non-public host: %s", current)
                 continue
             seen.add(current)
             try:

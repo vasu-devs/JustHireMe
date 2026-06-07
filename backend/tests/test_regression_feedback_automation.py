@@ -80,7 +80,9 @@ class RegressionTests(unittest.TestCase):
         self.assertFalse(_ready_to_submit({"uploaded": False, "fields": ["email"], "vision_actions": 0}))
         self.assertFalse(_ready_to_submit({"uploaded": True, "fields": [], "vision_actions": 0}))
         self.assertTrue(_ready_to_submit({"uploaded": True, "fields": ["email"], "vision_actions": 0}))
-        self.assertTrue(_ready_to_submit({"uploaded": True, "fields": [], "vision_actions": 2}))
+        # SECURITY (0.1): vision actions alone no longer authorize a submit — only
+        # DOM-verified field fills do, since LLM pixel coordinates are unverifiable.
+        self.assertFalse(_ready_to_submit({"uploaded": True, "fields": [], "vision_actions": 2}))
 
 class TestBrowserRuntimePackaging(unittest.TestCase):
     def test_sidecar_default_release_features_include_browser(self):
