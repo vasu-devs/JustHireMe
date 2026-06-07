@@ -123,7 +123,9 @@ def test_embed_texts_falls_back_to_hash_on_openai_failure(monkeypatch):
 
     result = embeddings.embed_texts(["test text"])
     assert len(result) == 1
-    assert len(result[0]) == 384
+    # The OpenAI table is 1536-wide, so the hash fallback must also be 1536 — a
+    # 384-dim fallback here would corrupt/drop into that table (Tier-1 fix).
+    assert len(result[0]) == embeddings.OPENAI_DIMS
 
 
 def test_embed_texts_hash_mode(monkeypatch):

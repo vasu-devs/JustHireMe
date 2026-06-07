@@ -230,6 +230,25 @@ def _normalize_table_names(raw) -> list[str]:
         return []
 
 
+def _incoming_vector_dim(rows: list[dict]) -> int | None:
+    for row in rows:
+        vec = row.get("vector")
+        if vec is not None:
+            try:
+                return len(vec)
+            except TypeError:
+                return None
+    return None
+
+
+def _existing_vector_dim(store, table_name: str) -> int | None:
+    try:
+        schema = store.open_table(table_name).to_arrow().schema
+        return getattr(schema.field("vector").type, "list_size", None)
+    except Exception:
+        return None
+
+
 def put_vec_rows(table_name: str, rows: list[dict]) -> None:
     if not rows:
         return
@@ -239,6 +258,17 @@ def put_vec_rows(table_name: str, rows: list[dict]) -> None:
     ids = [str(row.get("id") or "").strip() for row in rows if str(row.get("id") or "").strip()]
     try:
         if table_name in vec_table_names():
+            # If the embedding dimensionality changed (e.g. the user switched
+            # embedding provider, 1536<->384), the old table is in a different
+            # vector space and incompatible. Recreate it rather than letting the
+            # add silently fail and drop every new vector.
+            want_dim = _incoming_vector_dim(rows)
+            have_dim = _existing_vector_dim(store, table_name)
+            if want_dim and have_dim and want_dim != have_dim:
+                _log.warning("vector dim for %s changed %s->%s; recreating table", table_name, have_dim, want_dim)
+                store.drop_table(table_name)
+                store.create_table(table_name, data=rows)
+                return
             rows = _rows_for_existing_table(table_name, rows)
             delete_vec_rows(table_name, ids)
             store.open_table(table_name).add(rows)

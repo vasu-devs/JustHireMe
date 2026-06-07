@@ -1,7 +1,7 @@
 import logging
 import hashlib
 import re
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 from core.logging import get_logger
 
 _log = get_logger(__name__)
@@ -62,6 +62,52 @@ NOISE_TERMS = (
 
 def lead_id(prefix: str, value: str) -> str:
     return hashlib.md5(f"{prefix}:{value}".encode()).hexdigest()[:16]
+
+
+_TRACKING_PARAMS = frozenset({
+    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+    "gclid", "fbclid", "mc_cid", "mc_eid", "ref", "ref_src", "source", "src",
+    "igshid", "spm", "campaign_id",
+})
+
+
+def canonical_url(url: str) -> str:
+    """Normalise a URL so the same posting reached by different source paths
+    collapses to one key: lowercase host (no ``www``/default port), http==https,
+    no trailing slash, tracking params dropped, remaining params sorted.
+
+    Used only to derive a stable dedup id — the original ``lead.url`` is kept
+    untouched for actually opening/applying.
+    """
+    raw = (url or "").strip()
+    try:
+        p = urlparse(raw if "://" in raw else f"https://{raw}")
+    except ValueError:
+        return raw.lower()
+    host = (p.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if not host:
+        return raw.lower()
+    if p.port and p.port not in (80, 443):
+        host = f"{host}:{p.port}"
+    path = p.path or "/"
+    if len(path) > 1:
+        path = path.rstrip("/")
+    query = ""
+    if p.query:
+        kept = sorted(
+            (k, v) for k, v in parse_qsl(p.query, keep_blank_values=True)
+            if k.lower() not in _TRACKING_PARAMS
+        )
+        query = urlencode(kept)
+    return urlunparse(("https", host, path, "", query, ""))
+
+
+def canonical_lead_id(url: str) -> str:
+    """Stable, source-independent dedup id for a URL-based lead, so the same job
+    discovered by two different scouts maps to one row."""
+    return hashlib.md5(canonical_url(url).encode()).hexdigest()[:16]
 
 
 def clean_text(text: str) -> str:

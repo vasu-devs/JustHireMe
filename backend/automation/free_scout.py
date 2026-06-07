@@ -8,11 +8,11 @@ from typing import Any
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from discovery.lead_intel import canonical_lead_id
 from discovery.normalizer import (
     budget_from_text,
     fit_bullets,
     followup_sequence,
-    lead_id,
     location_from_text,
     outreach_drafts,
     proof_snippet,
@@ -355,7 +355,7 @@ def run(
             if not url:
                 usage["missing_url"] += 1
                 continue
-            jid = lead_id(item.get("platform", "free"), url)
+            jid = canonical_lead_id(url)
             if jid in seen or url_exists(jid):
                 usage["duplicates"] += 1
                 continue
@@ -427,7 +427,7 @@ def run(
             if not url:
                 usage["missing_url"] += 1
                 continue
-            jid = lead_id(item.get("platform", "connector"), url)
+            jid = canonical_lead_id(url)
             if jid in seen or url_exists(jid):
                 usage["duplicates"] += 1
                 continue

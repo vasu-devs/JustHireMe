@@ -102,6 +102,16 @@ def _parse_date(value: str) -> datetime | None:
     return None
 
 
+def _has_fresh_source(lead: dict) -> bool:
+    """True if the lead came from a recency-constrained query / dated source
+    (e.g. a past-week Google search). Such leads are trusted as recent even when
+    no machine-readable date was scraped."""
+    if str(lead.get("_fresh_source") or "").strip():
+        return True
+    meta = lead.get("source_meta")
+    return isinstance(meta, dict) and bool(str(meta.get("fresh_source") or "").strip())
+
+
 def _freshness(lead: dict, max_age_days: int = 7) -> tuple[bool, str]:
     values = [
         lead.get("posted_date"),
@@ -111,7 +121,12 @@ def _freshness(lead: dict, max_age_days: int = 7) -> tuple[bool, str]:
     dates = [_parse_date(str(v or "")) for v in values if str(v or "").strip()]
     dates = [d for d in dates if d is not None]
     if not dates:
-        return True, "freshness unknown"
+        # Fail closed: an undated scraped posting can't be confirmed recent, so
+        # it must not get a free pass into the (auto-apply) pipeline. The one
+        # exception is a lead from a recency-constrained source.
+        if _has_fresh_source(lead):
+            return True, "freshness assumed (recency-constrained source)"
+        return False, "no posting date"
     newest = max(dates)
     age_days = (datetime.now(timezone.utc) - newest).days
     if age_days > max_age_days:

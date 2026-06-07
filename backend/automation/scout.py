@@ -1,5 +1,4 @@
 import asyncio
-import hashlib
 import re
 import threading
 from datetime import datetime, timezone, timedelta
@@ -8,6 +7,7 @@ from typing import Any
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from discovery.lead_intel import canonical_lead_id
 from discovery.quality_gate import MIN_DEFAULT_QUALITY, attach_quality_metadata, evaluate_lead_quality
 from discovery.sources import apify as apify_sources
 from discovery.sources import ats as ats_sources
@@ -260,10 +260,6 @@ def _is_fresh_lead(lead: dict) -> bool:
 
 def _passes_beginner_job_filter(lead: dict) -> bool:
     return _is_beginner_role(lead)
-
-
-def _h(u: str) -> str:
-    return hashlib.md5(u.encode()).hexdigest()[:16]
 
 
 def _to_md(html: str) -> str:
@@ -588,7 +584,7 @@ def run(
         if not u:
             usage["missing_url"] += 1
             continue
-        jid = _h(u)
+        jid = canonical_lead_id(u)
         if url_exists(jid):
             usage["duplicates"] += 1
             continue

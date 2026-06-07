@@ -335,18 +335,25 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
         try:
             return _onnx_embed(texts)
         except Exception as exc:
-            _log.warning("ONNX embedding failed, falling back to hash: %s", exc)
-            return [hash_embedding(t) for t in texts]
+            _log.warning("ONNX embedding failed, falling back to hash@%d: %s", ONNX_DIMS, exc)
+            return [hash_embedding(t, ONNX_DIMS) for t in texts]
 
     if provider == "openai":
         try:
-            return _openai_embed(texts)
+            vecs = _openai_embed(texts)
+            # Never let an off-dimension API response poison a table sized for
+            # OPENAI_DIMS — treat it as a failure and fall back at the right dim.
+            if vecs and len(vecs[0]) != OPENAI_DIMS:
+                raise RuntimeError(f"OpenAI returned dim {len(vecs[0])}, expected {OPENAI_DIMS}")
+            return vecs
         except Exception as exc:
-            _log.warning("OpenAI embedding failed, falling back to hash: %s", exc)
-            return [hash_embedding(t) for t in texts]
+            # Critical: the OpenAI table is OPENAI_DIMS-wide, so the fallback hash
+            # MUST be OPENAI_DIMS too — a 384-dim hash here silently corrupts it.
+            _log.warning("OpenAI embedding failed, falling back to hash@%d: %s", OPENAI_DIMS, exc)
+            return [hash_embedding(t, OPENAI_DIMS) for t in texts]
 
     # Tier 3: hash
-    return [hash_embedding(t) for t in texts]
+    return [hash_embedding(t, HASH_DIMS) for t in texts]
 
 
 def embedding_dims() -> int:
