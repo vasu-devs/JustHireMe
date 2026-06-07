@@ -177,6 +177,16 @@ def test_complete_structured_parses_valid_json(monkeypatch):
     assert out.name == "Al" and out.age == 3
 
 
+def test_complete_text_timeout_raises_clitimeout(monkeypatch):
+    def boom(*_a, **_k):
+        raise subprocess.TimeoutExpired(cmd="claude", timeout=1)
+    monkeypatch.setattr(sc.subprocess, "run", boom)
+    with pytest.raises(sc.CliTimeout):
+        sc.complete_text("claude_cli", "S", "U")
+    # CliTimeout must remain a CliError so existing handlers still catch it.
+    assert issubclass(sc.CliTimeout, sc.CliError)
+
+
 def test_complete_structured_raises_clierror_on_bad_output(monkeypatch):
     # A flaky CLI returns prose instead of schema JSON -> must raise CliError
     # (not a raw pydantic.ValidationError the caller wouldn't catch).

@@ -262,10 +262,15 @@ async def run_scan(
         return
 
     discovered = await asyncio.to_thread(repo.leads.get_discovered_leads)
-    await manager.broadcast({"type": "agent", "event": "eval_start", "msg": f"Evaluating {len(discovered)} leads via {cfg.get('llm_provider', 'ollama')}"})
+    # Only score leads that haven't been scored yet (status 'discovered'). Leads
+    # already scored ('matched'/'discarded') are re-ranked via the explicit
+    # re-evaluate action — re-scoring the whole backlog on every scan is an O(N)
+    # LLM cost that grows unboundedly as matched leads accumulate.
+    to_score = [lead for lead in discovered if (lead.get("status") or "discovered") == "discovered"]
+    await manager.broadcast({"type": "agent", "event": "eval_start", "msg": f"Evaluating {len(to_score)} new leads via {cfg.get('llm_provider', 'ollama')}"})
 
     fallback_count = 0
-    for lead in discovered:
+    for lead in to_score:
         if stop_event.is_set():
             await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Scan stopped during evaluation."})
             return
@@ -288,7 +293,7 @@ async def run_scan(
         await manager.broadcast({
             "type": "agent",
             "event": "eval_fallback_summary",
-            "msg": f"{fallback_count}/{len(discovered)} leads scored by fallback (LLM unavailable)",
+            "msg": f"{fallback_count}/{len(to_score)} leads scored by fallback (LLM unavailable)",
         })
     await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Evaluation cycle complete"})
     await asyncio.to_thread(repo.settings.save_settings, {"last_scan_finished_at": datetime.now(timezone.utc).isoformat()})

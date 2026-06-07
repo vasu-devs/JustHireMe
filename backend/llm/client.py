@@ -338,6 +338,23 @@ def call_llm(s: str, u: str, m: type[BaseModel], step: str | None = None):
     return _retry_llm_call(lambda: _call_llm_once(s, u, m, step))
 
 
+def _subscription_call(provider, attempt, fallback, *, step):
+    """Run a subscription-CLI call, retrying once on a cold-start timeout, then
+    falling back gracefully on any other CLI failure (not-installed, login,
+    credit, malformed output). The first call after a sign-in/idle period often
+    times out while the runtime warms up but succeeds on the retry."""
+    from llm import subscription_cli as _sub
+    try:
+        try:
+            return attempt()
+        except _sub.CliTimeout:
+            _log.warning("%s subscription CLI timed out (step=%s) — retrying once", provider, step)
+            return attempt()
+    except _sub.CliError as exc:
+        _log.warning("%s subscription CLI failed (step=%s): %s", provider, step, exc)
+        return fallback()
+
+
 def _call_llm_once(s: str, u: str, m: type[BaseModel], step: str | None = None):
     p, k, model = _resolve(step)
 
@@ -461,11 +478,10 @@ def _call_llm_once(s: str, u: str, m: type[BaseModel], step: str | None = None):
         # Subscription providers: shell out to the user's logged-in Claude/Codex CLI
         # (no API key). The CLI returns text, so we ask for schema-shaped JSON and parse.
         from llm import subscription_cli as _sub
-        try:
-            return _sub.complete_structured(p, s, u, m, model=model)
-        except _sub.CliError as exc:
-            _log.warning("%s subscription CLI failed (step=%s): %s", p, step, exc)
-            return _parse_fallback(u, m)
+        return _subscription_call(
+            p, lambda: _sub.complete_structured(p, s, u, m, model=model),
+            lambda: _parse_fallback(u, m), step=step,
+        )
 
     else:  # ollama / default
         b = get_setting("ollama_url", "http://localhost:11434/v1")
@@ -584,11 +600,9 @@ def _call_raw_once(s: str, u: str, step: str | None = None) -> str:
 
     elif p in ("claude_cli", "codex_cli"):
         from llm import subscription_cli as _sub
-        try:
-            return _sub.complete_text(p, s, u, model=model)
-        except _sub.CliError as exc:
-            _log.warning("%s subscription CLI failed (step=%s): %s", p, step, exc)
-            return ""
+        return _subscription_call(
+            p, lambda: _sub.complete_text(p, s, u, model=model), lambda: "", step=step,
+        )
 
     else:  # ollama
         b = get_setting("ollama_url", "http://localhost:11434/v1")

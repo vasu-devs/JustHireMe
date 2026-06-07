@@ -161,6 +161,61 @@ def test_run_scan_continues_when_board_scan_batch_fails():
     assert messages[-1] == "Evaluation cycle complete"
 
 
+def test_run_scan_only_scores_unscored_leads():
+    """A scan must score new ('discovered') leads only — already-scored
+    ('matched') leads are re-ranked via the explicit re-evaluate action, not
+    re-paid for on every scan."""
+    from api.routers import discovery
+
+    class Manager:
+        async def broadcast(self, _payload):
+            return None
+
+    class JobStore:
+        def create(self, *_args, **_kwargs):
+            return SimpleNamespace(job_id="scan-1")
+
+        def update(self, *_args, **_kwargs):
+            return None
+
+    repo = SimpleNamespace(
+        settings=SimpleNamespace(
+            get_settings=lambda: {
+                "job_boards": "site:jobs.example",
+                "free_sources_enabled": "false",
+                "board_scan_batch_size": "1",
+            },
+            save_settings=lambda _settings: None,
+        ),
+        profile=SimpleNamespace(get_profile=lambda: {"s": "Python engineer"}),
+        leads=SimpleNamespace(
+            get_discovered_leads=lambda: [
+                {"job_id": "new-1", "title": "New", "url": "https://e.com/1", "status": "discovered"},
+                {"job_id": "old-1", "title": "Old", "url": "https://e.com/2", "status": "matched"},
+            ],
+            update_lead_score=lambda *_args, **_kwargs: None,
+        ),
+    )
+    service = SimpleNamespace(
+        scan_x=mock.AsyncMock(return_value=SimpleNamespace(leads=[], usage={}, errors=[])),
+        scan_free_sources=mock.AsyncMock(return_value=SimpleNamespace(leads=[], usage={}, errors=[])),
+        plan_board_targets=mock.AsyncMock(return_value=["site:jobs.example"]),
+        scan_job_boards=mock.AsyncMock(return_value=SimpleNamespace(leads=[], usage={}, errors=[])),
+    )
+    ranking = SimpleNamespace(evaluate_lead=mock.AsyncMock(return_value={
+        "score": 82, "reason": "ok", "match_points": [], "gaps": [],
+    }))
+
+    with mock.patch.object(discovery, "get_job_runner", return_value=JobStore()):
+        asyncio.run(discovery.run_scan(
+            Manager(), repo=repo, discovery_service=service, ranking_service=ranking,
+        ))
+
+    assert ranking.evaluate_lead.await_count == 1
+    scored_ids = [call.args[0]["job_id"] for call in ranking.evaluate_lead.await_args_list]
+    assert scored_ids == ["new-1"]  # the already-'matched' lead was not re-scored
+
+
 def test_run_scan_skips_empty_profile_without_explicit_sources():
     from api.routers import discovery
 

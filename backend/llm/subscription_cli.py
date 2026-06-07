@@ -51,6 +51,10 @@ class CliCreditExhausted(CliError):
     """The subscription's usage/credit for headless use is exhausted."""
 
 
+class CliTimeout(CliError):
+    """The CLI call exceeded its timeout — often a cold start, so worth one retry."""
+
+
 def _exe(provider: str) -> str:
     return "claude" if provider == "claude_cli" else "codex"
 
@@ -112,7 +116,7 @@ def complete_text(provider: str, system: str, user: str, *, model=None, timeout:
             encoding="utf-8", errors="replace", env=_child_env(), timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
-        raise CliError(f"{provider} timed out after {timeout}s") from exc
+        raise CliTimeout(f"{provider} timed out after {timeout}s") from exc
     except FileNotFoundError as exc:
         raise CliNotInstalled(f"{_exe(provider)} CLI vanished from PATH") from exc
 
