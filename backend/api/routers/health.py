@@ -10,7 +10,6 @@ from fastapi import APIRouter, Depends, Request
 
 from api.dependencies import get_repository
 from data.repository import Repository
-from gateway.clients import graph_client, get_service_registry
 
 
 def _details_authorized(request: Request) -> bool:
@@ -46,24 +45,8 @@ def _check_graph(repo: Repository) -> dict:
 
 
 async def _check_graph_service(repo: Repository) -> dict:
-    client = graph_client()
-    if not client:
-        return _check_graph(repo)
-    try:
-        payload = await client.stats(repair=False)
-        return {
-            "status": "ok" if payload.get("available") else "error",
-            "counts": {
-                "candidate": payload.get("candidate", 0),
-                "skill": payload.get("skill", 0),
-                "project": payload.get("project", 0),
-                "experience": payload.get("experience", 0),
-                "joblead": payload.get("joblead", 0),
-            },
-            "error": payload.get("error", ""),
-        }
-    except Exception as exc:
-        return {"status": "error", "error": str(exc), "counts": {}}
+    # In-process monolith: the graph lives in this process, so check it directly.
+    return _check_graph(repo)
 
 
 def _check_vector(repo: Repository) -> dict:
@@ -106,10 +89,6 @@ def _check_profile(repo: Repository) -> dict:
 
 
 async def _check_profile_service(repo: Repository) -> dict:
-    registry = get_service_registry()
-    endpoint = registry.get("profile") if registry else None
-    if endpoint:
-        return {"status": "ok" if endpoint.status == "healthy" else endpoint.status, "has_profile": None}
     return _check_profile(repo)
 
 
@@ -179,10 +158,6 @@ def create_router(started_at: float) -> APIRouter:
         if not base["details_available"]:
             return base
 
-        service_registry = getattr(request.app.state, "service_registry", None)
-        service_supervisor = getattr(request.app.state, "service_supervisor", None)
-        if service_supervisor is not None:
-            await service_supervisor.refresh_health()
         checks = {
             "sqlite": _check_sqlite(repo),
             "graph": await _check_graph_service(repo),
@@ -198,7 +173,7 @@ def create_router(started_at: float) -> APIRouter:
             "last_scan_finished_at": repo.settings.get_setting("last_scan_finished_at", ""),
             "components": checks,
             "checks": checks,
-            "services": service_registry.snapshot() if service_registry else {},
+            "services": {},
         }
 
     @router.get("/api/v1/health/subsystems")

@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 from api.rate_limit import RateLimiter, require_rate_limit
 from api.dependencies import get_profile_service
 from core.types import StrictBody
-from gateway.clients.base import ServiceRequestError, ServiceTimeout, ServiceUnavailable
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
@@ -196,12 +195,6 @@ def create_router(manager, logger) -> APIRouter:
                 token=body.token or None,
                 max_repos=body.max_repos,
             )
-        except ServiceTimeout as exc:
-            raise HTTPException(504, str(exc)) from exc
-        except ServiceUnavailable as exc:
-            raise HTTPException(503, str(exc)) from exc
-        except ServiceRequestError as exc:
-            raise HTTPException(502, str(exc)) from exc
         except Exception as exc:
             logger.error("github ingest failed: %s", exc)
             raise HTTPException(502, f"could not ingest github profile: {exc}") from exc
@@ -241,12 +234,6 @@ def create_router(manager, logger) -> APIRouter:
             raise HTTPException(400, "url must start with http:// or https://")
         try:
             result = await get_profile_service().ingest_portfolio(body.url, auto_import=body.auto_import)
-        except ServiceTimeout as exc:
-            raise HTTPException(504, str(exc)) from exc
-        except ServiceUnavailable as exc:
-            raise HTTPException(503, str(exc)) from exc
-        except ServiceRequestError as exc:
-            raise HTTPException(502, str(exc)) from exc
         except Exception as exc:
             logger.error("portfolio ingest failed: %s", exc)
             raise HTTPException(502, f"could not ingest portfolio: {exc}") from exc

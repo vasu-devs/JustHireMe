@@ -5,7 +5,6 @@ from importlib import import_module
 
 from core.events import InProcessEventBus
 from data.repository import Repository, create_repository
-from gateway.clients import automation_client, discovery_client, generation_client, profile_client, ranking_client
 from gateway.jobs import JobStore, get_job_store
 
 _event_bus = InProcessEventBus()
@@ -31,33 +30,27 @@ def _local_service(module_name: str, factory_name: str):
 
 @lru_cache
 def get_profile_service():
-    client = profile_client()
-    if client:
-        return client
     module = import_module("profile.service")
     return module.ProfileService()
 
 
 @lru_cache
 def get_discovery_service():
-    return discovery_client() or _local_service("discovery.service", "create_discovery_service")
+    return _local_service("discovery.service", "create_discovery_service")
 
 
 @lru_cache
 def get_ranking_service():
-    return ranking_client() or _local_service("ranking.service", "create_ranking_service")
+    return _local_service("ranking.service", "create_ranking_service")
 
 
 @lru_cache
 def get_generation_service():
-    return generation_client() or _local_service("generation.service", "create_generation_service")
+    return _local_service("generation.service", "create_generation_service")
 
 
 @lru_cache
 def get_automation_service():
-    client = automation_client()
-    if client:
-        return client
     module = import_module("automation.service")
     return module.create_automation_service(get_repository())
 

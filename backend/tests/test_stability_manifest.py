@@ -172,7 +172,6 @@ def test_sidecar_packaging_checks_manifest_and_runtime_path():
 
 def test_global_mutable_state_has_locks():
     assert "STABILITY: thread-safe LLM repository singleton" in _read(BACKEND / "llm/client.py")
-    assert "STABILITY: thread-safe gateway service registry" in _read(BACKEND / "gateway/clients/base.py")
     assert "STABILITY: thread-safe vector store reconnect/status" in _read(BACKEND / "data/vector/connection.py")
     assert "STABILITY: thread-safe lazy embedding model initialization" in _read(BACKEND / "data/vector/embeddings.py")
 

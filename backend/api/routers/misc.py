@@ -13,7 +13,6 @@ from core.types import HelpChatBody
 from core.telemetry import log_error, redact_sensitive, redact_text
 from data.graph.connection import run_graph
 from data.repository import Repository
-from gateway.clients import graph_client
 from graph_service.helpers import is_bad_vector_label
 
 
@@ -29,10 +28,6 @@ def _track_background_task(task: asyncio.Task) -> None:
 
 @router.get("/graph")
 async def graph_stats(repo: Repository = Depends(get_repository), repair: bool = False):
-    client = graph_client()
-    if client and isinstance(repo, Repository):
-        return await client.stats(repair=repair)
-
     errors: list[str] = []
     profile_repo = getattr(repo, "profile", None)
     if repair:

@@ -1,4 +1,3 @@
-from gateway.clients import ServiceRegistry, set_service_registry
-from gateway.supervisor import LocalServiceSupervisor
-
-__all__ = ["LocalServiceSupervisor", "ServiceRegistry", "set_service_registry"]
+# Gateway package: shared in-process helpers (events, jobs, lead_adapters,
+# discovery_config). The microservice supervisor + HTTP service clients were
+# removed when the app standardized on the in-process monolith architecture.
