@@ -350,13 +350,6 @@ def _parse_wellfound(md: str, src: str) -> list:
     return results
 
 
-def _parse(md: str, src: str) -> list:
-    return web_sources.parse(md, src)
-
-
-def _parse_wellfound(md: str, src: str) -> list:
-    return web_sources.parse_wellfound(md, src)
-
 
 @retry(
     retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
