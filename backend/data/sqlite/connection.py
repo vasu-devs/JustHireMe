@@ -176,6 +176,30 @@ def close_all() -> None:
     _POOL.close_all()
 
 
+def prune_history(db_path: str | None = None, *, max_events: int = 5000, max_jobs: int = 500, max_errors: int = 1000) -> None:
+    """Cap the append-only telemetry tables to their most recent rows so a
+    long-lived local install doesn't accumulate events/jobs/errors forever.
+    Each delete is guarded so a not-yet-created table (e.g. gateway_jobs) is
+    simply skipped. Active jobs are never pruned."""
+    conn = get_connection(db_path)
+    prunes = [
+        ("DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT ?)", (max_events,)),
+        (
+            "DELETE FROM gateway_jobs WHERE status IN ('succeeded','failed','cancelled') "
+            "AND rowid NOT IN (SELECT rowid FROM gateway_jobs WHERE status IN ('succeeded','failed','cancelled') "
+            "ORDER BY created_at DESC LIMIT ?)",
+            (max_jobs,),
+        ),
+        ("DELETE FROM error_log WHERE rowid NOT IN (SELECT rowid FROM error_log ORDER BY last_seen DESC LIMIT ?)", (max_errors,)),
+    ]
+    for sql, params in prunes:
+        try:
+            conn.execute(sql, params)
+        except Exception as exc:
+            _log.debug("history prune skipped: %s", exc)
+    conn.commit()
+
+
 def _migration_files() -> list[Path]:
     return sorted(MIGRATIONS_DIR.glob("*.sql"))
 

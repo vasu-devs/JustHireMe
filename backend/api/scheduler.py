@@ -19,7 +19,7 @@ from gateway.discovery_config import (
     profile_for_discovery,
 )
 from api.startup_validation import log_startup_warnings
-from data.sqlite.connection import close_all, init_sql
+from data.sqlite.connection import close_all, init_sql, prune_history
 
 
 def create_scheduler() -> AsyncIOScheduler:
@@ -178,6 +178,7 @@ def create_lifespan(scheduler: AsyncIOScheduler, ghost_tick, logger):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         init_sql()
+        prune_history()  # cap the append-only telemetry tables on startup
         ensure_ghost_job(scheduler, ghost_tick)
         log_startup_warnings(get_repository(), logger)
         scheduler.start()
