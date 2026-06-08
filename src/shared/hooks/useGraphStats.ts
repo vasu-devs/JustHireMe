@@ -28,7 +28,14 @@ export function useGraphStats(api: ApiFetch | null) {
         setStats(prev => ({ ...prev, loaded: true, loading: false, request_error: message }));
       }
     };
-    const refresh = () => load(false);
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const refresh = () => {
+      // Coalesce bursts — a scan broadcasts one lead-updated per scored lead, and
+      // each refetch hits the expensive /api/v1/graph snapshot. Debounce so the
+      // graph is fetched once after the burst settles instead of N times.
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => { debounceTimer = null; load(false); }, 800);
+    };
     load();
     window.addEventListener("lead-updated", refresh);
     window.addEventListener("leads-refresh", refresh);
@@ -39,6 +46,7 @@ export function useGraphStats(api: ApiFetch | null) {
     window.addEventListener("cleanup-done", refresh);
     return () => {
       alive = false;
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
       controller.abort();
       window.removeEventListener("lead-updated", refresh);
       window.removeEventListener("leads-refresh", refresh);
