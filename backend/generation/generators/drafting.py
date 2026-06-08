@@ -40,12 +40,12 @@ def _draft_package(profile: dict, proof: str, j: dict, template: str = "") -> _D
         "One compact 2-line professional summary tailored to the exact role and JD keywords.\n\n"
 
         "## SKILLS\n"
-        "**Languages:** Python, C++, JavaScript, TypeScript, SQL, Bash\n"
-        "**Frameworks & Libraries:** FastAPI, Node.js, React.js, Next.js, Tailwind, Vite\n"
-        "**Databases & Data Tools:** PostgreSQL, MySQL, MongoDB, Drizzle ORM\n"
-        "**Tools & Platforms:** Git, Docker, Linux, CI/CD\n"
-        "**Core Concepts:** Data Structures & Algorithms, OOP, REST APIs, Agile/Scrum\n"
-        "**AI Skills:** LangGraph, LangChain, RAG Pipelines, AI Agents\n\n"
+        "**<Category for this candidate's field>:** <skills taken from the candidate profile only>\n"
+        "**<Category>:** <skills>\n"
+        "(Group the candidate's ACTUAL skills under 3-6 category headers relevant to "
+        "their field and the JD. Use only skills present in the candidate profile — "
+        "never invent a category or a skill, and do not default to software/engineering "
+        "categories unless the candidate is in that field.)\n\n"
 
         "## PROJECTS\n"
         "### ProjectName - One Line Subtitle : (link) Mon' YY\n"

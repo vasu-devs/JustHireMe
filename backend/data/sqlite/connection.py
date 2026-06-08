@@ -196,7 +196,11 @@ def _apply_migration(conn, name: str, script: str) -> None:
         try:
             conn.execute(statement)
         except Exception as exc:
-            if "duplicate column name" not in str(exc).lower():
+            # Only the idempotent re-application of an ALTER ... ADD COLUMN may be
+            # safely skipped. Any other failure (incl. a duplicate-column error on
+            # a non-ADD-COLUMN statement) is a real migration bug and must surface,
+            # rather than being silently masked and the migration marked applied.
+            if not ("add column" in statement.lower() and "duplicate column name" in str(exc).lower()):
                 raise
             _log.debug("migration %s skipped duplicate column in: %s", name, statement)
 
