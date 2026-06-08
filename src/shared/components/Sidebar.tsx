@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Icon from "./Icon";
-import type { View } from "../../types";
+import type { LeadCounts, View } from "../../types";
 import { useAppVersion } from "../hooks/useAppVersion";
 
 const NAV = [
@@ -35,7 +35,7 @@ export function Sidebar({
 }: {
   view: View;
   setView: (v: View) => void;
-  leadCounts: any;
+  leadCounts: LeadCounts;
   collapsed: boolean;
   onToggleCollapsed: () => void;
   onSettings: () => void;

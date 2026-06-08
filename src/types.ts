@@ -129,3 +129,22 @@ export interface FormReadResult {
   unmatched_labels: string[];
   error: string | null;
 }
+
+// Pipeline counts derived from the live leads list (built in App, consumed by Sidebar).
+// The index signature allows dynamic lookup by a nav item's countKey.
+export interface LeadCounts {
+  total: number;
+  hot: number;
+  discovered: number;
+  evaluated: number;
+  evaluating: number;
+  tailoring: number;
+  approved: number;
+  ready: number;
+  applied: number;
+  discarded: number;
+  interviewing: number;
+  accepted: number;
+  rejected: number;
+  [key: string]: number;
+}
