@@ -2,7 +2,6 @@ import asyncio
 import concurrent.futures
 import logging
 import os
-import ipaddress
 import threading
 import time
 from urllib.parse import urlparse
@@ -236,7 +235,7 @@ _OPENAI_COMPAT_BASE_URLS: dict[str, str] = {
     "together": "https://api.together.xyz/v1",
     "fireworks": "https://api.fireworks.ai/inference/v1",
     "cerebras": "https://api.cerebras.ai/v1",
-    "perplexity": "https://api.perplexity.ai/v1",
+    "perplexity": "https://api.perplexity.ai",
     "huggingface": "https://router.huggingface.co/v1",
     "cohere": "https://api.cohere.ai/compatibility/v1",
     "sambanova": "https://api.sambanova.ai/v1",
@@ -264,12 +263,14 @@ def _validate_base_url(url: str) -> str:
     host = parsed.hostname or ""
     if host.lower() in _BLOCKED_HOSTS:
         raise ValueError(f"Cannot use localhost as LLM base URL: {url}")
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        return url
-    if ip.is_private or ip.is_loopback or ip.is_link_local:
-        raise ValueError(f"Cannot use private/loopback IP as LLM base URL: {url}")
+    # Resolve hostnames too, not just literal IPs: a name like "localtest.me"
+    # resolves to 127.0.0.1 and a bare metadata host would otherwise slip past
+    # the literal-IP check below. is_public_host enforces the same
+    # no-private/loopback/link-local policy after DNS resolution.
+    from core.url_guard import is_public_host
+
+    if not is_public_host(host):
+        raise ValueError(f"Cannot use private/loopback/internal host as LLM base URL: {url}")
     return url
 
 
@@ -334,6 +335,26 @@ def _resolve(step: str | None = None) -> tuple[str, str, str]:
 def resolve_config(step: str | None = None) -> tuple[str, str, str]:
     """Public resolver for agents that need provider-specific request shapes."""
     return _resolve(step)
+
+
+class MissingKeyError(RuntimeError):
+    """Raised when the configured provider requires an API key but none is set."""
+
+
+def assert_llm_configured(step: str | None = None) -> None:
+    """Raise MissingKeyError if the resolved provider needs a key and has none.
+
+    Lets callers that must produce real LLM output (e.g. resume generation) fail
+    loudly with an actionable message instead of silently emitting an empty
+    structured result that downstream code mistakes for success. Keyless
+    providers (ollama, claude_cli, codex_cli) always pass.
+    """
+    provider, key, _model = _resolve(step)
+    if provider_needs_key(provider) and not key:
+        raise MissingKeyError(
+            f"No API key configured for provider {provider!r}. "
+            "Add your key in Settings, or switch to a local provider."
+        )
 
 
 def _client_nvidia(k: str):
@@ -402,7 +423,7 @@ def _call_llm_once(s: str, u: str, m: type[BaseModel], step: str | None = None):
         if not k:
             _log.warning("anthropic — no key (step=%s) — falling back", step)
             return _parse_fallback(u, m)
-        anthropic_client = _anthropic(api_key=k, timeout=120.0)
+        anthropic_client = _anthropic(api_key=k, timeout=120.0, max_retries=0)
         r = anthropic_client.messages.parse(
             model=model,
             max_tokens=4096,
@@ -457,7 +478,7 @@ def _call_llm_once(s: str, u: str, m: type[BaseModel], step: str | None = None):
         if not k:
             _log.warning("openai — no key (step=%s)", step)
             return _parse_fallback(u, m)
-        openai_client = instructor.from_openai(_openai(api_key=k, timeout=_TIMEOUT))
+        openai_client = instructor.from_openai(_openai(api_key=k, timeout=_TIMEOUT, max_retries=0))
         return openai_client.chat.completions.create(
             model=model,
             response_model=m,
@@ -471,7 +492,7 @@ def _call_llm_once(s: str, u: str, m: type[BaseModel], step: str | None = None):
         # deepseek-reasoner does not support tool_choice — use JSON mode instead
         mode = instructor.Mode.JSON if "reasoner" in model else instructor.Mode.TOOLS
         deepseek_client = instructor.from_openai(
-            _openai(base_url="https://api.deepseek.com", api_key=k, timeout=_TIMEOUT),
+            _openai(base_url="https://api.deepseek.com", api_key=k, timeout=_TIMEOUT, max_retries=0),
             mode=mode,
         )
         return deepseek_client.chat.completions.create(
@@ -554,7 +575,7 @@ def _call_raw_once(s: str, u: str, step: str | None = None) -> str:
     if p == "anthropic":
         if not k:
             return ""
-        anthropic_client = _anthropic(api_key=k, timeout=120.0)
+        anthropic_client = _anthropic(api_key=k, timeout=120.0, max_retries=0)
         anthropic_response = anthropic_client.messages.create(
             model=model,
             max_tokens=4096,
@@ -600,7 +621,7 @@ def _call_raw_once(s: str, u: str, step: str | None = None) -> str:
     elif p == "openai":
         if not k:
             return ""
-        openai_client = _openai(api_key=k, timeout=_TIMEOUT)
+        openai_client = _openai(api_key=k, timeout=_TIMEOUT, max_retries=0)
         openai_response = openai_client.chat.completions.create(
             model=model,
             messages=[{"role": "system", "content": s}, {"role": "user", "content": u}],
@@ -610,7 +631,7 @@ def _call_raw_once(s: str, u: str, step: str | None = None) -> str:
     elif p == "deepseek":
         if not k:
             return ""
-        deepseek_client = _openai(base_url="https://api.deepseek.com", api_key=k, timeout=_TIMEOUT)
+        deepseek_client = _openai(base_url="https://api.deepseek.com", api_key=k, timeout=_TIMEOUT, max_retries=0)
         deepseek_response = deepseek_client.chat.completions.create(
             model=model,
             messages=[{"role": "system", "content": s}, {"role": "user", "content": u}],
@@ -625,13 +646,8 @@ def _call_raw_once(s: str, u: str, step: str | None = None) -> str:
         except ValueError as exc:
             _log.warning("%s configuration invalid (step=%s): %s", p, step, exc)
             return ""
-        if p == "perplexity":
-            compat_response = compat_raw_client.responses.create(
-                model=model,
-                instructions=s,
-                input=u,
-            )
-            return getattr(compat_response, "output_text", "") or ""
+        # Perplexity included: it serves only the OpenAI-compatible
+        # chat-completions API (no Responses API).
         compat_chat_response = compat_raw_client.chat.completions.create(
             model=model,
             messages=[{"role": "system", "content": s}, {"role": "user", "content": u}],

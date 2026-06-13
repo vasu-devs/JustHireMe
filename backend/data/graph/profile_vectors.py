@@ -249,6 +249,26 @@ def _existing_vector_dim(store, table_name: str) -> int | None:
         return None
 
 
+def _upsert_rows(table, ids: list[str], rows: list[dict]) -> None:
+    """Replace rows by id atomically.
+
+    The previous delete-then-add ordering lost the old embeddings whenever the
+    add failed (the delete had already committed). merge_insert performs the
+    replace as a single operation; if it's unavailable we fall back to the old
+    best-effort ordering.
+    """
+    try:
+        (
+            table.merge_insert("id")
+            .when_matched_update_all()
+            .when_not_matched_insert_all()
+            .execute(rows)
+        )
+    except (AttributeError, NotImplementedError):
+        _delete_vec_ids(table, ids)
+        table.add(rows)
+
+
 def put_vec_rows(table_name: str, rows: list[dict]) -> None:
     if not rows:
         return
@@ -270,8 +290,7 @@ def put_vec_rows(table_name: str, rows: list[dict]) -> None:
                 store.create_table(table_name, data=rows)
                 return
             rows = _rows_for_existing_table(table_name, rows)
-            delete_vec_rows(table_name, ids)
-            store.open_table(table_name).add(rows)
+            _upsert_rows(store.open_table(table_name), ids, rows)
         else:
             try:
                 store.create_table(table_name, data=rows)
@@ -279,9 +298,7 @@ def put_vec_rows(table_name: str, rows: list[dict]) -> None:
                 if "already exists" not in str(exc).lower():
                     raise
                 rows = _rows_for_existing_table(table_name, rows)
-                table = store.open_table(table_name)
-                _delete_vec_ids(table, ids)
-                table.add(rows)
+                _upsert_rows(store.open_table(table_name), ids, rows)
     except Exception as exc:
         _log.warning("vector write failed for %s: %s", table_name, exc)
 

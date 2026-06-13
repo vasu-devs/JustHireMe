@@ -237,7 +237,7 @@ def test_profile_to_score_to_generate_flow(tmp_path, monkeypatch):
     })
 
     try:
-        client = TestClient(main.app, raise_server_exceptions=True)
+        client = TestClient(main.app, raise_server_exceptions=True, base_url="http://127.0.0.1")
         headers = {"Authorization": "Bearer e2e-token"}
 
         ingest = client.post(

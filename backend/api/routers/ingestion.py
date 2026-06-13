@@ -115,6 +115,25 @@ def _default_profile_template() -> dict:
     }
 
 
+async def _read_capped(file: UploadFile, max_bytes: int) -> bytes:
+    """Read an upload in chunks, rejecting at the real byte ceiling.
+
+    file.size is client-declared multipart metadata (absent or spoofable), so the
+    cap is enforced on actual bytes read — not by trusting the declared size.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail="Upload too large")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @contextlib.asynccontextmanager
 async def _temp_upload(file: UploadFile | None):
     if not file or not file.filename:
@@ -127,7 +146,7 @@ async def _temp_upload(file: UploadFile | None):
     try:
         # L1: read the upload asynchronously and write the temp file off the
         # event loop so a large upload can't block other coroutines.
-        content = await file.read()
+        content = await _read_capped(file, MAX_UPLOAD_SIZE)
 
         def _write() -> str:
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -176,11 +195,10 @@ def create_router(manager, logger) -> APIRouter:
 
     @router.post("/ingest/linkedin")
     async def ingest_linkedin(file: UploadFile = File(...)):
+        require_rate_limit(ingest_limiter)
         if not (file.filename or "").endswith(".zip"):
             raise HTTPException(400, "expected a .zip file from LinkedIn data export")
-        raw = await file.read()
-        if len(raw) > 50 * 1024 * 1024:
-            raise HTTPException(413, "file too large")
+        raw = await _read_capped(file, 50 * 1024 * 1024)
         try:
             return await get_profile_service().ingest_linkedin(raw)
         except Exception as exc:
@@ -189,6 +207,7 @@ def create_router(manager, logger) -> APIRouter:
 
     @router.post("/ingest/github")
     async def ingest_github_endpoint(body: GithubIngestBody):
+        require_rate_limit(ingest_limiter)
         try:
             result = await get_profile_service().ingest_github(
                 body.username,
@@ -205,6 +224,7 @@ def create_router(manager, logger) -> APIRouter:
 
     @router.post("/ingest/profile")
     async def import_profile_json(body: ProfileImportBody):
+        require_rate_limit(ingest_limiter)
         try:
             return await get_profile_service().import_profile_data(body)
         except Exception as exc:
@@ -230,6 +250,7 @@ def create_router(manager, logger) -> APIRouter:
 
     @router.post("/ingest/portfolio")
     async def ingest_portfolio_endpoint(body: PortfolioIngestBody):
+        require_rate_limit(ingest_limiter)
         if not body.url.startswith(("http://", "https://")):
             raise HTTPException(400, "url must start with http:// or https://")
         try:

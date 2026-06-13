@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 
 import re
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from collections.abc import Iterable
 
@@ -104,7 +105,10 @@ def _period_months(period: str) -> int:
     if not period:
         return 0
     text = str(period).lower()
-    text = re.sub(r"\bpresent\b|\bcurrent\b|\bnow\b|\btoday\b", "2099-12", text)
+    # An ongoing role ends today, not at some far-future sentinel; a sentinel
+    # like 2099 would credit a brand-new hire with decades of experience.
+    now = datetime.now(timezone.utc).strftime("%b %Y").lower()
+    text = re.sub(r"\bpresent\b|\bcurrent\b|\bnow\b|\btoday\b", now, text)
     pairs = re.findall(
         r"([a-z]{3,4})?\s*(\d{4})\s*(?:to|-|–|—|->|→)\s*([a-z]{3,4})?\s*(\d{4})",
         text,
@@ -443,6 +447,83 @@ def _fmt_terms(terms: Iterable[str], empty: str = "none") -> str:
 _ADJACENCY_BLOCKLIST = {"language", "frontend", "mobile", "desktop", "cms", "enterprise"}
 
 
+_PHRASE_STOPWORDS = {
+    "and", "or", "the", "with", "for", "of", "in", "to", "a", "an", "skills",
+    "experience", "proficient", "proficiency", "knowledge", "strong", "excellent",
+    "ability", "etc", "various", "other", "general", "basic", "advanced",
+}
+
+
+def _normalize_phrase(value: str) -> str:
+    text = re.sub(r"[^a-z0-9+#./ -]", " ", str(value or "").lower())
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def candidate_domain_phrases(candidate_data: dict) -> set[str]:
+    """Field-agnostic skill phrases drawn from the candidate's OWN profile.
+
+    The deterministic rubric otherwise matches everything against a fixed tech
+    taxonomy, so a nurse/welder/teacher scores blanks. Here we collect the
+    candidate's literal skill names (and credential titles) as matchable
+    phrases. Phrases that already resolve to a canonical tech term are dropped —
+    the taxonomy handles those — so a software candidate's effective vocabulary
+    (and score) is unchanged, while non-tech domains gain real signal.
+    """
+    phrases: set[str] = set()
+
+    def _consider(raw: str) -> None:
+        phrase = _normalize_phrase(raw)
+        if not (3 <= len(phrase) <= 48):
+            return
+        if phrase in _PHRASE_STOPWORDS:
+            return
+        if _find_terms(raw):
+            return  # already a canonical tech term; taxonomy covers it
+        phrases.add(phrase)
+
+    def _name(item, *keys: str) -> str:
+        if isinstance(item, str):
+            return item
+        if isinstance(item, dict):
+            for key in keys:
+                if item.get(key):
+                    return str(item[key])
+        return ""
+
+    for skill in candidate_data.get("skills", []) or []:
+        _consider(_name(skill, "n", "name"))
+    for cert in candidate_data.get("certifications", []) or []:
+        _consider(_name(cert, "title", "name", "n"))
+    return phrases
+
+
+def apply_domain_generalization(posting: PostingSignals, candidate: CandidateEvidence, candidate_data: dict, jd: str) -> set[str]:
+    """Match the candidate's own domain vocabulary against the posting and fold
+    the hits into the keyword rubric, then make the wrong-field judgement
+    relative to the candidate instead of relative to "is this software?".
+
+    Returns the set of matched domain phrases (for callers that want it).
+    """
+    phrases = candidate_domain_phrases(candidate_data)
+    matched = {phrase for phrase in phrases if _contains_phrase(jd, phrase)}
+    if matched:
+        # Both sides genuinely share these terms, so direct-overlap logic credits
+        # them just like a shared tech stack would.
+        posting.terms = posting.terms | matched
+        candidate.all_terms = candidate.all_terms | matched
+
+    if posting.wrong_field:
+        # "Wrong field" must mean wrong *for this candidate*, not "not tech".
+        # If the candidate works in the posting's profession (their skills show
+        # up in the JD, or their profile names the same profession), it's the
+        # RIGHT field and the hard cap must not fire.
+        cand_text = _profile_text(candidate_data).lower()
+        same_profession = any(_contains_phrase(cand_text, term) for term in posting.wrong_field_terms)
+        if matched or same_profession:
+            posting.wrong_field = False
+    return matched
+
+
 def _direct_and_adjacent(posting: PostingSignals, candidate: CandidateEvidence) -> tuple[set[str], set[str], set[str]]:
     required = posting.terms
     direct = required & candidate.all_terms
@@ -503,7 +584,7 @@ def _apply_caps(
     candidate: CandidateEvidence,
     direct: set[str],
     adjacent: set[str],
-) -> tuple[int, list[str]]:
+) -> tuple[int, list[str], int | None]:
     caps: list[tuple[int, str]] = []
     if posting.wrong_field:
         caps.append((15, "wrong-field cap: posting is not a technical/software opportunity"))
@@ -516,10 +597,10 @@ def _apply_caps(
     if not posting.terms and len(_squash(posting.text)) < 160:
         caps.append((68, "confidence cap: posting is too thin for a high rating"))
     if not caps:
-        return score, []
+        return score, [], None
     cap, _reason = min(caps, key=lambda item: item[0])
     limit_notes = [reason for _limit, reason in sorted(caps, key=lambda item: item[0])]
-    return min(score, cap), limit_notes
+    return min(score, cap), limit_notes, cap
 
 
 def _evidence_line(candidate: CandidateEvidence, terms: set[str]) -> str:
@@ -543,6 +624,7 @@ def _result(
     adjacent: set[str],
     missing: set[str],
     caps: list[str],
+    applied_cap: int | None = None,
 ) -> ScoreResult:
     ordered = sorted(criteria, key=lambda c: c.weight, reverse=True)
     breakdown = ", ".join(f"{c.name.split()[0]} {c.score}" for c in ordered)
@@ -576,6 +658,7 @@ def _result(
         match_points=match_points[:7],
         gaps=list(dict.fromkeys(gaps))[:8],
         criteria=criteria,
+        applied_cap=applied_cap,
     )
 
 
@@ -658,6 +741,10 @@ def score_job_lead(jd: str, candidate_data: dict) -> ScoreResult:
 
     candidate = analyze_candidate(candidate_data)
     posting = analyze_posting(jd, "Job lead")
+    # Field-agnostic step: credit the candidate's own domain vocabulary and make
+    # the wrong-field judgement relative to the candidate (must run before the
+    # criteria and caps read posting.terms / posting.wrong_field).
+    apply_domain_generalization(posting, candidate, candidate_data, jd)
     role = evaluate_role_alignment(posting, candidate)
     seniority = evaluate_seniority_fit(posting, candidate)
     constraints = evaluate_logistics(posting, candidate)
@@ -682,8 +769,8 @@ def score_job_lead(jd: str, candidate_data: dict) -> ScoreResult:
 
     direct, adjacent, missing = _direct_and_adjacent(posting, candidate)
     raw = _weighted_total(criteria)
-    final, caps = _apply_caps(raw, posting, candidate, direct, adjacent)
-    result = _result(final, criteria, posting, candidate, direct, adjacent, missing, caps)
+    final, caps, applied_cap = _apply_caps(raw, posting, candidate, direct, adjacent)
+    result = _result(final, criteria, posting, candidate, direct, adjacent, missing, caps, applied_cap)
     if semantic is None:
         result.gaps.append("Semantic matching unavailable; used deterministic keyword/rubric scoring.")
     return result

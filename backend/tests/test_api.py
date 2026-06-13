@@ -95,7 +95,9 @@ main._API_TOKEN = "test-token-abc123"
 
 from main import app  # noqa: E402  (same cached module, just for IDE clarity)
 
-CLIENT = TestClient(app, raise_server_exceptions=False)
+# Use a loopback Host so requests satisfy the TrustedHostMiddleware the same way
+# the real Tauri webview (which talks to 127.0.0.1) does.
+CLIENT = TestClient(app, raise_server_exceptions=False, base_url="http://127.0.0.1")
 AUTH = {"Authorization": "Bearer test-token-abc123"}
 NO_AUTH: dict = {}
 
@@ -273,12 +275,18 @@ class TestGraphEndpoint(unittest.TestCase):
 
     def test_websocket_valid_token_connects(self):
         # Token rides in the Sec-WebSocket-Protocol header (2nd subprotocol), not the URL.
-        with CLIENT.websocket_connect("/ws", subprotocols=["jhm.bearer", "test-token-abc123"]) as ws:
+        # The TestClient sends "testserver" as the ws Host regardless of base_url, so
+        # set a loopback Host to satisfy TrustedHostMiddleware (the real webview uses 127.0.0.1).
+        with CLIENT.websocket_connect(
+            "/ws", subprotocols=["jhm.bearer", "test-token-abc123"], headers={"host": "127.0.0.1"}
+        ) as ws:
             msg = ws.receive_json()
         self.assertEqual(msg["type"], "heartbeat")
 
     def test_websocket_missing_token_closes_without_server_error(self):
-        with self.assertRaises(WebSocketDisconnect), CLIENT.websocket_connect("/ws"):
+        with self.assertRaises(WebSocketDisconnect), CLIENT.websocket_connect(
+            "/ws", headers={"host": "127.0.0.1"}
+        ):
             pass
 
 
@@ -686,9 +694,8 @@ class TestGenerateEndpoint(unittest.TestCase):
         self.assertEqual(resp.json()["job_id"], "test-generate-start-001")
         self.assertEqual(generate_mock.await_count, 1)
 
-    def test_generate_one_returns_package_when_persistence_steps_fail(self):
-        from api.routers import generation
-
+    @staticmethod
+    def _generation_fixtures(leads_overrides: dict):
         broadcasts = []
 
         class Manager:
@@ -702,21 +709,23 @@ class TestGenerateEndpoint(unittest.TestCase):
             def update(self, *_args, **_kwargs):
                 return None
 
+        leads_api = {
+            "get_lead_by_id": lambda _job_id: {
+                "job_id": "job-1",
+                "title": "AI Engineer",
+                "company": "Acme",
+                "description": "Build and operate FastAPI backend services for our internal automation platform, owning data pipelines, API integrations, and reliability work.",
+                "source_meta": {},
+            },
+            "update_lead_status": lambda *_args, **_kwargs: None,
+            "save_asset_package": lambda *_args, **_kwargs: None,
+            "update_outreach_fields": lambda *_args, **_kwargs: None,
+            "save_contact_lookup": lambda *_args, **_kwargs: None,
+        }
+        leads_api.update(leads_overrides)
         repo = types.SimpleNamespace(
             settings=types.SimpleNamespace(get_setting=lambda *_args, **_kwargs: ""),
-            leads=types.SimpleNamespace(
-                get_lead_by_id=lambda _job_id: {
-                    "job_id": "job-1",
-                    "title": "AI Engineer",
-                    "company": "Acme",
-                    "description": "Build and operate FastAPI backend services for our internal automation platform, owning data pipelines, API integrations, and reliability work.",
-                    "source_meta": {},
-                },
-                update_lead_status=lambda *_args, **_kwargs: None,
-                save_asset_package=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("db locked")),
-                update_outreach_fields=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("db locked")),
-                save_contact_lookup=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("db locked")),
-            ),
+            leads=types.SimpleNamespace(**leads_api),
         )
         service = types.SimpleNamespace(
             generate_with_contacts=mock.AsyncMock(return_value=types.SimpleNamespace(
@@ -730,17 +739,50 @@ class TestGenerateEndpoint(unittest.TestCase):
                 contact_lookup={"contacts": []},
             ))
         )
+        return Manager(), JobStore(), repo, service, broadcasts
+
+    def test_generate_one_returns_package_when_soft_persistence_steps_fail(self):
+        from api.routers import generation
+
+        manager, job_store, repo, service, _broadcasts = self._generation_fixtures({
+            "update_outreach_fields": lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("db locked")),
+            "save_contact_lookup": lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("db locked")),
+        })
 
         lead = asyncio.run(generation.generate_one(
             "job-1",
-            Manager(),
+            manager,
             repo=repo,
             service=service,
-            job_store=JobStore(),
+            job_store=job_store,
         ))
 
         self.assertEqual(lead["resume_asset"], "resume.pdf")
         self.assertIn("generation_persistence_errors", lead["source_meta"])
+
+    def test_generate_one_fails_when_asset_package_save_fails(self):
+        from fastapi import HTTPException
+        from api.routers import generation
+
+        statuses = []
+        manager, job_store, repo, service, broadcasts = self._generation_fixtures({
+            "save_asset_package": lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("db locked")),
+            "update_lead_status": lambda _job_id, status: statuses.append(status),
+        })
+
+        # save_asset_package is the write that makes the generation real; if it
+        # fails the endpoint must report failure, not "ready".
+        with self.assertRaises(HTTPException):
+            asyncio.run(generation.generate_one(
+                "job-1",
+                manager,
+                repo=repo,
+                service=service,
+                job_store=job_store,
+            ))
+
+        self.assertIn("discovered", statuses)  # reverted, not left as approved
+        self.assertTrue(any(b.get("event") == "gen_error" for b in broadcasts))
 
     def test_generate_one_rejects_url_only_lead(self):
         from fastapi import HTTPException

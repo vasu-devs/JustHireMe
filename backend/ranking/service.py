@@ -3,11 +3,19 @@ import logging
 
 import asyncio
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from ranking.evaluator import Evaluator
 from ranking.feedback_ranker import FeedbackRanker
 from ranking.scoring_engine import ScoringEngine
 from ranking.semantic import SemanticMatcher
+
+
+@lru_cache
+def _settings_repository():
+    from data.repository import create_repository
+
+    return create_repository()
 
 
 @dataclass
@@ -32,7 +40,25 @@ class RankingService:
         self.feedback = feedback or FeedbackRanker()
 
     async def evaluate_lead(self, lead: dict, profile: dict) -> dict:
-        return await asyncio.to_thread(self.evaluator.score, self.job_document(lead), profile)
+        settings = await asyncio.to_thread(self._load_settings)
+        return await asyncio.to_thread(
+            self.evaluator.score, self.job_document(lead), profile, settings
+        )
+
+    @staticmethod
+    def _load_settings() -> dict:
+        """Fetch live app settings so the evaluator sees the configured LLM route.
+
+        Without this the evaluator always falls back to the deterministic rubric,
+        even when the user has configured an evaluator provider/key.
+        """
+        try:
+            return _settings_repository().settings.get_settings() or {}
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning(
+                'suppressed exception in backend/ranking/service.py:_load_settings: %s', log_exc
+            )
+            return {}
 
     async def deterministic_score(self, lead: dict | str, profile: dict):
         jd = lead if isinstance(lead, str) else self.job_document(lead)

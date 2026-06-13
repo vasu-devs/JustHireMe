@@ -163,7 +163,13 @@ async def run_free_source_scan(
     kind_filter = "job"
     label = "job leads"
     await manager.broadcast({"type": "agent", "event": "free_scout_start", "msg": f"Scanning free sources for {label}..."})
-    result = await discovery_service.scan_free_sources(cfg, kind_filter=kind_filter, profile=profile, force=force)
+    try:
+        result = await discovery_service.scan_free_sources(cfg, kind_filter=kind_filter, profile=profile, force=force)
+    except Exception as exc:
+        # Close the websocket activity entry before propagating, so listeners
+        # don't sit on "Scanning free sources..." with no terminal event.
+        await manager.broadcast({"type": "agent", "event": "free_scout_done", "msg": f"Free scout failed: {exc}"})
+        raise
     leads = result.leads
     usage = result.usage
     await manager.broadcast({
@@ -183,6 +189,21 @@ async def run_free_source_scan(
     return leads, usage, result.errors
 
 
+def _finalize_job(job_store, job_id: str, *, status: str, error: str = "") -> None:
+    """Mark a persisted job terminal unless the run already did so.
+
+    Without this, a failed or stopped scan leaves its job row at
+    "running, progress 5" forever (job rows survive restarts).
+    """
+    try:
+        record = job_store.get(job_id)
+        if record and record.status in ("succeeded", "failed", "cancelled"):
+            return
+        job_store.update(job_id, status=status, progress=100, error=error or None)
+    except Exception as log_exc:
+        _log.warning('suppressed exception in backend/api/routers/discovery.py:_finalize_job: %s', log_exc)
+
+
 async def run_scan(
     manager,
     *,
@@ -191,13 +212,40 @@ async def run_scan(
     ranking_service=None,
     stop_event: asyncio.Event | None = None,
 ) -> None:
-    repo = repo or get_repository()
-    discovery_service = discovery_service or get_discovery_service()
-    ranking_service = ranking_service or get_ranking_service()
     stop_event = stop_event or asyncio.Event()
     job_store = get_job_runner()
     job = job_store.create("scan", {})
     job_store.update(job.job_id, status="running", progress=5)
+    try:
+        await _run_scan_inner(
+            manager,
+            repo=repo,
+            discovery_service=discovery_service,
+            ranking_service=ranking_service,
+            stop_event=stop_event,
+            job_store=job_store,
+            job=job,
+        )
+    except Exception as exc:
+        _finalize_job(job_store, job.job_id, status="failed", error=str(exc))
+        raise
+    else:
+        _finalize_job(job_store, job.job_id, status="cancelled" if stop_event.is_set() else "succeeded")
+
+
+async def _run_scan_inner(
+    manager,
+    *,
+    repo: Repository | None,
+    discovery_service,
+    ranking_service,
+    stop_event: asyncio.Event,
+    job_store,
+    job,
+) -> None:
+    repo = repo or get_repository()
+    discovery_service = discovery_service or get_discovery_service()
+    ranking_service = ranking_service or get_ranking_service()
     # H4: these are synchronous SQLite reads; run them off the event loop so a
     # slow/locked DB doesn't block all other coroutines.
     cfg = await asyncio.to_thread(repo.settings.get_settings)
@@ -329,12 +377,37 @@ async def run_reevaluate_jobs(
     ranking_service=None,
     stop_event: asyncio.Event | None = None,
 ) -> None:
-    repo = repo or get_repository()
-    ranking_service = ranking_service or get_ranking_service()
     stop_event = stop_event or asyncio.Event()
     job_store = get_job_runner()
     job = job_store.create("reevaluate", {})
     job_store.update(job.job_id, status="running", progress=5)
+    try:
+        await _run_reevaluate_jobs_inner(
+            manager,
+            repo=repo,
+            ranking_service=ranking_service,
+            stop_event=stop_event,
+            job_store=job_store,
+            job=job,
+        )
+    except Exception as exc:
+        _finalize_job(job_store, job.job_id, status="failed", error=str(exc))
+        raise
+    else:
+        _finalize_job(job_store, job.job_id, status="cancelled" if stop_event.is_set() else "succeeded")
+
+
+async def _run_reevaluate_jobs_inner(
+    manager,
+    *,
+    repo: Repository | None,
+    ranking_service,
+    stop_event: asyncio.Event,
+    job_store,
+    job,
+) -> None:
+    repo = repo or get_repository()
+    ranking_service = ranking_service or get_ranking_service()
     cfg = await asyncio.to_thread(repo.settings.get_settings)
     profile = await asyncio.to_thread(repo.profile.get_profile)
     jobs = await asyncio.to_thread(repo.leads.get_job_leads_for_evaluation)

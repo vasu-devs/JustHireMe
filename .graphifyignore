@@ -1,3 +1,16 @@
+# Scope: product codebase only — exclude the separate marketing site, design
+# mockups, and binary images (vision adds isolated peripheral nodes, not code).
+website/
+Designs/
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.webp
+**/*.gif
+**/*.svg
+**/*.ico
+.tmp-fiber/
+
 # Dependencies
 node_modules/
 website/node_modules/

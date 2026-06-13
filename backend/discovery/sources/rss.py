@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
+import defusedxml.ElementTree as ET
 import httpx
+
+from discovery.sources.net import guarded_async_client
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from discovery.normalizer import is_recent, looks_role_like, strip_html_text
@@ -99,6 +101,29 @@ def salary_from_bounds(low, high, currency: str = "") -> str:
     return f"{prefix}{low_text or high_text}"
 
 
+def feed_entries(root) -> list:
+    """Return RSS `<item>` and Atom `<entry>` nodes, namespace-agnostic.
+
+    Many `/feed` and `.xml` targets are Atom feeds; matching only `item`
+    silently returned zero leads for them.
+    """
+    return [
+        node
+        for node in root.iter()
+        if str(node.tag).rsplit("}", 1)[-1].lower() in ("item", "entry")
+    ]
+
+
+def atom_link_href(node) -> str:
+    """Atom carries the URL in `<link href=...>` rather than element text."""
+    for child in list(node):
+        if str(child.tag).rsplit("}", 1)[-1].lower() == "link":
+            href = (child.get("href") or "").strip()
+            if href:
+                return href
+    return ""
+
+
 def xml_text(node, *names: str) -> str:
     wanted = {name.lower() for name in names}
     for child in list(node):
@@ -152,7 +177,7 @@ def rss_company_and_role(title: str, platform: str) -> tuple[str, str]:
 )
 async def scrape_rss(u: str) -> list:
     platform = platform_from_url(u, "rss")
-    async with httpx.AsyncClient(timeout=30, headers=http_headers(platform), follow_redirects=True) as cx:
+    async with guarded_async_client(timeout=30, headers=http_headers(platform), follow_redirects=True) as cx:
         r = await cx.get(u)
         if r.status_code == 429:
             retry_after = int(r.headers.get("Retry-After", 15))
@@ -162,11 +187,13 @@ async def scrape_rss(u: str) -> list:
         root = ET.fromstring(r.text)
 
     items = []
-    for item in root.findall(".//item"):
+    for item in feed_entries(root):
         raw_title = xml_text(item, "title")
-        link = xml_text(item, "link", "guid")
+        link = xml_text(item, "link", "guid") or atom_link_href(item)
         date_str = xml_text(item, "pubDate", "published", "updated")
-        if not is_recent(date_str):
+        # Match the other adapters: only drop items whose date is present and
+        # confirmed stale; undated feed items pass through to the quality gate.
+        if date_str and not is_recent(date_str):
             continue
         company, title = rss_company_and_role(raw_title, platform)
         desc = description(
@@ -246,7 +273,7 @@ async def scrape_remoteok() -> list:
     reraise=True,
 )
 async def scrape_remotive(u: str) -> list:
-    async with httpx.AsyncClient(timeout=30, headers=http_headers("remotive"), follow_redirects=True) as cx:
+    async with guarded_async_client(timeout=30, headers=http_headers("remotive"), follow_redirects=True) as cx:
         r = await cx.get(u)
         if r.status_code == 429:
             retry_after = int(r.headers.get("Retry-After", 15))
@@ -299,7 +326,7 @@ async def scrape_remotive(u: str) -> list:
     reraise=True,
 )
 async def scrape_jobicy_api(u: str) -> list:
-    async with httpx.AsyncClient(timeout=30, headers=http_headers("jobicy"), follow_redirects=True) as cx:
+    async with guarded_async_client(timeout=30, headers=http_headers("jobicy"), follow_redirects=True) as cx:
         r = await cx.get(u)
         if r.status_code == 429:
             retry_after = int(r.headers.get("Retry-After", 15))

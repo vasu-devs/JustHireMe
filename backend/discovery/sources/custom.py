@@ -3,10 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 
-import httpx
-
 from discovery.normalizer import clean_text, is_recent
 from discovery.sources.common import text_lead
+from discovery.sources.net import guarded_async_client
 
 CONNECTOR_MAX_ITEMS = 60
 
@@ -72,7 +71,7 @@ async def scrape_custom_connector(
         **connector_headers(raw_headers, name, errors),
     }
     params = connector.get("params") if isinstance(connector.get("params"), dict) else None
-    async with httpx.AsyncClient(timeout=30, headers=headers, follow_redirects=True) as cx:
+    async with guarded_async_client(timeout=30, headers=headers, follow_redirects=True) as cx:
         r = await cx.get(url, params=params)
         if r.status_code == 429:
             retry_after = int(r.headers.get("Retry-After", 15))

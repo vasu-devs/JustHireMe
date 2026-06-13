@@ -1,13 +1,11 @@
 """Deterministic lead quality gate for discovery sources."""
 
 from __future__ import annotations
-import logging
 
-import re
-from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
+from datetime import datetime, timezone
 
 from discovery.lead_intel import clean_text, signal_quality
+from discovery.normalizer import parse_date
 
 
 MIN_DEFAULT_QUALITY = 60
@@ -69,37 +67,13 @@ def _lead_text(lead: dict) -> str:
 
 
 def _parse_date(value: str) -> datetime | None:
+    # Delegate to the normalizer's parser so the quality gate and the source
+    # adapters agree on what counts as a dated lead. A drifted local copy here
+    # used to reject "N minutes ago" leads as "no posting date".
     raw = str(value or "").strip()
     if not raw:
         return None
-    lower = raw.lower()
-    now = datetime.now(timezone.utc)
-    if lower in {"today", "just now", "moments ago"}:
-        return now
-    if lower == "yesterday":
-        return now - timedelta(days=1)
-    match = re.search(r"(\d+)\s*(hour|day|week|month|year)s?\s*ago", lower)
-    if match:
-        amount = int(match.group(1))
-        unit = match.group(2)
-        days = {"hour": 0, "day": amount, "week": amount * 7, "month": amount * 30, "year": amount * 365}[unit]
-        if unit == "hour":
-            return now - timedelta(hours=amount)
-        return now - timedelta(days=days)
-    try:
-        parsed = parsedate_to_datetime(raw)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed
-    except Exception as log_exc:
-        logging.getLogger(__name__).warning('suppressed exception in backend/discovery/quality_gate.py:_parse_date: %s', log_exc)
-        pass
-    for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%b %d, %Y", "%d %b %Y"):
-        try:
-            return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    return None
+    return parse_date(raw)
 
 
 def _has_fresh_source(lead: dict) -> bool:

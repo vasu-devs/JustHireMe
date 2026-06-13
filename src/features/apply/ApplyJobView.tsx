@@ -71,7 +71,9 @@ export function ApplyJobView({ port, api, leads, openDrawer, initialInput, autoF
     if (!lead?.job_id) return;
     const onLeadUpdated = (event: Event) => {
       const updated = (event as CustomEvent<Lead>).detail;
-      if (updated?.job_id === lead.job_id) setLead(updated);
+      // Merge: some producers dispatch partial payloads ({job_id, status});
+      // replacing wholesale would wipe title/assets from the panel.
+      if (updated?.job_id === lead.job_id) setLead(prev => (prev ? { ...prev, ...updated } : updated));
     };
     window.addEventListener("lead-updated", onLeadUpdated);
     return () => window.removeEventListener("lead-updated", onLeadUpdated);

@@ -25,6 +25,9 @@ class P(BaseModel):
 class C(BaseModel):
     n:        str
     s:        str      = ""
+    # Free-text location from the CV (city/region/country), used to target
+    # discovery to the candidate's region. Optional and field-agnostic.
+    loc:      str      = ""
     skills:   list[S]  = Field(default_factory=list)
     exp:      list[E]  = Field(default_factory=list)
     projects: list[P]  = Field(default_factory=list)

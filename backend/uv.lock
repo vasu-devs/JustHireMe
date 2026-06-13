@@ -221,6 +221,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "apscheduler" },
+    { name = "defusedxml" },
     { name = "fastapi" },
     { name = "fpdf2" },
     { name = "html2text" },
@@ -258,6 +259,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = "~=0.104.1" },
     { name = "apscheduler", specifier = ">=3.11.2" },
+    { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "fastapi", specifier = ">=0.136.1" },
     { name = "fpdf2", specifier = ">=2.8.7" },
     { name = "html2text", specifier = ">=2025.4.15" },

@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -8,6 +10,22 @@ if str(BACKEND_ROOT) not in sys.path:
 
 
 collect_ignore_glob = ["tmp*"]
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiters():
+    """Clear per-process rate-limit budgets before each test.
+
+    The FastAPI app and its limiters are module-cached, so without this a test
+    that exhausts a limiter would make later tests fail with 429.
+    """
+    try:
+        from api.rate_limit import reset_all_rate_limiters
+
+        reset_all_rate_limiters()
+    except Exception:
+        pass
+    yield
 
 
 def pytest_configure(config):

@@ -301,31 +301,41 @@ export default function App() {
           </div>
         </div>
 
-        <AnimatePresence>
-          {liveSel && api && (
-            <ApprovalDrawer key={liveSel.job_id} j={liveSel} api={api} onClose={() => setSel(null)} />
-          )}
-          {showSettings && api && (
-            <SettingsModal key="settings" api={api} onClose={() => setShowSettings(false)} />
-          )}
-          {showOnboarding && api && (
-            <OnboardingWizard
-              key="onboarding"
-              api={api}
-              onOpenSettings={() => setShowSettings(true)}
-              onFinish={(draft) => {
-                localStorage.setItem(ONBOARDING_KEY, "done");
-                setApplyDraft(draft);
-                setView("apply");
-                setShowOnboarding(false);
-              }}
-            />
-          )}
-        </AnimatePresence>
-        {api && <HelpChat api={api} />}
+        {/* The drawer/modal layer renders the richest untyped lead data; a
+            render crash here without a boundary would blank the whole app. */}
+        <ErrorBoundary label="Lead drawer" api={api ?? undefined}>
+          <AnimatePresence>
+            {liveSel && api && (
+              <ApprovalDrawer key={liveSel.job_id} j={liveSel} api={api} onClose={() => setSel(null)} />
+            )}
+            {showSettings && api && (
+              <SettingsModal key="settings" api={api} onClose={() => setShowSettings(false)} />
+            )}
+            {showOnboarding && api && (
+              <OnboardingWizard
+                key="onboarding"
+                api={api}
+                onOpenSettings={() => setShowSettings(true)}
+                onFinish={(draft) => {
+                  localStorage.setItem(ONBOARDING_KEY, "done");
+                  setApplyDraft(draft);
+                  setView("apply");
+                  setShowOnboarding(false);
+                }}
+              />
+            )}
+          </AnimatePresence>
+        </ErrorBoundary>
+        {api && (
+          <ErrorBoundary label="Help chat" api={api}>
+            <HelpChat api={api} />
+          </ErrorBoundary>
+        )}
       </div>
-      <SemanticRuntimePrompt api={api} />
-      <UpdatePrompt />
+      <ErrorBoundary label="Prompts" api={api ?? undefined}>
+        <SemanticRuntimePrompt api={api} />
+        <UpdatePrompt />
+      </ErrorBoundary>
     </>
   );
 }

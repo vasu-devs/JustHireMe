@@ -23,9 +23,13 @@ class _FakeUpload:
         self._content = content
         self.read_calls = 0
 
-    async def read(self):
+    async def read(self, size=-1):
+        # Mirror Starlette's UploadFile.read(size): return the full content on
+        # the first call, then EOF, so the chunked _read_capped terminates.
         self.read_calls += 1
-        return self._content
+        if self.read_calls == 1:
+            return self._content
+        return b""
 
 
 @pytest.mark.asyncio
@@ -36,7 +40,8 @@ async def test_temp_upload_reads_async_and_writes_file():
         assert path.endswith(".pdf")
         with open(path, "rb") as fh:
             assert fh.read() == b"%PDF-1.4 hello"
-    assert upload.read_calls == 1
+    # _read_capped streams in chunks until EOF (content chunk + empty terminator).
+    assert upload.read_calls >= 1
     # temp file cleaned up on exit
     import os
     assert not os.path.exists(path)

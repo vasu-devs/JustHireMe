@@ -198,6 +198,29 @@ def _india_clause(query: str) -> str:
     return f'{query} (India OR Indian OR Bengaluru OR Bangalore OR Mumbai OR Pune OR Hyderabad OR Delhi OR "Indian startup")'
 
 
+def _location_clause(query: str, location: str, remote_pref: str = "any") -> str:
+    """Append region/remote intent to a query for ANY location on Earth.
+
+    Generalizes _india_clause: targets the user's actual city/country (so the
+    global aggregator boards return region-appropriate results) while honoring
+    their remote preference.
+    """
+    location = str(location or "").strip()
+    lower = query.lower()
+    if remote_pref == "remote":
+        if "remote" in lower:
+            return query
+        return f'{query} (remote OR "work from home" OR "fully remote")'
+    if not location:
+        return query
+    if location.lower() in lower:
+        return query
+    if remote_pref == "onsite":
+        return f'{query} ("{location}")'
+    # hybrid / any: include the region but still allow remote roles.
+    return f'{query} ("{location}" OR remote OR hybrid)'
+
+
 def generate(profile: dict, urls: list[str], market_focus: str = "global") -> list[str]:
     """
     Main entry point.  Returns a new URL list where every 'site:' entry has
@@ -207,6 +230,10 @@ def generate(profile: dict, urls: list[str], market_focus: str = "global") -> li
     from llm import call_llm
 
     focus = _market_focus(market_focus)
+    # Location is resolved upstream (profile_for_discovery) from an explicit
+    # setting or the profile's own identity, so any region on Earth works.
+    location = str(profile.get("_discovery_location") or "").strip()
+    remote_pref = str(profile.get("_remote_preference") or "any").strip().lower()
     site_domains, passthrough = _extract_domains(urls)
     passthrough = _enrich_passthrough_targets(passthrough, profile)
 
@@ -256,11 +283,25 @@ Rules:
 - This scan is INDIA ONLY. Add India/Indian startup location intent to every query.
 - Prefer India-friendly terms such as India, Indian, Bengaluru, Bangalore, Mumbai, Pune, Hyderabad, Delhi, and "Indian startup".
 - Do not produce broad global remote queries for this mode."""
+    elif location:
+        system += f"""
+- Target the candidate's location: {location}. Add that city/region to each query so local roles surface.
+- Honor the remote preference ({remote_pref}): include "remote"/"hybrid" alternatives unless the preference is onsite."""
+    elif remote_pref == "remote":
+        system += """
+- The candidate prefers REMOTE work. Add remote/work-from-home intent to each query."""
+
+    if focus == "india":
+        market_line = "INDIA ONLY - Indian startups and India-based roles"
+    elif location:
+        market_line = f"{location} (remote preference: {remote_pref})"
+    else:
+        market_line = f"Global (remote preference: {remote_pref})"
 
     user = f"""CANDIDATE PROFILE
 Target role / summary : {target_role}
 Detected seniority    : {experience_level.upper()} - preferred seniority query terms: {seniority_hint}
-Market focus          : {"INDIA ONLY - Indian startups and India-based roles" if focus == "india" else "Global"}
+Market focus          : {market_line}
 Top skills            : {', '.join(skills[:15])}
 Detected role themes  : {', '.join(role_terms)}
 Project/tool stack    : {', '.join(stack_tokens)}
@@ -283,6 +324,10 @@ Generate the queries now."""
 
     if focus == "india":
         smart = [_india_clause(q) for q in smart]
+    elif location or remote_pref == "remote":
+        # Deterministically guarantee region/remote intent even if the LLM
+        # omitted it (the fallback queries never include it).
+        smart = [_location_clause(q, location, remote_pref) for q in smart]
 
     _log.info("Generated %s queries for %s domains", len(smart), len(site_domains))
     for q in smart:

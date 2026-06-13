@@ -8,6 +8,8 @@ export function OnboardingWizard({ api, onFinish, onOpenSettings }: { api: ApiFe
   const [file, setFile] = useState<File | null>(null);
   const [rawResume, setRawResume] = useState("");
   const [role, setRole] = useState("");
+  const [location, setLocation] = useState("");
+  const [remotePref, setRemotePref] = useState("any");
   const [market, setMarket] = useState("remote");
   const [provider, setProvider] = useState("ollama");
   const [model, setModel] = useState("");
@@ -131,6 +133,7 @@ export function OnboardingWizard({ api, onFinish, onOpenSettings }: { api: ApiFe
     const trimmedRole = role.trim();
     const payload: Record<string, any> = {
       job_market_focus: market,
+      remote_preference: remotePref,
       llm_provider: provider,
       free_sources_enabled: true,
     };
@@ -138,6 +141,9 @@ export function OnboardingWizard({ api, onFinish, onOpenSettings }: { api: ApiFe
       payload.onboarding_target_role = trimmedRole;
       payload.desired_position = trimmedRole;
     }
+    // Optional: an explicit location overrides whatever the CV auto-detected.
+    // Left blank, discovery uses the location parsed from the résumé.
+    if (location.trim()) payload.job_location = location.trim();
     if (provider === "ollama") payload.ollama_url = ollamaUrl;
     const field = keyField[provider];
     if (field && apiKey.trim()) payload[field] = apiKey.trim();
@@ -249,7 +255,22 @@ export function OnboardingWizard({ api, onFinish, onOpenSettings }: { api: ApiFe
             <div className="col gap-4">
               <div>
                 <label className="eyebrow">Target role</label>
-                <input className="field-input" value={role} onChange={e => setRole(e.target.value)} placeholder="e.g. Backend Engineer, Product Designer, Data Analyst" style={{ marginTop: 7 }} />
+                <input className="field-input" value={role} onChange={e => setRole(e.target.value)} placeholder="e.g. Registered Nurse, Electrician, Backend Engineer, Chef" style={{ marginTop: 7 }} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label className="eyebrow">Location <span style={{ opacity: 0.6, textTransform: "none", fontWeight: 400 }}>(optional — auto-detected from your résumé)</span></label>
+                  <input className="field-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. Berlin, Toronto, Lagos, Mumbai" style={{ marginTop: 7 }} />
+                </div>
+                <div>
+                  <label className="eyebrow">Work type</label>
+                  <select className="field-input" value={remotePref} onChange={e => setRemotePref(e.target.value)} style={{ marginTop: 7 }}>
+                    <option value="any">Any</option>
+                    <option value="remote">Remote</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="onsite">Onsite</option>
+                  </select>
+                </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>

@@ -271,15 +271,26 @@ async def help_chat(body: HelpChatBody):
     return await asyncio.to_thread(answer, body.question, history)
 
 
+_errors_limiter = RateLimiter(30, 60)
+
+
+def _clip(value: object, max_len: int = 4000) -> str:
+    return str(value or "")[:max_len]
+
+
 @router.post("/errors")
 async def record_frontend_error(payload: dict):
+    # Bound every field so a runaway/abusive client can't write multi-MB lines
+    # into errors.jsonl (redact_sensitive truncates strings but not a giant
+    # nested dict passed as componentStack).
+    require_rate_limit(_errors_limiter)
     safe_payload = redact_sensitive({
-        "error": payload.get("error") or "Frontend error",
-        "componentStack": payload.get("componentStack", ""),
-        "url": payload.get("url", ""),
-        "userAgent": payload.get("userAgent", ""),
+        "error": _clip(payload.get("error") or "Frontend error", 2000),
+        "componentStack": _clip(payload.get("componentStack", ""), 8000),
+        "url": _clip(payload.get("url", ""), 1000),
+        "userAgent": _clip(payload.get("userAgent", ""), 500),
     })
-    log_error(redact_text(payload.get("error") or "Frontend error"), {"frontend": safe_payload})
+    log_error(redact_text(_clip(payload.get("error") or "Frontend error", 2000)), {"frontend": safe_payload})
     return {"ok": True}
 
 

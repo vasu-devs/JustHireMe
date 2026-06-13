@@ -6,19 +6,32 @@ cleaners used on extracted text. No dependency on the rest of the ingestor.
 """
 
 import re
-import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
+
+import defusedxml.ElementTree as ET
 
 from core.logging import get_logger
 
 _log = get_logger(__name__)
 
+# Ceiling for a single decompressed DOCX member: guards against zip bombs where
+# a tiny archive expands to gigabytes. A real resume's document.xml is well
+# under this.
+_MAX_DOCX_MEMBER_BYTES = 64 * 1024 * 1024
+
+
+def _read_zip_member(archive: zipfile.ZipFile, name: str) -> bytes:
+    info = archive.getinfo(name)
+    if info.file_size > _MAX_DOCX_MEMBER_BYTES:
+        raise ValueError(f"DOCX member {name!r} too large: {info.file_size} bytes")
+    return archive.read(name)
+
 
 def _docx(path: str) -> str:
     try:
         with zipfile.ZipFile(path) as archive:
-            xml = archive.read("word/document.xml")
+            xml = _read_zip_member(archive, "word/document.xml")
         root = ET.fromstring(xml)
         ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
         paragraphs = []

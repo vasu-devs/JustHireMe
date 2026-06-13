@@ -224,6 +224,10 @@ class ScoreResult:
     match_points: list[str]
     gaps: list[str]
     criteria: list[CriterionScore]
+    # The hard-cap ceiling applied to this score (e.g. seniority mismatch), if
+    # any. Carried so the LLM evaluator can raise within the guardrail band
+    # rather than being pinned to the deterministic baseline.
+    applied_cap: int | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -231,6 +235,7 @@ class ScoreResult:
             "reason": self.reason,
             "match_points": self.match_points,
             "gaps": self.gaps,
+            "applied_cap": self.applied_cap,
         }
 
 

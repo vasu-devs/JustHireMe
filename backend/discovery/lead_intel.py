@@ -44,6 +44,11 @@ INTENT_TERMS = (
     "junior", "entry level", "new grad", "graduate",
 )
 
+# Field-agnostic "this is a genuine professional role" vocabularies live in
+# core.occupations so discovery and profile ingestion share one source of truth.
+from core.occupations import EMPLOYMENT_TERMS as EMPLOYMENT_TERMS
+from core.occupations import OCCUPATION_TERMS as OCCUPATION_TERMS
+
 JOB_TERMS = (
     "hiring", "job opening", "open role", "full-time", "full time",
     "part-time", "part time", "apply", "salary", "remote",
@@ -203,13 +208,22 @@ def signal_quality(text: str, default_kind: str = "job") -> dict:
     intent = matched_terms(lower, INTENT_TERMS)
     urgency = matched_terms(lower, URGENCY_TERMS)
     noise = matched_terms(lower, NOISE_TERMS)
+    # Field-agnostic legitimacy: a real job posting names a role/occupation or
+    # employment structure, in ANY field. This carries the bonus the tech-only
+    # check used to, so non-tech postings are no longer scored below the gate.
+    role_fit = matched_terms(lower, OCCUPATION_TERMS) or matched_terms(lower, EMPLOYMENT_TERMS)
 
     tags: list[str] = []
     reasons: list[str] = []
     score = 18
 
+    if role_fit:
+        score += 22
+        reasons.append("role fit: " + ", ".join(role_fit[:4]))
     if tech:
-        score += 25
+        # Tech terms remain a useful display tag (and a small edge), but no
+        # longer gate non-tech leads out.
+        score += 6
         tags.extend(tech[:4])
         reasons.append("technical fit: " + ", ".join(tech[:4]))
     if intent:

@@ -80,6 +80,8 @@ src-tauri/resources/sidecar-internal/
 JustHireMe/
 BoomBoom/
 scratch/
+# Self-contained scraper export, kept locally for reuse elsewhere — not part of this repo
+ScraperAgent/
 
 # Generated artifacts and local analysis output
 graphify-out/
@@ -110,3 +112,14 @@ backend/tests/graph.kuzu
 
 # Local pytest basetemp fallback (used when %TEMP%/pytest-of-<user> is broken)
 backend/.pytest-basetemp/
+.claude/settings.local.json
+.claude/skills-guide.md
+.codegraph/
+
+# Local dev-harness scratch / caches / logs (regenerated; never commit)
+.codex
+.codex-*
+.local-*
+.uv-cache*
+.tmp
+.tmp-fiber

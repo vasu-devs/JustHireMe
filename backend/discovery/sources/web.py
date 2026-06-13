@@ -76,18 +76,32 @@ def to_markdown(html: str) -> str:
     return h.handle(html)
 
 
-async def crawl(u: str, headed: bool = False) -> str:
+async def _crawl_inner(u: str, headed: bool) -> str:
     from automation.browser_runtime import launch_chromium
     from playwright.async_api import async_playwright
 
     async with async_playwright() as pw:
         br = await launch_chromium(pw, headless=not headed)
-        ctx = await br.new_context(ignore_https_errors=True)
-        pg = await ctx.new_page()
-        await pg.goto(u, wait_until="domcontentloaded", timeout=30000)
-        html = await pg.content()
-        await br.close()
+        try:
+            ctx = await br.new_context(ignore_https_errors=True)
+            pg = await ctx.new_page()
+            await pg.goto(u, wait_until="domcontentloaded", timeout=30000)
+            html = await pg.content()
+        finally:
+            # Always close the browser, even if goto/content hangs or raises, so
+            # a single bad target can't leak a Chromium process.
+            try:
+                await br.close()
+            except Exception:
+                pass
     return to_markdown(html)
+
+
+async def crawl(u: str, headed: bool = False) -> str:
+    # Overall wall-clock bound for one target: goto has its own 30s timeout, but
+    # content()/context teardown do not — without this a hung page could stall
+    # the whole sequential scan indefinitely.
+    return await asyncio.wait_for(_crawl_inner(u, headed), timeout=75)
 
 
 def parse(md: str, src: str) -> list:

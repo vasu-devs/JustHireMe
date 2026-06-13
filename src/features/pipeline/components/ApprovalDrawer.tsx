@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalUrl } from "../../../shared/lib/openExternal";
 import Icon from "../../../shared/components/Icon";
 import type { ApiFetch, KeywordCoverage, Lead } from "../../../types";
 import { isAbortLikeError } from "../../../api/client";
@@ -334,7 +335,7 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             <button
-              onClick={() => openUrl(j.url)}
+              onClick={() => openExternalUrl(j.url)}
               title="Open original job posting"
               className="btn"
               style={{ fontSize: 12, borderColor: "var(--teal)", background: "var(--teal-soft)", color: "var(--teal)" }}

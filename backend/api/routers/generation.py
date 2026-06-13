@@ -49,15 +49,18 @@ async def generate_one(
     repo = repo or get_repository()
     service = service or get_generation_service()
     job_store = job_store or get_job_runner()
-    job = job_store.create("generate_package", {"job_id": job_id})
-    lead = repo.leads.get_lead_by_id(job_id)
+    # Every repo/job_store call below is synchronous SQLite; run each off the
+    # event loop so a locked/busy DB can't stall all other coroutines (and WS
+    # broadcasts) for the SQLite busy-timeout.
+    job = await asyncio.to_thread(job_store.create, "generate_package", {"job_id": job_id})
+    lead = await asyncio.to_thread(repo.leads.get_lead_by_id, job_id)
     if not lead:
         await manager.broadcast({"type": "agent", "event": "gen_error", "msg": f"Lead {job_id} not found"})
         raise HTTPException(status_code=404, detail="Lead not found")
     blocked_reason = lead_generation_blocker(lead)
     if blocked_reason:
         try:
-            job_store.update(job.job_id, status="failed", error=blocked_reason)
+            await asyncio.to_thread(job_store.update, job.job_id, status="failed", error=blocked_reason)
         except Exception as log_exc:
             logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', log_exc)
             pass
@@ -70,7 +73,11 @@ async def generate_one(
         template = await asyncio.to_thread(repo.resume_templates.resolve_template_content, template_id)
     except Exception as log_exc:
         logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', log_exc)
-        template = repo.settings.get_setting("resume_template", "")
+        if template_id:
+            # The user explicitly picked this template; silently generating
+            # with a different layout would misrepresent the output.
+            raise HTTPException(status_code=422, detail=f"Resume template {template_id!r} could not be loaded")
+        template = await asyncio.to_thread(repo.settings.get_setting, "resume_template", "")
     await manager.broadcast({
         "type": "agent",
         "event": "gen_start",
@@ -78,9 +85,9 @@ async def generate_one(
     })
 
     try:
-        job_store.update(job.job_id, status="running", progress=10)
+        await asyncio.to_thread(job_store.update, job.job_id, status="running", progress=10)
         try:
-            repo.leads.update_lead_status(job_id, "tailoring")
+            await asyncio.to_thread(repo.leads.update_lead_status, job_id, "tailoring")
             tailoring_lead = {**lead, "status": "tailoring"}
             await manager.broadcast({"type": "LEAD_UPDATED", "data": tailoring_lead})
         except Exception as log_exc:
@@ -90,7 +97,8 @@ async def generate_one(
         package = generation.package
         persistence_errors: list[str] = []
         try:
-            repo.leads.save_asset_package(
+            await asyncio.to_thread(
+                repo.leads.save_asset_package,
                 job_id,
                 package["resume"],
                 package["cover_letter"],
@@ -98,8 +106,11 @@ async def generate_one(
                 package.get("keyword_coverage", {}),
             )
         except Exception as exc:
-            logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', exc)
-            persistence_errors.append(f"asset package: {exc}")
+            # save_asset_package is the only write that flips the lead to
+            # "approved" and records asset_path. If it fails, the UI would show
+            # success while the DB still says "tailoring" with no resume —
+            # treat the whole generation as failed instead.
+            raise RuntimeError(f"generated assets could not be saved: {exc}") from exc
 
         outreach_fields = {}
         if package.get("founder_message"):
@@ -110,7 +121,7 @@ async def generate_one(
             outreach_fields["outreach_email"] = package["cold_email"]
         if outreach_fields:
             try:
-                repo.leads.update_outreach_fields(job_id, outreach_fields)
+                await asyncio.to_thread(repo.leads.update_outreach_fields, job_id, outreach_fields)
             except Exception as exc:
                 logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', exc)
                 persistence_errors.append(f"outreach fields: {exc}")
@@ -129,7 +140,7 @@ async def generate_one(
         }
         contact_lookup = generation.contact_lookup or {}
         try:
-            repo.leads.save_contact_lookup(job_id, contact_lookup)
+            await asyncio.to_thread(repo.leads.save_contact_lookup, job_id, contact_lookup)
         except Exception as exc:
             logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', exc)
             persistence_errors.append(f"contact lookup: {exc}")
@@ -146,21 +157,24 @@ async def generate_one(
             "msg": f"Resume and cover letter ready: {lead.get('title','?')}",
         })
         try:
-            job_store.update(job.job_id, status="succeeded", progress=100, result={"lead": enriched_lead})
+            await asyncio.to_thread(job_store.update, job.job_id, status="succeeded", progress=100, result={"lead": enriched_lead})
         except Exception as log_exc:
             logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', log_exc)
             pass
         enriched_lead["generation_job_id"] = job.job_id
         return enriched_lead
     except Exception as exc:
-        job_store.update(job.job_id, status="failed", error=str(exc))
+        try:
+            await asyncio.to_thread(job_store.update, job.job_id, status="failed", error=str(exc))
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/api/routers/generation.py:generate_one: %s', log_exc)
         # M4: keep transient failures (network/rate-limit) in "tailoring" so the
         # user can simply retry, and surface a retry_after hint. Only permanent
         # failures (bad template/invalid lead) fall back to "discovered".
         transient = _is_transient_generation_error(exc)
         revert_status = "tailoring" if transient else "discovered"
         try:
-            repo.leads.update_lead_status(job_id, revert_status)
+            await asyncio.to_thread(repo.leads.update_lead_status, job_id, revert_status)
             failed_lead = {**lead, "status": revert_status}
             failed_meta = dict(failed_lead.get("source_meta") or {})
             failed_meta["generation_error"] = str(exc)
@@ -233,6 +247,7 @@ def create_router(*, manager) -> APIRouter:
         repo: Repository = Depends(get_repository),
         job_store=Depends(get_job_runner),
     ):
+        require_rate_limit(generate_limiter)
         lead = await asyncio.to_thread(repo.leads.get_lead_by_id, job_id)
         if not lead:
             raise HTTPException(status_code=404, detail="lead not found")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 
@@ -25,9 +26,26 @@ _log = get_logger(__name__)
 _assets = _pdf._assets
 
 
+def _is_transient_llm_error(exc: Exception) -> bool:
+    try:
+        from llm.client import is_transient_llm_error
+    except ImportError:
+        return False
+    return is_transient_llm_error(exc)
+
+
 def _safe_job_id(value: object) -> str:
-    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or "manual").strip())
-    return safe.strip("._-") or "manual"
+    raw = str(value or "manual").strip()
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", raw)
+    safe = safe.strip("._-") or "manual"
+    # If sanitizing was lossy, two distinct ids (e.g. "a/b" and "a:b") collapse to
+    # the same stem and would overwrite each other's PDFs. Append a short digest
+    # of the raw id to keep them distinct. Clean ids are left untouched so the
+    # leads router can still reconstruct versioned filenames from the raw id.
+    if safe != raw:
+        digest = hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:8]
+        safe = f"{safe}_{digest}"
+    return safe
 
 
 def get_profile(repo: Repository | None = None) -> dict:
@@ -59,6 +77,12 @@ def run_package(lead: dict, template: str = "", repo: Repository | None = None) 
     blocked_reason = lead_generation_blocker(lead)
     if blocked_reason:
         raise ValueError(blocked_reason)
+    # Fail loudly if a key-based provider is selected without a key, instead of
+    # silently drafting with an empty LLM result and shipping a generic resume
+    # marked "approved". Keyless providers (ollama / CLIs) pass through.
+    from llm.client import assert_llm_configured
+
+    assert_llm_configured("generator")
     repo = repo or create_repository()
     profile = get_profile(repo)
     proof = _build_proof(profile)
@@ -68,6 +92,11 @@ def run_package(lead: dict, template: str = "", repo: Repository | None = None) 
         package = _draft_package(profile, proof, lead_with_ctx, template=template)
         package = _normalize_package(package, profile, lead_with_ctx, template=template)
     except Exception as exc:
+        if _is_transient_llm_error(exc):
+            # Rate limits / timeouts / 5xx: surface to the router's retry path
+            # (503 + Retry-After, lead stays in "tailoring") instead of silently
+            # shipping an untailored fallback resume marked "approved".
+            raise
         _log.warning(
             "LLM draft failed for %s; using local fallback package: %s",
             lead.get("job_id", "?"),

@@ -30,13 +30,25 @@ export function useLeads(api: ApiFetch | null, addLog?: (msg: string, kind: LogL
     }
     let alive = true;
     const controller = new AbortController();
+    // Stamp every snapshot fetch; WS lead updates bump the stamp too, so a
+    // fetch that resolves with a pre-update snapshot is discarded instead of
+    // reverting fresher WS-driven state. A discarded snapshot schedules one
+    // trailing reload so the list still converges after an update burst.
+    let snapshotSeq = 0;
+    let trailingReload: number | null = null;
     const load = async (background = false) => {
+      const seq = ++snapshotSeq;
       if (!background) setLoading(true);
       try {
         const r = await api(`/api/v1/leads`, { signal: controller.signal });
         if (!r.ok) throw new Error(`Lead load failed (${r.status})`);
         const data = await r.json();
         if (!alive) return;
+        if (seq !== snapshotSeq) {
+          if (trailingReload !== null) window.clearTimeout(trailingReload);
+          trailingReload = window.setTimeout(() => load(true), 500);
+          return;
+        }
         const items = Array.isArray(data) ? data : data.items;
         const jobLeads = (items as Lead[]).filter(l => (l.kind || "job") !== "freelance");
         setLeads(jobLeads);
@@ -55,16 +67,22 @@ export function useLeads(api: ApiFetch | null, addLog?: (msg: string, kind: LogL
       }
     };
     load(false);
-    const retryTimer = window.setTimeout(() => load(true), 900);
+    const retryTimer = window.setTimeout(() => {
+      if (!initialLoadDone.current) load(true);
+    }, 900);
 
     // Keep leads fresh when backend broadcasts LEAD_UPDATED over WS
     const onLeadUpdated = (e: Event) => {
       const updated = (e as CustomEvent<Lead>).detail;
+      snapshotSeq++;
       setLoaded(true);
       setLoading(false);
       setLeads(prev => {
         const idx = prev.findIndex(l => l.job_id === updated.job_id);
         if (idx === -1) {
+          // Some producers dispatch partial payloads ({job_id, status});
+          // inserting one as a full lead renders an "Untitled role" ghost row.
+          if (!updated.title) return prev;
           const isNew = !knownLeadIds.current.has(updated.job_id);
           knownLeadIds.current.add(updated.job_id);
           if (initialLoadDone.current && isNew) notifyStrongLead(updated);
@@ -93,6 +111,7 @@ export function useLeads(api: ApiFetch | null, addLog?: (msg: string, kind: LogL
       alive = false;
       controller.abort();
       window.clearTimeout(retryTimer);
+      if (trailingReload !== null) window.clearTimeout(trailingReload);
       window.removeEventListener("lead-updated", onLeadUpdated);
       window.removeEventListener("leads-refresh", onRefresh);
     };

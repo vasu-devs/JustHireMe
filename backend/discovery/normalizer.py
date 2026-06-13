@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import re
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 
 from discovery.lead_intel import budget_from_text as budget_from_text
@@ -79,6 +80,29 @@ def parse_date(value: str) -> datetime | None:
             "year": timedelta(days=amount * 365),
         }.get(unit)
         return now - delta if delta else None
+
+    raw = value.strip()
+
+    # RFC-2822 feed dates ("Thu, 11 Jun 2026 10:00:00 GMT"): strptime's %z can't
+    # match timezone names like GMT, so use the stdlib email parser first.
+    if re.match(r"^[a-z]{3},\s*\d{1,2}\s+[a-z]{3}\s+\d{4}", text):
+        try:
+            parsed = parsedate_to_datetime(raw)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        except (ValueError, TypeError):
+            pass
+
+    # ISO 8601, including fractional seconds (Lever emits millisecond precision).
+    iso_candidate = raw[:-1] + "+00:00" if raw.endswith(("Z", "z")) else raw
+    try:
+        parsed = datetime.fromisoformat(iso_candidate)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    except ValueError:
+        pass
 
     original = text.strip()
     for fmt in (
@@ -193,15 +217,20 @@ def classify_job_seniority(lead: dict) -> str:
 
 def looks_role_like(text: str) -> bool:
     lower = text.lower()
-    return any(
-        term in lower
-        for term in (
-            "engineer", "developer", "software", "frontend", "front-end",
-            "backend", "full stack", "full-stack", "data", "ai", "ml",
-            "product", "designer", "devops", "sre", "qa", "mobile",
-            "architect", "solution architect", "solutions architect",
-        )
+    # Field-agnostic: recognize a role/occupation in ANY field (healthcare,
+    # trades, business, education, creative, ...), not just software. Reuses the
+    # broad occupation vocabulary so a "Registered Nurse" or "Electrician"
+    # posting is no longer dropped at HN/RSS ingestion as "not role-like".
+    from core.occupations import EMPLOYMENT_TERMS, OCCUPATION_TERMS
+
+    extra = (
+        "software", "frontend", "front-end", "backend", "full stack",
+        "full-stack", "data", "ai", "ml", "devops", "sre", "qa", "mobile",
+        "product", "solution architect", "solutions architect",
     )
+    return any(term in lower for term in OCCUPATION_TERMS) \
+        or any(term in lower for term in EMPLOYMENT_TERMS) \
+        or any(term in lower for term in extra)
 
 
 def looks_like_hn_job_post(text: str) -> bool:

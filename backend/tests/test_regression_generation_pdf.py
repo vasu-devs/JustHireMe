@@ -175,8 +175,14 @@ Bachelor's in Computer Science (Expected) 2022 - 2026
         }
         previous_assets = generator._assets
         generator._assets = str(Path(__file__).resolve().parent)
-        expected = "https_jobs.example.com_roles_applied_ref_mail_v1.pdf"
-        expected_cover = "https_jobs.example.com_roles_applied_ref_mail_cl_v1.pdf"
+        # A lossy job id gets a short digest suffix so two distinct ids that
+        # sanitize to the same stem can't overwrite each other's PDFs.
+        import hashlib
+
+        digest = hashlib.sha1(lead["job_id"].encode("utf-8", "replace")).hexdigest()[:8]
+        stem = f"https_jobs.example.com_roles_applied_ref_mail_{digest}"
+        expected = f"{stem}_v1.pdf"
+        expected_cover = f"{stem}_cl_v1.pdf"
         try:
             with (
                 mock.patch.object(generator, "get_profile", return_value=_sample_scoring_profile()),

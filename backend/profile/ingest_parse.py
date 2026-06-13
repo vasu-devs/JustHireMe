@@ -9,10 +9,24 @@ candidate-data merge used to combine parses.
 import re
 
 from core.logging import get_logger
+from core.occupations import OCCUPATION_TERMS
 from models.schema import C
 from profile.ingest_documents import _strip_md
 
 _log = get_logger(__name__)
+
+# Recognize an experience-header role word in ANY field. Built from the shared
+# occupation vocabulary plus generic seniority/role nouns that span fields.
+_HEADER_ROLE_EXTRA = (
+    "intern", "trainee", "apprentice", "volunteer", "freelancer", "freelance",
+    "contractor", "founder", "co-founder", "cofounder", "owner", "partner",
+    "lead", "head", "chief", "president", "vice president", "vp", "principal",
+    "engineering", "fellow", "registrar", "resident", "associate",
+)
+_OCCUPATION_HEADER_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(term) for term in (*OCCUPATION_TERMS, *_HEADER_ROLE_EXTRA)) + r")\b",
+    re.I,
+)
 
 
 def _split_csv(value: str) -> list[str]:
@@ -382,6 +396,19 @@ def _parse_resume_heuristic(txt: str) -> C:
             skill_names.append(term)
     skills = [S(n=item, cat="resume") for item in _dedupe(skill_names)[:40]]
 
+    # Per-role skill matching uses the candidate's OWN listed skills (any field)
+    # plus the tech known-terms, so a nurse's "IV therapy" is matched in their
+    # role descriptions exactly like a developer's "Python" — precise because it
+    # only matches skills the person actually listed.
+    match_vocab = _dedupe([*known_terms, *[skill.n for skill in skills]])
+
+    def _skills_in(text: str) -> list[str]:
+        low = (text or "").lower()
+        return [
+            term for term in match_vocab
+            if re.search(r"(?<![a-z0-9+#.-])" + re.escape(term.lower()) + r"(?![a-z0-9+#.-])", low)
+        ]
+
     exp_lines = _section_lines(clean_text, ("experience", "work experience", "employment"))
     exp: list[E] = []
     current_exp: dict | None = None
@@ -391,9 +418,7 @@ def _parse_resume_heuristic(txt: str) -> C:
         header = _resume_experience_header(line)
         if header:
             if current_exp:
-                # Extract skills from description text
-                desc_skills = [term for term in known_terms if re.search(r"(?<![a-z0-9+#.-])" + re.escape(term.lower()) + r"(?![a-z0-9+#.-])", current_exp.get("d", "").lower())]
-                exp.append(E(role=current_exp["role"], co=current_exp["co"], period=current_exp.get("period", ""), d=current_exp.get("d", ""), s=desc_skills))
+                exp.append(E(role=current_exp["role"], co=current_exp["co"], period=current_exp.get("period", ""), d=current_exp.get("d", ""), s=_skills_in(current_exp.get("d", ""))))
             current_exp = header
             continue
         # Date patterns → period
@@ -407,8 +432,7 @@ def _parse_resume_heuristic(txt: str) -> C:
         if len(exp) >= 10:
             break
     if current_exp:
-        desc_skills = [term for term in known_terms if re.search(r"(?<![a-z0-9+#.-])" + re.escape(term.lower()) + r"(?![a-z0-9+#.-])", current_exp.get("d", "").lower())]
-        exp.append(E(role=current_exp["role"], co=current_exp["co"], period=current_exp.get("period", ""), d=current_exp.get("d", ""), s=desc_skills))
+        exp.append(E(role=current_exp["role"], co=current_exp["co"], period=current_exp.get("period", ""), d=current_exp.get("d", ""), s=_skills_in(current_exp.get("d", ""))))
 
     project_lines = _section_lines(clean_text, ("projects", "selected projects", "personal projects"))
     projects = _projects_from_resume_lines(project_lines, skills)
@@ -435,8 +459,16 @@ def _resume_experience_header(line: str) -> dict | None:
         return None
     if len(clean.split()) > 16:
         return None
-    role_re = r"\b(intern|engineer|engineering|developer|manager|designer|analyst|consultant|lead|architect|scientist|director|officer|founder|co-founder|specialist)\b"
-    if not re.search(role_re, clean, flags=re.I):
+    # Field-agnostic header detection: accept a line that names a recognized
+    # occupation in ANY field, OR has the structural shape of an experience
+    # header (a "Title at Company" form, or "Title | Company | Dates" with a
+    # date token). Structure-first keeps precision high for non-tech résumés
+    # without grabbing arbitrary lines.
+    has_occupation = bool(_OCCUPATION_HEADER_RE.search(clean))
+    has_at = " at " in clean.lower()
+    has_date = bool(re.search(r"\b(?:19|20)\d{2}\b|present|current", clean, re.I))
+    has_separator = bool(re.search(r"\s\|\s|\s[–—-]\s", clean))
+    if not (has_occupation or has_at or (has_date and has_separator)):
         return None
 
     period = ""
@@ -456,6 +488,19 @@ def _resume_experience_header(line: str) -> dict | None:
                 company = text_parts[1]
             if date_parts:
                 period = " - ".join(date_parts)
+
+    # Reject "headers" that resolved to nothing but a date range (e.g. a bare
+    # "Jan 2019 - Present" line passed the structural gate). Strip years, month
+    # names, and present/current; a real role still has letters left over. This
+    # lets pure date lines fall through to the period handler instead.
+    role_clean = re.sub(
+        r"\b(?:19|20)\d{2}\b|present|current|"
+        r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|"
+        r"aug(?:ust)?|sep(?:t)?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?",
+        "", role, flags=re.I,
+    )
+    if not re.search(r"[A-Za-z]{2,}", role_clean):
+        return None
 
     return {"role": role[:180], "co": company[:180], "period": period[:100], "d": ""}
 

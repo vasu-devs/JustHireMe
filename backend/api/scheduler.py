@@ -28,7 +28,13 @@ def create_scheduler() -> AsyncIOScheduler:
 
 def ensure_ghost_job(scheduler: AsyncIOScheduler, ghost_tick) -> None:
     if not scheduler.get_job("ghost"):
-        scheduler.add_job(ghost_tick, "interval", hours=6, id="ghost")
+        # max_instances=1 + coalesce: a ghost cycle (scan→eval→generate→apply)
+        # can outlast the 6h interval; never let a second copy start on top of a
+        # still-running one, and collapse any ticks missed while it ran into one.
+        scheduler.add_job(
+            ghost_tick, "interval", hours=6, id="ghost",
+            max_instances=1, coalesce=True,
+        )
 
 
 def create_ghost_tick(manager):

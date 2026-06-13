@@ -5,6 +5,8 @@ import asyncio
 import httpx
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
+from discovery.sources.net import guarded_async_client
+
 from discovery.normalizer import (
     budget_from_text,
     classify_job_seniority,
@@ -80,7 +82,7 @@ async def json_get(url: str, params: dict | None = None) -> dict | list:
         "User-Agent": "JustHireMe free-source scout",
         "Accept": "application/json",
     }
-    async with httpx.AsyncClient(timeout=30, headers=headers, follow_redirects=True) as cx:
+    async with guarded_async_client(timeout=30, headers=headers, follow_redirects=True) as cx:
         r = await cx.get(url, params=params)
         if r.status_code == 429:
             retry_after = int(r.headers.get("Retry-After", 15))

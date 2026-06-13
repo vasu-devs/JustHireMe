@@ -3,9 +3,20 @@ from __future__ import annotations
 import math
 import time
 import threading
+import weakref
 from collections import defaultdict
 
 from fastapi import HTTPException
+
+# Track live limiters so tests can reset all of them between cases (the app and
+# its limiters are module-cached, so call budgets would otherwise leak across
+# tests). Has no effect on production behavior.
+_INSTANCES: weakref.WeakSet = weakref.WeakSet()
+
+
+def reset_all_rate_limiters() -> None:
+    for limiter in list(_INSTANCES):
+        limiter.reset()
 
 
 class RateLimiter:
@@ -14,6 +25,11 @@ class RateLimiter:
         self.window = window_seconds
         self._calls: dict[str, list[float]] = defaultdict(list)
         self._lock = threading.Lock()
+        _INSTANCES.add(self)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._calls.clear()
 
     def allow(self, key: str = "global") -> bool:
         with self._lock:

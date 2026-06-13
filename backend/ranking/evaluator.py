@@ -199,7 +199,11 @@ def _hard_cap(baseline: dict) -> tuple[int | None, str]:
             return min(score, 15), gap
     for gap in gaps:
         if gap.startswith("seniority cap"):
-            return score, gap
+            # Use the real cap band (30/38/45/48) so the LLM may raise the score
+            # within the guardrail; returning the baseline final score here would
+            # pin it and forbid any upward adjustment.
+            cap = baseline.get("applied_cap")
+            return (int(cap) if isinstance(cap, (int, float)) else score), gap
     return None, ""
 
 

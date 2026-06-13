@@ -71,6 +71,8 @@ JustHireMe's stable core is the local-first desktop workbench, Python sidecar AP
 | Thin installer + first-run runtime | Installer is ~100 MB; the heavy runtime (browser + vector libs + embedding model) downloads once on first run, then is cached |
 | Dark mode | Light / Dark / System, system-aware, shipped |
 | Local embeddings | Bundled ONNX model (`all-MiniLM-L6-v2`) — semantic matching runs locally with no API key |
+| Field-agnostic | Discovery, ranking, and tailoring work for any field (healthcare, trades, finance, law, education, hospitality, creative, software, ...) — scoring is relative to the candidate's own domain, not a fixed tech vocabulary |
+| Location-agnostic | Targets any city/region worldwide; location is auto-detected from your résumé (or set explicitly), with remote / hybrid / onsite preference |
 | Resume tailoring | Works for any field (engineering, design, finance, healthcare, education, trades, ...) |
 | Browser automation / auto-apply | Experimental lab, disabled by default |
 | API key storage | Local app settings; `.env` is for development overrides; OS keychain planned |

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalUrl } from "../../../shared/lib/openExternal";
 import Icon from "../../../shared/components/Icon";
 import type { ApiFetch, Lead } from "../../../types";
 import { GENERATION_TIMEOUT_MS } from "../../../api/generation";
@@ -140,7 +140,7 @@ export function JobCard({ lead, onOpen, onDelete, showScore = false, showGenerat
       {/* Footer */}
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
         <button
-          onClick={e => { e.stopPropagation(); openUrl(lead.url); }}
+          onClick={e => { e.stopPropagation(); openExternalUrl(lead.url); }}
           title={lead.url}
           style={{ fontSize: 11, color: "var(--teal)", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, maxWidth: "60%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
         >
@@ -255,7 +255,7 @@ export function PipelineJobCard({ lead, onOpen, onDelete, showGenerate = false, 
               <Icon name="file" size={12} /> {generating ? "Queued" : "Generate"}
             </button>
           )}
-          <button className="btn btn-icon" onClick={e => { e.stopPropagation(); if (lead.url) openUrl(lead.url); }} title={lead.url} disabled={!lead.url}>
+          <button className="btn btn-icon" onClick={e => { e.stopPropagation(); if (lead.url) openExternalUrl(lead.url); }} title={lead.url} disabled={!lead.url}>
             <Icon name="external-link" size={13} />
           </button>
           <button className="btn" onClick={e => { e.stopPropagation(); onOpen(lead); }}>Details</button>

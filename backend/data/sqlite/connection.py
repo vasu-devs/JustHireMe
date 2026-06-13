@@ -96,7 +96,16 @@ def _sqlite_connect(db_path: str, *, pooled: bool = False):
 class _PooledConnection(sqlite3.Connection if hasattr(sqlite3, "Connection") else object):
     def close(self) -> None:  # type: ignore[override]
         # Repository functions historically call close() in finally blocks.
-        # Pooled connections stay open until close_all() so those calls are no-ops.
+        # Pooled connections stay open until close_all(), but an open write
+        # transaction at close() time means the caller bailed before commit
+        # (e.g. raised between execute and commit). Roll it back: otherwise the
+        # WAL write lock stays held by this thread and a later unrelated commit
+        # on the same pooled connection would persist the half-written changes.
+        try:
+            if self.in_transaction:
+                self.rollback()
+        except sqlite3.Error as exc:
+            _log.warning("rollback of abandoned sqlite transaction failed: %s", exc)
         return None
 
     def close_for_pool(self) -> None:
@@ -117,10 +126,19 @@ class ConnectionPool:
     def __init__(self) -> None:
         self._local = threading.local()
         self._connections: set[Any] = set()
+        # Bumped by close_all(). A thread whose cached connections predate the
+        # current generation must drop them — otherwise it would hand back a
+        # connection close_all() already closed (ProgrammingError).
+        self._generation = 0
 
     def get_connection(self, db_path: str | None = None):
         resolved = _resolve_db_path(db_path)
         _ensure_parent(resolved)
+        if getattr(self._local, "generation", None) != self._generation:
+            # close_all() ran since this thread last cached anything; its
+            # thread-local handles are now closed. Start fresh.
+            self._local.connections = {}
+            self._local.generation = self._generation
         connections = getattr(self._local, "connections", None)
         if connections is None:
             connections = {}
@@ -152,6 +170,10 @@ class ConnectionPool:
         with _POOL_LOCK:
             connections = list(self._connections)
             self._connections.clear()
+            # Invalidate every thread's cache: the next get_connection on any
+            # thread sees a newer generation and rebuilds instead of returning a
+            # now-closed handle.
+            self._generation += 1
         for conn in connections:
             try:
                 close_for_pool = getattr(conn, "close_for_pool", None)
@@ -174,6 +196,10 @@ def get_connection(db_path: str | None = None):
 
 def close_all() -> None:
     _POOL.close_all()
+    # Tests (and resets) close everything and may swap the database file out
+    # from under us; forget the migration memo so init_sql re-checks.
+    with _MIGRATED_LOCK:
+        _MIGRATED_PATHS.clear()
 
 
 def prune_history(db_path: str | None = None, *, max_events: int = 5000, max_jobs: int = 500, max_errors: int = 1000) -> None:
@@ -359,11 +385,17 @@ def run_migrations(db_path: str | None = None) -> None:
     lock_path = db_path + ".migration.lock"
     Path(lock_path).parent.mkdir(parents=True, exist_ok=True)
     with open(lock_path, "a+", encoding="utf-8") as lock_file:
+        locked = False
         try:
             _lock_file(lock_file)
+            locked = True
             _run_migrations_inner(db_path)
         finally:
-            _unlock_file(lock_file)
+            # Only unlock when the lock was actually acquired: on Windows,
+            # unlocking an unheld region raises PermissionError, which would
+            # replace the real lock-timeout error.
+            if locked:
+                _unlock_file(lock_file)
 
 
 def _ensure_legacy_columns(conn) -> None:
@@ -375,5 +407,18 @@ def _ensure_legacy_columns(conn) -> None:
                 raise
 
 
+_MIGRATED_PATHS: set[str] = set()
+_MIGRATED_LOCK = threading.Lock()
+
+
 def init_sql(db_path: str | None = None) -> None:
-    run_migrations(db_path)
+    # Settings/profile helpers call init_sql on every read; replaying the full
+    # migration pass (file lock + 33 ALTER TABLE attempts) each time is pure
+    # overhead and widens lock-contention windows. Run once per db path.
+    resolved = _resolve_db_path(db_path)
+    with _MIGRATED_LOCK:
+        if resolved in _MIGRATED_PATHS:
+            return
+    run_migrations(resolved)
+    with _MIGRATED_LOCK:
+        _MIGRATED_PATHS.add(resolved)

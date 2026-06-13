@@ -142,6 +142,36 @@ def desired_position(cfg: dict) -> str:
     return ""
 
 
+def discovery_location(cfg: dict | None, profile: dict | None = None) -> str:
+    """The user's job-search location, in priority order:
+
+    explicit setting (any country/city, worldwide) → the profile's own identity
+    location (so just ingesting a CV with a city works) → "" (global/remote).
+    Generalizes the old binary india/global switch to any region on Earth.
+    """
+    cfg = cfg or {}
+    for key in ("job_location", "job_region", "target_location", "location"):
+        value = str(cfg.get(key) or "").strip()
+        if value:
+            return value
+    # Backward-compat: an explicit india market focus implies India.
+    if job_market_focus(cfg.get("job_market_focus")) == "india":
+        return "India"
+    identity = (profile or {}).get("identity") if isinstance(profile, dict) else None
+    if isinstance(identity, dict):
+        for key in ("city", "location", "region", "country"):
+            value = str(identity.get(key) or "").strip()
+            if value:
+                return value
+    return ""
+
+
+def remote_preference(cfg: dict | None) -> str:
+    """One of: remote, hybrid, onsite, any (default any)."""
+    value = str((cfg or {}).get("remote_preference") or "").strip().lower()
+    return value if value in {"remote", "hybrid", "onsite", "any"} else "any"
+
+
 def profile_for_discovery(profile: dict | None, cfg: dict) -> dict:
     profile = dict(profile or {})
     desired = desired_position(cfg)
@@ -152,6 +182,10 @@ def profile_for_discovery(profile: dict | None, cfg: dict) -> dict:
         else:
             profile["s"] = summary or desired
         profile["desired_position"] = desired
+    # Carry resolved location + remote preference so the query planner can target
+    # the user's region without every caller threading extra args.
+    profile["_discovery_location"] = discovery_location(cfg, profile)
+    profile["_remote_preference"] = remote_preference(cfg)
     return profile
 
 
@@ -251,8 +285,12 @@ def profile_free_source_targets(profile: dict) -> str:
 def profile_x_queries(profile: dict, market_focus: str = "global") -> str:
     terms = terms_for_discovery(profile, 4)
     role = " OR ".join(f'"{term}"' for term in terms[:3])
+    loc_text = str((profile or {}).get("_discovery_location") or "").strip()
     if job_market_focus(market_focus) == "india":
         location = '("India" OR "Indian" OR "Bengaluru" OR "Mumbai" OR "Pune" OR "Hyderabad")'
+    elif loc_text:
+        # Any region: include the user's location plus remote alternatives.
+        location = f'("{loc_text}" OR "remote" OR "hybrid")'
     else:
         location = '("remote" OR "hybrid" OR "global" OR "onsite")'
     return "\n".join([

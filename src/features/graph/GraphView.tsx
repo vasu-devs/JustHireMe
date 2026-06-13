@@ -1592,9 +1592,11 @@ function EmbeddingAtlas({ stats }: { stats: GraphStats }) {
 
 export function GraphView({ stats }: { stats: GraphStats }) {
   const hasGraphPayload = Array.isArray(stats.graph?.nodes);
-  const total = stats.graph?.nodes.length ?? 0;
-  const relationCount = stats.graph?.edges.length ?? 0;
-  const vectorCount = stats.embedding?.points.length ?? 0;
+  // A version-skewed sidecar can return `graph` without `nodes`/`edges` —
+  // chain all the way down or this header crashes before the fallback UI renders.
+  const total = stats.graph?.nodes?.length ?? 0;
+  const relationCount = stats.graph?.edges?.length ?? 0;
+  const vectorCount = stats.embedding?.points?.length ?? 0;
   const isLoading = Boolean(stats.loading && !stats.loaded);
   const requestError = stats.request_error || "";
   const isLive = stats.status === "live" && stats.available !== false && hasGraphPayload && !requestError;

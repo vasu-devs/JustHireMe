@@ -20,6 +20,7 @@ export function PipelineView({ leads, openDrawer, deleteLead, port, api, scannin
   const [bulkSelecting, setBulkSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
+  const [exportErr, setExportErr] = useState<string | null>(null);
 
   useEffect(() => setVisibleCount(PAGE_SIZE), [tab, search, platform, sort, seniority]);
   useEffect(() => {
@@ -94,6 +95,7 @@ export function PipelineView({ leads, openDrawer, deleteLead, port, api, scannin
   const exportCsv = async () => {
     if (!api || exporting) return;
     setExporting(true);
+    setExportErr(null);
     try {
       const res = await api("/api/v1/leads/export.csv");
       if (!res.ok) throw new Error(`Export failed (${res.status})`);
@@ -104,6 +106,8 @@ export function PipelineView({ leads, openDrawer, deleteLead, port, api, scannin
       a.download = "jhm_pipeline.csv";
       a.click();
       URL.revokeObjectURL(url);
+    } catch (e) {
+      setExportErr(e instanceof Error ? e.message : "Export failed");
     } finally {
       setExporting(false);
     }
@@ -112,10 +116,10 @@ export function PipelineView({ leads, openDrawer, deleteLead, port, api, scannin
   return (
     <div className="pipeline-page">
       <div className="pipeline-top">
-        {(busyLabel || error) && (
-          <div className={`pipeline-notice ${error ? "error" : ""}`}>
-            {error ? <Icon name="x" size={13} /> : <span className="dot pulse-soft" />}
-            <span>{error || busyLabel}</span>
+        {(busyLabel || error || exportErr) && (
+          <div className={`pipeline-notice ${error || exportErr ? "error" : ""}`}>
+            {error || exportErr ? <Icon name="x" size={13} /> : <span className="dot pulse-soft" />}
+            <span>{error || exportErr || busyLabel}</span>
           </div>
         )}
 

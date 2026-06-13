@@ -4,6 +4,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import ErrorBoundary from "./shared/components/ErrorBoundary";
 import { initTheme } from "./shared/lib/theme";
 import "./index.css";
 
@@ -32,7 +33,11 @@ try {
 
   ReactDOM.createRoot(root).render(
     <React.StrictMode>
-      <App />
+      {/* Last-resort boundary: the try/catch below only covers the synchronous
+          initial render, not crashes on later re-renders. */}
+      <ErrorBoundary label="JustHireMe">
+        <App />
+      </ErrorBoundary>
     </React.StrictMode>,
   );
 } catch (error) {

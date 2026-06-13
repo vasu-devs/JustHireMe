@@ -5,6 +5,7 @@ from collections.abc import Callable
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from api.auth import LOCAL_ORIGIN_RE, require_http_token
 from api.dependencies import get_event_bus
@@ -45,6 +46,12 @@ def create_app(
         allow_origin_regex=LOCAL_ORIGIN_RE,
         allow_methods=["*"],
         allow_headers=["*"],
+    )
+    # Defense-in-depth against DNS rebinding: the sidecar only ever serves the
+    # local Tauri webview, so reject requests whose Host header isn't loopback.
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=["localhost", "127.0.0.1", "[::1]", "::1"],
     )
     app.state.connection_manager = connection_manager
     app.state.token_getter = token_getter

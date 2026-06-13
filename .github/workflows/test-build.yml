@@ -1,0 +1,108 @@
+name: Test Build (Windows)
+
+# A throwaway, NON-PRODUCTION Windows build you can download and run to validate
+# changes before they ship. It deliberately:
+#   - publishes NO GitHub release and NO `latest.json`
+#   - builds NO updater artifacts and needs NO signing secrets
+#   - is therefore INVISIBLE to the auto-updater (production users never see it)
+# The installer is unsigned, so Windows SmartScreen shows "Unknown publisher" —
+# click "More info" → "Run anyway" to install. The heavy first-run runtime pack
+# (browser + vector libs + embedding model) still downloads from the latest
+# production release on first launch, exactly like a normal install.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or ref to build (blank = the branch you launch this from)"
+        required: false
+        default: ""
+  push:
+    branches:
+      - "beta"
+      - "test/**"
+
+concurrency:
+  group: test-build-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "24"
+
+jobs:
+  windows-test-installer:
+    name: Windows test installer (unsigned, no auto-update)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: cd backend && uv sync --dev
+
+      - name: Install Playwright Chromium runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:PLAYWRIGHT_BROWSERS_PATH = "..\src-tauri\resources\bin\ms-playwright"
+          cd backend
+          uv run python -m playwright install chromium
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build backend sidecar
+        run: npm run build:sidecar
+
+      - name: Package first-run runtime pack
+        run: npm run build:runtime-pack
+
+      # createUpdaterArtifacts is forced off so no signing key is required and no
+      # update metadata is produced — this build can never reach the updater.
+      - name: Build unsigned Windows installer
+        shell: bash
+        run: npx tauri build --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Locate installer
+        id: find
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $exe = Get-ChildItem -Path "src-tauri\target\release\bundle\nsis" -Filter "*.exe" -File -Recurse |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) { throw "No NSIS installer found." }
+          "installer=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Built installer: $($exe.FullName) ($([math]::Round($exe.Length/1MB,1)) MB)"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JustHireMe-test-windows-installer
+          path: ${{ steps.find.outputs.installer }}
+          retention-days: 14
+          if-no-files-found: error

@@ -90,6 +90,9 @@ export function useWS() {
   const retryTimerRef = useRef<number | null>(null);
   const readinessSeqRef = useRef(0);
   const manuallyClosedRef = useRef(false);
+  // Set when the reconnect budget is exhausted, so the sidecar poll knows to
+  // resume probing instead of staying stuck on "Backend unreachable" forever.
+  const forceResyncRef = useRef(false);
   const MAX_RETRY_DELAY = 30000;
   const MAX_RETRIES = 20;
 
@@ -201,6 +204,11 @@ export function useWS() {
         setPort(null);
         setApiToken(null);
         addLog("Backend unreachable after repeated WebSocket reconnect attempts", "system", "ws");
+        // Re-arm so the sidecar poll resumes probing; if the backend recovers
+        // (or relaunches on a new port) we reconnect instead of staying dead
+        // until the app is restarted.
+        retryRef.current = 0;
+        forceResyncRef.current = true;
         return;
       }
       const delay = Math.min(1000 * Math.pow(2, retryRef.current), MAX_RETRY_DELAY);
@@ -268,7 +276,15 @@ export function useWS() {
       };
       await syncSidecar();
       poll = window.setInterval(() => {
-        if (!cancelled && (!token || !currentPort || !backendReady)) void syncSidecar();
+        if (cancelled) return;
+        if (forceResyncRef.current) {
+          // Reconnect budget was exhausted; clear the cached readiness so
+          // maybePublish() re-publishes and reconnects when the backend returns.
+          forceResyncRef.current = false;
+          backendReady = false;
+          publishedEndpoint = "";
+        }
+        if (!token || !currentPort || !backendReady) void syncSidecar();
       }, 1000);
       try {
         unlisten = await listen<number>("sidecar-port", ev => {

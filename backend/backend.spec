@@ -44,6 +44,7 @@ hidden = [
     "langgraph", "langgraph.graph",
     "apscheduler", "apscheduler.schedulers.asyncio",
     "unittest", "pydoc",
+    "defusedxml", "defusedxml.ElementTree",
     "fpdf", "fpdf.fpdf", "fpdf.image_parsing", "fpdf.output",
     "fpdf.sign", "fpdf.svg",
     "pypdf", "markdown",

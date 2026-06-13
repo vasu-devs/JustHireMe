@@ -89,6 +89,9 @@ def record_exception(exc: BaseException, *, domain: str = "api", request_id: str
         }
         with path_obj.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        # A recurring backend exception would otherwise grow errors.jsonl
+        # unbounded; cap it the same way the frontend-error sink does.
+        _rotate_error_log()
     except Exception as log_exc:
         logging.getLogger(__name__).debug('suppressed exception in backend/core/telemetry.py:record_exception: %s', log_exc)
         return

@@ -25,12 +25,31 @@ class TemplateTextBody(StrictBody):
     make_default: bool = Field(default=False)
 
 
+async def _read_capped(file: UploadFile, max_bytes: int) -> bytes:
+    """Read an upload in chunks, rejecting at the real byte ceiling.
+
+    file.size is client-declared multipart metadata (absent or spoofable), so we
+    enforce the cap on actual bytes read instead of trusting it.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail="Upload too large")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @contextlib.asynccontextmanager
 async def _temp_upload(file: UploadFile):
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in _ALLOWED_SUFFIXES:
         suffix = ".txt"
-    content = await file.read()
+    content = await _read_capped(file, MAX_UPLOAD_SIZE)
 
     def _write() -> str:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -59,10 +78,14 @@ def _extract_text(path: str) -> str:
             pages = PdfReader(path).pages
             return " ".join(page.extract_text() or "" for page in pages)
         if suffix == ".docx":
-            import xml.etree.ElementTree as ET
             import zipfile
 
+            import defusedxml.ElementTree as ET
+
             with zipfile.ZipFile(path) as archive:
+                info = archive.getinfo("word/document.xml")
+                if info.file_size > 64 * 1024 * 1024:
+                    raise ValueError("DOCX document.xml too large")
                 root = ET.fromstring(archive.read("word/document.xml"))
             ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
             paragraphs = [
