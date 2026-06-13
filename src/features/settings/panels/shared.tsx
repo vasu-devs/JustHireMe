@@ -44,7 +44,7 @@ export const EMPTY: Cfg = {
   azure_openai_api_key: "", azure_model: "gpt-4o-mini", azure_openai_endpoint: "",
   custom_api_key: "", custom_model: "model-id", custom_base_url: "https://api.openai.com/v1",
   ollama_url: "http://localhost:11434/v1",
-  claude_cli_model: "claude-sonnet-4-6", codex_cli_model: "gpt-5-codex",
+  claude_cli_model: "claude-sonnet-4-6", codex_cli_model: "",
   scout_provider: "", scout_api_key: "", scout_model: "",
   evaluator_provider: "", evaluator_api_key: "", evaluator_model: "",
   generator_provider: "", generator_api_key: "", generator_model: "",
@@ -112,7 +112,9 @@ export const MODEL_HINTS: Record<string, string[]> = {
   custom:    ["model-id", "provider/model", "chat-model"],
   ollama:    ["llama3", "mistral", "gemma2", "codellama"],
   claude_cli: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-opus-4-7", "claude-haiku-4-5-20251001"],
-  codex_cli:  ["gpt-5-codex", "gpt-5.1", "gpt-5"],
+  // gpt-5-codex is rejected for ChatGPT-account Codex; "" = use your plan's
+  // own default model (the reliable choice). Backend ignores a stray gpt-5-codex.
+  codex_cli:  ["", "gpt-5.1", "gpt-5"],
 };
 
 export const STEPS = [

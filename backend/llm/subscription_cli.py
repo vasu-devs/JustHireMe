@@ -3,7 +3,8 @@ Claude / ChatGPT subscriptions instead of a pay-per-token API key.
 
 It shells out to the locally-installed CLI the user has already logged into:
   • claude_cli → `claude -p --system-prompt <s> --output-format json [--model M]`  (user text on stdin)
-  • codex_cli  → `codex exec "<prompt>"`  (final message on stdout)
+  • codex_cli  → `codex exec - --skip-git-repo-check --sandbox read-only --ephemeral
+                  --output-last-message <file>`  (prompt on stdin, clean final message read from file)
 
 Auth comes from the CLI's own subscription OAuth (~/.claude, ~/.codex/auth.json).
 CRITICAL: a stray ANTHROPIC_API_KEY / OPENAI_API_KEY in the child environment
@@ -22,6 +23,13 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
+
+# Codex's own default model (chosen by the user's `codex` config / ChatGPT plan)
+# is the only reliable choice for subscription auth. JustHireMe's hardcoded
+# "gpt-5-codex" default is REJECTED for ChatGPT accounts ("model is not supported
+# when using Codex with a ChatGPT account"), so we must not forward it.
+_CODEX_REJECTED_MODELS = {"", "gpt-5-codex"}
 
 # Env vars that force pay-per-token billing if present — never leak to the child.
 _SCRUB = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY")
@@ -90,16 +98,51 @@ def _strip_fences(s: str) -> str:
     return s.strip()
 
 
-def _build(provider: str, exe_path: str, system: str, user: str, model):
-    """Return (argv, stdin) for the given provider."""
-    if provider == "claude_cli":
-        argv = [exe_path, "-p", "--system-prompt", system, "--output-format", "json"]
-        if model:
-            argv += ["--model", model]
-        return argv, user                      # user content via stdin (no arg-length limit)
-    # codex_cli: combine system+user into the prompt; final message comes on stdout.
-    prompt = (system + "\n\n" + user) if system else user
-    return [exe_path, "exec", prompt], None    # model is taken from the user's codex config
+def _codex_exec(exe_path: str, prompt: str, *, model, timeout: int) -> str:
+    """Run `codex exec` non-interactively and return its final message.
+
+    The prompt (incl. any embedded JSON schema) goes on STDIN — never argv — so
+    it can't be mangled by the Windows `codex.cmd` shim / cmd.exe or hit the
+    ~32K command-line limit. We read the clean final message from
+    --output-last-message rather than scraping the agent's streamed stdout.
+    --skip-git-repo-check lets it run from the sidecar's app-data cwd (not a git
+    repo); --sandbox read-only keeps any model-issued command harmless.
+    """
+    out_fd, out_path = tempfile.mkstemp(suffix="-codex.txt")
+    os.close(out_fd)
+    argv = [
+        exe_path, "exec", "-",
+        "--skip-git-repo-check", "--sandbox", "read-only", "--ephemeral",
+        "--output-last-message", out_path,
+    ]
+    # Only forward an explicit, account-compatible model override; never the
+    # rejected default (see _CODEX_REJECTED_MODELS).
+    if model and str(model) not in _CODEX_REJECTED_MODELS:
+        argv += ["-m", str(model)]
+    try:
+        r = subprocess.run(
+            argv, input=prompt, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", env=_child_env(), timeout=timeout,
+        )
+        if r.returncode != 0:
+            raise _classify(r.stderr or r.stdout)
+        try:
+            with open(out_path, encoding="utf-8") as handle:
+                message = handle.read().strip()
+        except OSError:
+            message = (r.stdout or "").strip()
+        if not message:
+            raise _classify(r.stderr or "codex returned no output")
+        return message
+    except subprocess.TimeoutExpired as exc:
+        raise CliTimeout(f"codex_cli timed out after {timeout}s") from exc
+    except FileNotFoundError as exc:
+        raise CliNotInstalled("codex CLI vanished from PATH") from exc
+    finally:
+        try:
+            os.unlink(out_path)
+        except OSError:
+            pass
 
 
 def complete_text(provider: str, system: str, user: str, *, model=None, timeout: int = _DEFAULT_TIMEOUT) -> str:
@@ -109,10 +152,18 @@ def complete_text(provider: str, system: str, user: str, *, model=None, timeout:
         raise CliNotInstalled(
             f"{_exe(provider)} CLI not found on PATH — install it and log in to use the {provider} provider"
         )
-    argv, stdin = _build(provider, exe_path, system, user, model)
+
+    if provider == "codex_cli":
+        prompt = (system + "\n\n" + user) if system else user
+        return _codex_exec(exe_path, prompt, model=model, timeout=timeout)
+
+    # claude_cli: system prompt as a flag, user content on stdin, JSON output.
+    argv = [exe_path, "-p", "--system-prompt", system, "--output-format", "json"]
+    if model:
+        argv += ["--model", model]
     try:
         r = subprocess.run(
-            argv, input=stdin, capture_output=True, text=True,
+            argv, input=user, capture_output=True, text=True,
             encoding="utf-8", errors="replace", env=_child_env(), timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
@@ -120,20 +171,15 @@ def complete_text(provider: str, system: str, user: str, *, model=None, timeout:
     except FileNotFoundError as exc:
         raise CliNotInstalled(f"{_exe(provider)} CLI vanished from PATH") from exc
 
-    if provider == "claude_cli":
-        if r.returncode != 0:
-            raise _classify(r.stderr or r.stdout)
-        try:
-            j = json.loads(r.stdout)
-        except (ValueError, TypeError) as exc:
-            raise CliError("unparseable claude output: " + (r.stdout or r.stderr or "")[:200]) from exc
-        if j.get("is_error"):
-            raise _classify((j.get("result") or "") + " " + (r.stderr or ""))
-        return str(j.get("result") or "")
-    # codex_cli
     if r.returncode != 0:
         raise _classify(r.stderr or r.stdout)
-    return (r.stdout or "").strip()
+    try:
+        j = json.loads(r.stdout)
+    except (ValueError, TypeError) as exc:
+        raise CliError("unparseable claude output: " + (r.stdout or r.stderr or "")[:200]) from exc
+    if j.get("is_error"):
+        raise _classify((j.get("result") or "") + " " + (r.stderr or ""))
+    return str(j.get("result") or "")
 
 
 def complete_structured(provider: str, system: str, user: str, model_cls, *, model=None, timeout: int = _DEFAULT_TIMEOUT):

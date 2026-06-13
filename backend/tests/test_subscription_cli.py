@@ -87,13 +87,46 @@ def test_not_installed_classified(monkeypatch):
         sc.complete_text("claude_cli", "s", "u")
 
 
-def test_codex_argv_exec_and_stdout(monkeypatch):
+def test_codex_exec_uses_stdin_and_output_file(monkeypatch):
+    # The prompt must go on STDIN (not argv, to avoid the Windows codex.cmd
+    # mangling / 32K limit), and the result is read from --output-last-message.
     cap = {}
-    monkeypatch.setattr(sc.subprocess, "run",
-                        _fake_run(stdout="hello from codex\n", capture=cap))
+
+    def fake_run(argv, **kw):
+        cap["argv"] = argv
+        cap["kw"] = kw
+        out_path = argv[argv.index("--output-last-message") + 1]
+        with open(out_path, "w", encoding="utf-8") as fh:
+            fh.write("hello from codex\n")
+        return subprocess.CompletedProcess(argv, 0, "noisy streamed stdout", "")
+
+    monkeypatch.setattr(sc.subprocess, "run", fake_run)
     out = sc.complete_text("codex_cli", "SYSTEM", "USER")
-    assert out == "hello from codex"
-    assert cap["argv"][0] == "codex" and cap["argv"][1] == "exec"
+    assert out == "hello from codex"          # from the output file, not the noisy stdout
+    assert cap["argv"][:3] == ["codex", "exec", "-"]
+    assert "--skip-git-repo-check" in cap["argv"]
+    assert "--output-last-message" in cap["argv"]
+    assert "SYSTEM" in cap["kw"]["input"] and "USER" in cap["kw"]["input"]
+
+
+def test_codex_does_not_forward_rejected_default_model(monkeypatch):
+    # gpt-5-codex is rejected for ChatGPT accounts; it must never be passed as -m
+    # (codex falls back to the account's own default model instead).
+    cap = {}
+
+    def fake_run(argv, **kw):
+        cap["argv"] = argv
+        out_path = argv[argv.index("--output-last-message") + 1]
+        with open(out_path, "w", encoding="utf-8") as fh:
+            fh.write("ok")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(sc.subprocess, "run", fake_run)
+    sc.complete_text("codex_cli", "s", "u", model="gpt-5-codex")
+    assert "-m" not in cap["argv"]
+    # but a genuine override IS forwarded
+    sc.complete_text("codex_cli", "s", "u", model="gpt-5")
+    assert "-m" in cap["argv"] and "gpt-5" in cap["argv"]
 
 
 def test_structured_parses_and_strips_fences(monkeypatch):
