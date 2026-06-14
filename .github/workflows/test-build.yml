@@ -106,7 +106,7 @@ jobs:
           Write-Host "Built installer: $($exe.FullName) ($([math]::Round($exe.Length/1MB,1)) MB)"
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: JustHireMe-test-windows-installer
           path: ${{ steps.find.outputs.installer }}
