@@ -67,7 +67,7 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
     "@vitest/coverage-v8": "^4.1.7",
-    "eslint": "^9.39.4",
+    "eslint": "^10.5.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^16.0.0",
     "typescript": "^6.0.3",
