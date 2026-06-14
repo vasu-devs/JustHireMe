@@ -56,14 +56,14 @@
     "@tauri-apps/plugin-shell": "^2.3.5",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "framer-motion": "^12.40.0",
-    "react": "^19.2.6",
+    "react": "^19.2.7",
     "react-dom": "^19.2.6",
     "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@tauri-apps/cli": "^2.11.1",
-    "@types/react": "^19.2.15",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
     "@vitest/coverage-v8": "^4.1.7",
