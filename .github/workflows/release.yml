@@ -78,7 +78,7 @@ jobs:
         run: npm run build
 
       - name: Upload frontend dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: dist/
@@ -225,7 +225,7 @@ jobs:
         run: npm run smoke:sidecar
 
       - name: Upload backend sidecar artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-sidecar-windows
           path: |
@@ -233,7 +233,7 @@ jobs:
           retention-days: 1
 
       - name: Upload OTA runtime assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-assets-runtime-windows
           path: release-assets/
@@ -296,7 +296,7 @@ jobs:
         run: npm run smoke:sidecar
 
       - name: Upload backend sidecar artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-sidecar-macos
           path: |
@@ -304,7 +304,7 @@ jobs:
           retention-days: 1
 
       - name: Upload OTA runtime assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-assets-runtime-macos
           path: release-assets/
@@ -367,7 +367,7 @@ jobs:
         run: npm run smoke:sidecar
 
       - name: Upload backend sidecar artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-sidecar-linux
           path: |
@@ -375,7 +375,7 @@ jobs:
           retention-days: 1
 
       - name: Upload OTA runtime assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-assets-runtime-linux
           path: release-assets/
@@ -561,7 +561,7 @@ jobs:
           $lines | Set-Content -Path "$releaseDir\SHA256SUMS-windows.txt" -Encoding utf8
 
       - name: Upload release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-assets-windows
           path: release-assets/
@@ -744,7 +744,7 @@ jobs:
           rm "$asset_list"
 
       - name: Upload release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-assets-macos
           path: release-assets/
@@ -889,7 +889,7 @@ jobs:
           rm "$asset_list"
 
       - name: Upload release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-assets-linux
           path: release-assets/
