@@ -410,19 +410,19 @@ jobs:
           workspaces: "src-tauri -> target"
 
       - name: Download backend sidecar
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: backend-sidecar-windows
           path: src-tauri/resources/backend/
 
       - name: Download frontend dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: dist/
 
       - name: Download Windows runtime pack
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-assets-runtime-windows
           path: runtime-assets/
@@ -594,19 +594,19 @@ jobs:
           workspaces: "src-tauri -> target"
 
       - name: Download backend sidecar
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: backend-sidecar-macos
           path: src-tauri/resources/backend/
 
       - name: Download frontend dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: dist/
 
       - name: Download macOS runtime pack
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-assets-runtime-macos
           path: runtime-assets/
@@ -795,19 +795,19 @@ jobs:
           workspaces: "src-tauri -> target"
 
       - name: Download backend sidecar
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: backend-sidecar-linux
           path: src-tauri/resources/backend/
 
       - name: Download frontend dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: dist/
 
       - name: Download Linux runtime pack
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-assets-runtime-linux
           path: runtime-assets/
@@ -908,7 +908,7 @@ jobs:
           ref: ${{ github.ref }}
 
       - name: Download release assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: release-assets-*
           path: release-assets
