@@ -295,3 +295,30 @@ def test_ollama_unreachable_does_not_crash(use_provider, monkeypatch):
     monkeypatch.setattr(client, "_openai", boom)
     with pytest.raises(openai.APIConnectionError):
         client.call_raw("system", "user")
+
+
+# ─────────────────────── per-step provider routing ───────────────────────
+
+
+def test_per_step_provider_falls_back_to_global(use_provider, monkeypatch):
+    """A step with no {step}_provider configured resolves to the global
+    llm_provider — here claude_cli — exercised through the real call_raw path."""
+    use_provider("claude_cli")  # global only; no scout_provider configured
+    monkeypatch.setattr(sc.subprocess, "run", _fake_claude_run(result="scout via global claude"))
+    assert client.call_raw("system", "user", step="scout") == "scout via global claude"
+
+
+def test_per_step_provider_override_beats_global(use_provider, monkeypatch):
+    """A configured {step}_provider overrides the global provider for that step:
+    global is ollama, evaluator_provider is claude_cli, so step='evaluator' routes
+    to claude_cli and ollama is never contacted."""
+    use_provider("ollama", extra={"evaluator_provider": "claude_cli"})
+    monkeypatch.setattr(sc.subprocess, "run", _fake_claude_run(result="evaluator via claude override"))
+    # If routing wrongly fell through to the global ollama provider, the raw-text
+    # path would build an OpenAI client; make that an immediate, loud failure.
+    monkeypatch.setattr(
+        client,
+        "_openai",
+        lambda **kw: (_ for _ in ()).throw(AssertionError("ollama contacted; per-step override failed")),
+    )
+    assert client.call_raw("system", "user", step="evaluator") == "evaluator via claude override"

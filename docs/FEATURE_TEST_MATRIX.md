@@ -107,7 +107,7 @@ proves the row.
 | Provider allowlist (all selectable providers resolve) | [test_provider_allowlist.py](../backend/tests/test_provider_allowlist.py) |
 | **Keyless providers** (ollama, claude_cli, codex_cli) via **`call_llm` + `call_raw`**, graceful fallback | **★ NEW** [test_provider_keyless_calls.py](../backend/tests/test_provider_keyless_calls.py), [test_subscription_cli.py](../backend/tests/test_subscription_cli.py), [test_subscription_retry.py](../backend/tests/test_subscription_retry.py) |
 | codex_cli rejected-`-m` model → retry on account default | [test_subscription_cli.py](../backend/tests/test_subscription_cli.py) |
-| Per-step provider routing (scout/evaluator/generator/ingestor) falls back to global | [test_provider_keyless_calls.py](../backend/tests/test_provider_keyless_calls.py), `llm/client.py::_resolve` |
+| Per-step provider routing: a `{step}_provider` overrides the global, and an unset step falls back to the global | [test_provider_keyless_calls.py](../backend/tests/test_provider_keyless_calls.py) (`test_per_step_provider_override_beats_global`, `test_per_step_provider_falls_back_to_global`), [test_foundation_modules.py](../backend/tests/test_foundation_modules.py) |
 | LLM retry / transient-error classification / client cache | [test_llm_retry.py](../backend/tests/test_llm_retry.py), [test_llm_client_cache.py](../backend/tests/test_llm_client_cache.py) |
 | Embeddings ONNX default + hashing fallback + dims | **★ NEW** [test_embedding_modes.py](../backend/tests/test_embedding_modes.py), [test_embeddings.py](../backend/tests/test_embeddings.py) |
 
