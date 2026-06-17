@@ -3,6 +3,10 @@ import hashlib
 import re
 from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 from core.logging import get_logger
+# Field-agnostic "this is a genuine professional role" vocabularies live in
+# core.occupations so discovery and profile ingestion share one source of truth.
+from core.occupations import EMPLOYMENT_TERMS as EMPLOYMENT_TERMS
+from core.occupations import OCCUPATION_TERMS as OCCUPATION_TERMS
 
 _log = get_logger(__name__)
 
@@ -43,11 +47,6 @@ INTENT_TERMS = (
     "we are hiring", "is hiring", "apply", "help wanted", "internship",
     "junior", "entry level", "new grad", "graduate",
 )
-
-# Field-agnostic "this is a genuine professional role" vocabularies live in
-# core.occupations so discovery and profile ingestion share one source of truth.
-from core.occupations import EMPLOYMENT_TERMS as EMPLOYMENT_TERMS
-from core.occupations import OCCUPATION_TERMS as OCCUPATION_TERMS
 
 JOB_TERMS = (
     "hiring", "job opening", "open role", "full-time", "full time",

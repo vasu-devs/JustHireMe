@@ -76,7 +76,7 @@ async def generate_one(
         if template_id:
             # The user explicitly picked this template; silently generating
             # with a different layout would misrepresent the output.
-            raise HTTPException(status_code=422, detail=f"Resume template {template_id!r} could not be loaded")
+            raise HTTPException(status_code=422, detail=f"Resume template {template_id!r} could not be loaded") from None
         template = await asyncio.to_thread(repo.settings.get_setting, "resume_template", "")
     await manager.broadcast({
         "type": "agent",
