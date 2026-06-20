@@ -151,18 +151,22 @@ def _run_free_scout(raw_targets: str, **overrides):
 
     saved: list[tuple] = []
 
-    patches = [
-        mock.patch("httpx.AsyncClient", _fake_async_client),
-        # SSRF guard does a real DNS lookup in its event-hook; no-op it offline.
-        mock.patch("core.url_guard.assert_public_url", lambda *a, **k: None),
-        # Isolate persistence: capture saves, never hit a real repository.
-        mock.patch.object(free_scout, "url_exists", lambda _jid: False),
-        mock.patch.object(free_scout, "save_lead", lambda *a, **k: saved.append((a, k))),
-        mock.patch.object(free_scout, "rank_lead_by_feedback", lambda lead: lead),
-    ]
+    import contextlib
     kwargs = dict(raw_targets=raw_targets, kind_filter="job", max_requests=20, min_signal_score=60)
     kwargs.update(overrides)
-    with patches[0], patches[1], patches[2], patches[3], patches[4]:
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(mock.patch("httpx.AsyncClient", _fake_async_client))
+        # SSRF guard runs a real DNS lookup in its request event-hook. Patch it at
+        # the source module's OWN binding (net.py did `from core.url_guard import
+        # assert_public_url`, so it holds its own reference) AND at the origin, so
+        # the test is fully offline + deterministic — no dependency on real DNS or
+        # the host's NAT64/DNS64 setup.
+        stack.enter_context(mock.patch("discovery.sources.net.assert_public_url", lambda *a, **k: None))
+        stack.enter_context(mock.patch("core.url_guard.assert_public_url", lambda *a, **k: None))
+        # Isolate persistence: capture saves, never hit a real repository.
+        stack.enter_context(mock.patch.object(free_scout, "url_exists", lambda _jid: False))
+        stack.enter_context(mock.patch.object(free_scout, "save_lead", lambda *a, **k: saved.append((a, k))))
+        stack.enter_context(mock.patch.object(free_scout, "rank_lead_by_feedback", lambda lead: lead))
         leads = free_scout.run(**kwargs)
     return leads, free_scout.LAST_USAGE, saved
 

@@ -25,9 +25,30 @@ from urllib.parse import urlparse
 
 _ALLOWED_SCHEMES = ("http", "https")
 
+# NAT64 well-known prefix (RFC 6052) + RFC 8215 local-use prefix. A DNS64
+# resolver on an IPv6-only/dual-stack network synthesises IPv6 addresses that
+# embed the real IPv4 destination in the low 32 bits. Python's ipaddress marks
+# 64:ff9b::/96 as "reserved", so without unwrapping it the guard would wrongly
+# block every legitimately-public host reached via NAT64.
+_NAT64_PREFIXES = (
+    ipaddress.IPv6Network("64:ff9b::/96"),
+    ipaddress.IPv6Network("64:ff9b:1::/48"),
+)
+
 
 class BlockedUrlError(ValueError):
     """Raised when a URL targets a non-public / internal address (SSRF guard)."""
+
+
+def _embedded_ipv4(addr: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    """The IPv4 embedded in an IPv4-mapped or NAT64 IPv6 address, else None."""
+    mapped = addr.ipv4_mapped
+    if mapped is not None:
+        return mapped
+    for prefix in _NAT64_PREFIXES:
+        if addr in prefix:
+            return ipaddress.IPv4Address(int(addr) & 0xFFFFFFFF)
+    return None
 
 
 def _ip_is_public(ip: str) -> bool:
@@ -35,6 +56,13 @@ def _ip_is_public(ip: str) -> bool:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return False
+    # NAT64 / IPv4-mapped IPv6 carry a real IPv4 destination — judge that IPv4 so
+    # public hosts reached over NAT64 are allowed while a NAT64-wrapped PRIVATE
+    # IPv4 (e.g. 64:ff9b::10.0.0.1) is still refused.
+    if isinstance(addr, ipaddress.IPv6Address):
+        embedded = _embedded_ipv4(addr)
+        if embedded is not None:
+            addr = embedded
     # is_link_local covers 169.254.0.0/16 (incl. cloud metadata) and fe80::/10.
     return not (
         addr.is_private
