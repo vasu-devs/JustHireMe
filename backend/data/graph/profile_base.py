@@ -61,6 +61,30 @@ def stack_list(value) -> list[str]:
     return [part.strip() for part in str(value or "").split(",") if part.strip()]
 
 
+# Field-agnostic: a project's skills can arrive under any of these keys depending
+# on the source (resume parser, LinkedIn export, portfolio scrape, manual JSON).
+# Linking only off `stack` left projects whose skills came in under `skills` /
+# `technologies` / `tools` disconnected in the knowledge graph.
+PROJECT_SKILL_FIELDS = ("stack", "s", "skills", "tech", "technologies", "tools", "tech_stack")
+
+
+def project_stack_list(item: dict) -> list[str]:
+    """Flatten a project's skills across every recognised skill field.
+
+    De-duplicates case-insensitively while preserving first-seen order so a
+    project links to its skills no matter which field the source populated.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for field in PROJECT_SKILL_FIELDS:
+        for token in stack_list(item.get(field)):
+            key = token.lower()
+            if key and key not in seen:
+                seen.add(key)
+                out.append(token)
+    return out
+
+
 def clean_profile_summary(value: str) -> str:
     lines: list[str] = []
     for raw in str(value or "").splitlines():

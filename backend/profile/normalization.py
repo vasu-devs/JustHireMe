@@ -302,7 +302,7 @@ def normalize_projects(raw_items: list[Any], *, known_skills: list[str] | None =
         repo = _clean_repo_url(str(item.get("repo") or item.get("url") or "") or _first_url(f"{raw_title} {raw_impact}"))
         title = _clean_project_title(raw_title)
         impact = _clean_project_detail(raw_impact)
-        stack_items = normalize_stack(item.get("stack", item.get("s", "")))
+        stack_items = normalize_stack(_project_skill_fields(item))
         url_prefix = _prefix_before_first_url(raw_impact)
         if url_prefix and len(url_prefix.split()) <= 6 and _known_skill_hits(url_prefix):
             stack_items = _dedupe(stack_items + split_skill_names(url_prefix))
@@ -768,6 +768,18 @@ def _stack_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return [_clean_inline_text(str(item)) for item in value if _clean_inline_text(str(item))]
     return [_clean_inline_text(part) for part in str(value or "").split(",") if _clean_inline_text(part)]
+
+
+def _project_skill_fields(item: dict[str, Any]) -> list[str]:
+    """Collect a project's skill tokens across every recognised skill field.
+
+    Field list lives in the data layer (``project_stack_list``) so the
+    snapshot-materialize path and this normalization path stay in sync.
+    Returns a flat list of raw tokens; the caller normalizes/validates them.
+    """
+    from data.graph.profile_base import project_stack_list
+
+    return project_stack_list(item)
 
 
 def _append_detail(base: str, detail: str) -> str:

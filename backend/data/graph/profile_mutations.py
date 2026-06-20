@@ -28,6 +28,7 @@ from data.graph.profile_base import (
     hash_id,
     normal_profile,
     profile_has_data,
+    project_stack_list,
     stack_list,
 )
 from data.graph.profile_deletions import _forget_profile_deletion, _remember_profile_deletion
@@ -102,7 +103,7 @@ def materialize_profile_snapshot(profile: dict | None = None, db_path: str | Non
             title = str(item.get("title") or item.get("name") or "").strip()
             if not title:
                 continue
-            stack = ", ".join(stack_list(item.get("stack")))
+            stack = ", ".join(project_stack_list(item))
             add_project(title, stack, str(item.get("repo") or item.get("url") or ""), str(item.get("impact") or item.get("description") or item.get("text") or ""), db_path)
             created += 1
         for item in profile.get("exp", []) or []:
