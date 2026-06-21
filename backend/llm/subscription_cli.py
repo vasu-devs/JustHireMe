@@ -18,6 +18,7 @@ importable and testable without the rest of the llm package.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -344,6 +345,41 @@ def _claude_auth_status(path: str) -> dict | None:
         return None
 
 
+def _jwt_claims(token: str) -> dict:
+    """Decode a JWT's payload (claims) without verifying the signature. Used only
+    to read identity claims (email / plan) locally — the token itself is never
+    logged or returned."""
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        return json.loads(base64.urlsafe_b64decode(payload))
+    except Exception:
+        return {}
+
+
+def _codex_auth_status() -> dict | None:
+    """Rich Codex login state — the signed-in email and ChatGPT plan — read
+    locally from the id_token claims in ~/.codex/auth.json. Returns only those
+    identity fields (never the token). None if the file is missing/unreadable."""
+    path = os.path.join(os.path.expanduser("~"), ".codex", "auth.json")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except Exception:
+        return None
+    tokens = data.get("tokens") if isinstance(data.get("tokens"), dict) else {}
+    claims = _jwt_claims(str(tokens.get("id_token") or tokens.get("access_token") or ""))
+    auth_blk = claims.get("https://api.openai.com/auth") or {}
+    plan = auth_blk.get("chatgpt_plan_type")
+    return {
+        "logged_in": True,
+        "email": claims.get("email") or None,
+        # "plus" -> "Plus", "pro" -> "Pro"; prefix so it reads like Claude's plan.
+        "plan": f"ChatGPT {plan.title()}" if isinstance(plan, str) and plan else None,
+        "method": data.get("auth_mode") or None,
+    }
+
+
 def _codex_logged_in(path: str) -> bool:
     try:
         r = subprocess.run([path, "login", "status"], capture_output=True, text=True,
@@ -411,8 +447,12 @@ def status(provider: str) -> dict:
         info["logged_in"] = _gemini_logged_in()
     elif provider == "copilot_cli":
         info["logged_in"] = _copilot_logged_in()
-    else:
-        info["logged_in"] = _codex_logged_in(path)
+    else:  # codex_cli — show the signed-in ChatGPT account + plan, like Claude
+        rich = _codex_auth_status()
+        if rich is not None:
+            info.update(rich)
+        else:
+            info["logged_in"] = _codex_logged_in(path)
     return info
 
 
