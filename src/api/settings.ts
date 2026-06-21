@@ -17,6 +17,12 @@ export const settingsApi = {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(settings),
   }),
+  getPreferences: (api: ApiFetch) => api("/api/v1/preferences"),
+  savePreferences: (api: ApiFetch, preferences: string) => api("/api/v1/preferences", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ preferences }),
+  }),
   subscriptionStatus: (api: ApiFetch) => api("/api/v1/settings/subscription-status"),
   subscriptionLogin: (api: ApiFetch, provider: string) => api(`/api/v1/settings/subscription-login/${provider}`, { method: "POST" }),
   resetData: (api: ApiFetch, opts?: { clearSettings?: boolean }) => api("/api/v1/data/reset", {

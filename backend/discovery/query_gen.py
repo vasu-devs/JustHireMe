@@ -234,6 +234,7 @@ def generate(profile: dict, urls: list[str], market_focus: str = "global") -> li
     # setting or the profile's own identity, so any region on Earth works.
     location = str(profile.get("_discovery_location") or "").strip()
     remote_pref = str(profile.get("_remote_preference") or "any").strip().lower()
+    preferences = str(profile.get("_job_preferences") or "").strip()[:600]
     site_domains, passthrough = _extract_domains(urls)
     passthrough = _enrich_passthrough_targets(passthrough, profile)
 
@@ -295,6 +296,18 @@ the candidate works in software or tech — support any field, in any country.
   rather than spammy.
 </query_construction>"""
 
+    if preferences:
+        system += f"""
+
+<candidate_preferences>
+The candidate described, in their own words, what they are looking for:
+"{preferences}"
+Bias the queries toward these wants (industry, role type, remote/onsite, stack, mission) WHEN the
+profile supports them — e.g. add an industry or role-type term they asked for. Treat preferences as
+soft steering, never as invented qualifications: never add skills, seniority, or locations the
+profile does not show just because they were wished for.
+</candidate_preferences>"""
+
     if focus == "india":
         system += """
 
@@ -332,6 +345,7 @@ Top skills            : {', '.join(skills[:15])}
 Detected role themes  : {', '.join(role_terms)}
 Project/tool stack    : {', '.join(stack_tokens)}
 Recent role titles    : {', '.join(recent_roles) if recent_roles else 'none (fresher/student)'}
+Looking for (own words): {preferences or 'not specified'}
 </candidate_profile>
 
 <job_board_domains>

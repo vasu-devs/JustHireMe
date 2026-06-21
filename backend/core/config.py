@@ -186,6 +186,9 @@ def profile_for_discovery(profile: dict | None, cfg: dict) -> dict:
     # the user's region without every caller threading extra args.
     profile["_discovery_location"] = discovery_location(cfg, profile)
     profile["_remote_preference"] = remote_preference(cfg)
+    # The user's free-text "what I'm looking for" preferences steer the scan
+    # toward roles they actually want (used by the query planner + evaluator).
+    profile["_job_preferences"] = str((cfg or {}).get("job_preferences") or "").strip()
     return profile
 
 

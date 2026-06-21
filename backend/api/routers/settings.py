@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from api.dependencies import get_repository
 from api.scheduler import ensure_ghost_job
-from core.types import ResetDataBody, SettingsBody, TemplateBody
+from core.types import PreferencesBody, ResetDataBody, SettingsBody, TemplateBody
 from data.repository import Repository
 
 
@@ -219,6 +219,16 @@ def create_router(scheduler: AsyncIOScheduler, ghost_tick) -> APIRouter:
     @router.post("/template")
     async def save_template(body: TemplateBody, repo: Repository = Depends(get_repository)):
         await asyncio.to_thread(repo.settings.save_settings, {"resume_template": body.template})
+        return {"ok": True}
+
+    @router.get("/preferences")
+    async def get_preferences(repo: Repository = Depends(get_repository)):
+        """The user's free-text 'what I'm looking for' — steers the scan and ranking."""
+        return {"preferences": await asyncio.to_thread(repo.settings.get_setting, "job_preferences", "")}
+
+    @router.post("/preferences")
+    async def save_preferences(body: PreferencesBody, repo: Repository = Depends(get_repository)):
+        await asyncio.to_thread(repo.settings.save_settings, {"job_preferences": body.preferences})
         return {"ok": True}
 
     @router.get("/settings")

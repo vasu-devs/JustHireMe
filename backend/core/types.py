@@ -156,6 +156,10 @@ class TemplateBody(StrictBody):
     template: str = Field(default="", max_length=20000)
 
 
+class PreferencesBody(StrictBody):
+    preferences: str = Field(default="", max_length=2000)
+
+
 class ResetDataBody(StrictBody):
     # Require an explicit literal so a destructive reset can never fire from an
     # empty/accidental request body.

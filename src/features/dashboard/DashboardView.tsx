@@ -1,8 +1,70 @@
+import { useEffect, useRef, useState } from "react";
 import Icon from "../../shared/components/Icon";
 import type React from "react";
 import type { ApiFetch, Lead, LogLine, OperationProgress, View } from "../../types";
 import { getMark, getTone, leadDisplayHeading, leadSignal } from "../../shared/lib/leadUtils";
 import { DebugResetButton } from "../../shared/components/DebugResetButton";
+import { settingsApi } from "../../api/settings";
+
+/**
+ * "What you're looking for" — free-text preferences the agent uses to target the
+ * scan and rank matching jobs higher. Loads + saves the job_preferences setting
+ * directly (on blur), so it survives restarts and feeds the next scan/evaluation.
+ */
+function PreferencesBox({ api }: { api: ApiFetch | null }) {
+  const [value, setValue] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [status, setStatus] = useState<"" | "saving" | "saved" | "error">("");
+  const lastSaved = useRef("");
+
+  useEffect(() => {
+    if (!api) return;
+    let alive = true;
+    settingsApi.getPreferences(api).then(r => r.json()).then(d => {
+      if (!alive) return;
+      const v = String(d?.preferences || "");
+      setValue(v); lastSaved.current = v; setLoaded(true);
+    }).catch(() => { if (alive) setLoaded(true); });
+    return () => { alive = false; };
+  }, [api]);
+
+  const save = async () => {
+    if (!api || value === lastSaved.current) return;
+    setStatus("saving");
+    try {
+      const r = await settingsApi.savePreferences(api, value);
+      if (!r.ok) throw new Error();
+      lastSaved.current = value;
+      setStatus("saved"); window.setTimeout(() => setStatus(""), 1800);
+    } catch { setStatus("error"); }
+  };
+
+  return (
+    <section className="card" style={{ padding: 16, marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <span className="eyebrow">What you're looking for</span>
+          <div style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 3, lineHeight: 1.5 }}>
+            Describe your ideal role in plain English — the agent uses it to <b>target your scan</b> and <b>rank matching jobs higher</b>.
+          </div>
+        </div>
+        {status === "saved" && <span className="pill" style={{ background: "var(--green-soft)", color: "var(--green-ink)", border: "1px solid var(--green)" }}>Saved</span>}
+        {status === "saving" && <span className="pill">Saving…</span>}
+        {status === "error" && <span className="pill" style={{ background: "var(--bad-soft)", color: "var(--bad)", border: "1px solid var(--bad)" }}>Save failed</span>}
+      </div>
+      <textarea
+        className="field-input"
+        rows={2}
+        value={value}
+        disabled={!loaded}
+        placeholder="e.g. remote senior backend, Python or Go, fintech or health, $150k+, no on-call, mission-driven teams"
+        onChange={e => setValue(e.target.value)}
+        onBlur={save}
+        style={{ width: "100%", resize: "vertical", fontSize: 13, lineHeight: 1.55 }}
+      />
+    </section>
+  );
+}
 
 const warmSurface = "rgba(var(--white-rgb), 0.64)";
 const warmSurfaceStrong = "rgba(var(--white-rgb), 0.78)";
@@ -249,6 +311,8 @@ export function DashboardView({
           </div>
         </div>
       </section>
+
+      <PreferencesBox api={api} />
 
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
         <MiniStat tone="blue" label="Active leads" value={counts.total} hint="not discarded" icon="layers" />
