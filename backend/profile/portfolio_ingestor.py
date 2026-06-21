@@ -14,6 +14,7 @@ from profile.portfolio_crawl import (
 )
 from profile.portfolio_crawl import _snapshot_html as _snapshot_html
 from profile.portfolio_extract import (
+    _collect_reference_links,
     _combined_text,
     _dedupe_pages,
     _extract_deterministic,
@@ -77,18 +78,21 @@ async def ingest_portfolio_url(url: str) -> dict:
     else:
         result = deterministic
     result = _normalize_result_payload(result)
+    references = _collect_reference_links(pages)
 
     result.update({
         "source": "portfolio_url",
         "url": start_url,
         "screenshot_b64": screenshot_b64,
         "raw_text": _combined_text(pages, max_chars=250000),
+        "references": references,
         "evidence": {
             "pages": [{"url": page.url, "title": page.title, "text": page.text, "links": page.links} for page in pages],
         },
         "stats": {
             "pages_scanned": len(pages),
             "links_seen": sum(len(page.links) for page in pages),
+            "references": len(references),
             "skills": len(result.get("skills") or []),
             "projects": len(result.get("projects") or []),
             "quality_filtered": result.pop("_quality_filtered", 0),

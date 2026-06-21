@@ -31,6 +31,113 @@ _log = get_logger(__name__)
 
 MAX_PAGES = 100
 MAX_TEXT_PER_PAGE = 200000
+# Per page, click up to this many candidate cards/buttons to reveal modal or
+# inline-expanded detail (case studies, demo videos) that is not in the initial
+# DOM. Bounded so a click-heavy page can't blow the crawl budget.
+MAX_CLICKS_PER_PAGE = 12
+
+# Runs in the page: clicks candidate project cards/buttons, captures whatever a
+# click reveals (a modal/overlay, or inline-expanded content), and its links —
+# including off-site ones like a YouTube demo or a case-study writeup — then
+# closes and moves on. Skips clicks that navigate away (those are real links the
+# crawler queues separately). Best-effort: a single failed click is swallowed.
+_EXPAND_JS = """
+async (MAX) => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const bodyText = () => (document.body ? document.body.innerText : '');
+  const baseLen = bodyText().length;
+  const navWords = /^(home|about|menu|close|contact|projects?|works?|resume|blog|back|next|prev|previous)$/i;
+
+  // Prevent any anchor click from actually navigating during expansion: a full
+  // navigation destroys this execution context and aborts the whole pass.
+  // preventDefault stops only the navigation, not an element's own onclick /
+  // modal-opening JS, so modal triggers still fire.
+  const navGuard = (e) => {
+    try { const a = e.target && e.target.closest && e.target.closest('a[href]'); if (a) e.preventDefault(); } catch (err) {}
+  };
+  document.addEventListener('click', navGuard, true);
+
+  const clickable = (el) => {
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'a') {
+      // Click an anchor only if it triggers JS (a modal opener) — plain content
+      // links are followed by the normal same-origin crawler instead, so we do
+      // not waste a click (and a possible navigation) on them.
+      const href = (el.getAttribute('href') || '').trim().toLowerCase();
+      return el.hasAttribute('onclick') || href === '' || href === '#' || href.startsWith('javascript:');
+    }
+    if (tag === 'button') return true;
+    const role = (el.getAttribute('role') || '').toLowerCase();
+    if (role === 'button' || role === 'link') return true;
+    if (el.hasAttribute('onclick')) return true;
+    try { if (getComputedStyle(el).cursor === 'pointer' && (el.innerText || '').trim().length >= 8) return true; } catch (e) {}
+    return false;
+  };
+
+  const pool = Array.from(document.querySelectorAll(
+    'button,[role=button],[role=link],[onclick],a,[class*=card],[class*=project],[class*=tile],[class*=item],[class*=work]'
+  ));
+  const seen = new Set();
+  const candidates = [];
+  for (const el of pool) {
+    if (!clickable(el)) continue;
+    const label = (el.innerText || '').trim().slice(0, 80);
+    if (!label || seen.has(label) || navWords.test(label)) continue;
+    seen.add(label);
+    candidates.push(el);
+    if (candidates.length >= MAX) break;
+  }
+
+  const findOverlay = () => {
+    const nodes = Array.from(document.querySelectorAll(
+      '[role=dialog],[aria-modal=true],.modal,.dialog,[class*=modal],[class*=overlay],[class*=lightbox],[class*=drawer]'
+    ));
+    for (const n of nodes) {
+      try {
+        const r = n.getBoundingClientRect();
+        const st = getComputedStyle(n);
+        if (r.width > 120 && r.height > 120 && st.display !== 'none' && st.visibility !== 'hidden' && st.opacity !== '0') return n;
+      } catch (e) {}
+    }
+    return null;
+  };
+  const grabLinks = (root) => Array.from(root.querySelectorAll('a[href]'))
+    .map((a) => ({ href: a.href || '', text: (a.innerText || a.getAttribute('aria-label') || '').trim() }))
+    .filter((l) => l.href);
+  const closeOverlay = async (node) => {
+    try {
+      const btn = node && (node.querySelector('[aria-label*="close" i]') || node.querySelector('[class*=close]') || node.querySelector('button'));
+      if (btn) { btn.click(); await sleep(120); }
+    } catch (e) {}
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+    await sleep(120);
+  };
+
+  const reveals = [];
+  for (const el of candidates) {
+    try {
+      const beforeUrl = location.href;
+      try { el.scrollIntoView({ block: 'center' }); } catch (e) {}
+      el.click();
+      await sleep(350);
+      if (location.href !== beforeUrl) { try { history.back(); } catch (e) {} await sleep(400); continue; }
+      const overlay = findOverlay();
+      if (overlay) {
+        reveals.push({ text: (overlay.innerText || '').trim().slice(0, 4000), links: grabLinks(overlay) });
+        await closeOverlay(overlay);
+      } else {
+        const grew = bodyText().length - baseLen;
+        if (grew > 80) {
+          reveals.push({ text: bodyText().slice(baseLen).slice(0, 4000), links: grabLinks(document) });
+          try { el.click(); } catch (e) {}
+          await sleep(120);
+        }
+      }
+    } catch (e) {}
+  }
+  return reveals;
+}
+"""
 # M6: cap the whole multi-page crawl. The soft deadline stops queueing new pages
 # and returns what was collected.
 _CRAWL_SESSION_TIMEOUT = 300
@@ -106,6 +213,17 @@ async def _crawl_portfolio_browser(url: str) -> tuple[list[PageSnapshot], str]:
                     await page.wait_for_load_state("networkidle", timeout=5000)
                 await page.wait_for_timeout(600)
                 snapshot = await _snapshot_playwright_page(page)
+                try:
+                    reveals = await _expand_page_modals(page)
+                    if reveals:
+                        snapshot = _apply_reveals(snapshot, reveals)
+                        _log.info(
+                            "portfolio: clicked open %d modal/expansion(s) on %s",
+                            len(reveals),
+                            normalized,
+                        )
+                except Exception as exc:
+                    _log.debug("portfolio modal expansion skipped for %s: %s", normalized, exc)
                 pages.append(snapshot)
                 if not screenshot_b64:
                     raw = await page.screenshot(type="png", full_page=False)
@@ -167,6 +285,55 @@ async def _snapshot_playwright_page(page) -> PageSnapshot:
         text=_normalize_block_text(str(data.get("text") or ""))[:MAX_TEXT_PER_PAGE],
         links=[{"href": str(link.get("href") or ""), "text": str(link.get("text") or "")} for link in data.get("links", []) if isinstance(link, dict)],
     )
+
+
+async def _expand_page_modals(page) -> list[dict]:
+    """Click candidate project cards/buttons to reveal modal or inline-expanded
+    detail (case studies, demo videos and their links), returning a list of
+    {"text", "links"} reveals. Best-effort and bounded; never raises."""
+    try:
+        raw = await page.evaluate(_EXPAND_JS, MAX_CLICKS_PER_PAGE)
+    except Exception as exc:
+        _log.debug("portfolio modal expansion evaluate failed: %s", exc)
+        return []
+    reveals: list[dict] = []
+    for item in raw or []:
+        if not isinstance(item, dict):
+            continue
+        links = [
+            {"href": str(link.get("href") or ""), "text": str(link.get("text") or "")}
+            for link in (item.get("links") or [])
+            if isinstance(link, dict) and link.get("href")
+        ]
+        text = str(item.get("text") or "")
+        if text.strip() or links:
+            reveals.append({"text": text, "links": links})
+    return reveals
+
+
+def _apply_reveals(snapshot: PageSnapshot, reveals: list[dict]) -> PageSnapshot:
+    """Fold clicked-open modal/overlay content back into a page snapshot: append
+    the revealed text (re-capped) and merge in any links it exposed — e.g. a
+    project's YouTube demo or case-study link — de-duplicated by href. Pure, so
+    the merge is unit-testable without a browser."""
+    if not reveals:
+        return snapshot
+    extra_texts: list[str] = []
+    merged_links = list(snapshot.links)
+    seen = {link.get("href") or "" for link in merged_links}
+    for reveal in reveals:
+        text = _normalize_block_text(str(reveal.get("text") or ""))
+        if text:
+            extra_texts.append(text)
+        for link in reveal.get("links") or []:
+            href = str(link.get("href") or "")
+            if href and href not in seen:
+                seen.add(href)
+                merged_links.append({"href": href, "text": _normalize_block_text(str(link.get("text") or ""))})
+    if extra_texts:
+        snapshot.text = (snapshot.text + "\n\n" + "\n\n".join(extra_texts))[:MAX_TEXT_PER_PAGE]
+    snapshot.links = merged_links
+    return snapshot
 
 
 def _crawl_portfolio_http(url: str) -> list[PageSnapshot]:

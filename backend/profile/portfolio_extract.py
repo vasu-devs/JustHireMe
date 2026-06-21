@@ -17,6 +17,7 @@ from profile.portfolio_models import PageSnapshot, _PortfolioExtract
 from profile.portfolio_text import (
     _canonical_url,
     _dedupe_strings,
+    _external_ref_kind,
     _first_match,
     _is_concatenated_nav,
     _nav_noise,
@@ -178,7 +179,13 @@ def _extract_deterministic(url: str, pages: list[PageSnapshot]) -> dict:
 
 async def _extract_with_llm(url: str, pages: list[PageSnapshot], deterministic: dict) -> _PortfolioExtract | None:
     try:
-        if os.getenv("JHM_PORTFOLIO_LLM", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        # LLM extraction is ON by default: it is what turns the raw crawl — the
+        # initial pages PLUS clicked-open modal content and external references —
+        # into one complete structured profile, the same way résumé ingestion is
+        # LLM-first. Opt out with JHM_PORTFOLIO_LLM=0 for a deterministic-only run
+        # (offline / unit tests). A key-required provider with no key configured
+        # falls back gracefully to the deterministic draft.
+        if os.getenv("JHM_PORTFOLIO_LLM", "").strip().lower() in {"0", "false", "no", "off"}:
             return None
         from llm import _resolve, provider_needs_key
 
@@ -209,6 +216,18 @@ async def _extract_with_llm(url: str, pages: list[PageSnapshot], deterministic: 
             f"URL: {page.url}\nTITLE: {page.title}\nTEXT:\n{page.text[:5000]}"
             for page in pages
         )[:MAX_LLM_TEXT]
+        references = _collect_reference_links(pages)
+        references_section = (
+            "<references>\n"
+            "Off-site links found across the site AND inside clicked-open project modals — "
+            "demo videos, case-study writeups, live deployments, design artefacts, and source "
+            "repos. Attribute each to the project it belongs to (match by nearby title / anchor "
+            "text): put a source/code link in that project's repo, and fold a demo-video or "
+            "case-study link into that project's impact so the evidence is preserved. Ignore any "
+            "reference you cannot confidently attribute to a specific project.\n"
+            f"{_reference_block(references)}\n"
+            "</references>\n\n"
+        ) if references else ""
         user_prompt = (
             "<portfolio_root>\n"
             f"{url}\n"
@@ -222,6 +241,7 @@ async def _extract_with_llm(url: str, pages: list[PageSnapshot], deterministic: 
             "<pages>\n"
             f"{page_pack}\n"
             "</pages>\n\n"
+            f"{references_section}"
             "## Output\n"
             "Return: candidate_name, candidate_summary, skills, projects, experience, education, certifications, "
             "achievements. Each project has: title, stack, repo, impact.\n\n"
@@ -650,6 +670,41 @@ def _external_links(pages: list[PageSnapshot]) -> dict[str, str]:
             if "github.com" in lower and "github" not in out:
                 out["github"] = href
     return out
+
+
+def _collect_reference_links(pages: list[PageSnapshot], limit: int = 60) -> list[dict[str, str]]:
+    """Collect off-site reference links the crawl + clicked-open modals exposed —
+    demo videos, case-study writeups, live deployments, design artefacts, source
+    repos — that plain same-origin crawling would otherwise discard. Deduped by
+    canonical URL; the anchor text is kept so the agent can tie each reference to
+    the right project. 'social' links (handled in identity) are excluded."""
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for page in pages:
+        for link in page.links:
+            href = str(link.get("href") or "")
+            kind = _external_ref_kind(href)
+            if not kind or kind == "social":
+                continue
+            key = _canonical_url(href) or href
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                "href": href,
+                "text": _normalize_block_text(str(link.get("text") or "")),
+                "kind": kind,
+            })
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def _reference_block(references: list[dict[str, str]]) -> str:
+    """Render collected references as a compact, attributable list for the LLM."""
+    return "\n".join(
+        f"[{ref['kind']}] {ref.get('text') or '(link)'} -> {ref['href']}" for ref in references
+    )
 
 
 def _combined_text(pages: list[PageSnapshot], max_chars: int = 60000) -> str:

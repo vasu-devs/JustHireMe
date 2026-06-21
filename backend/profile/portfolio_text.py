@@ -34,6 +34,45 @@ def _looks_like_asset(url: str) -> bool:
     return bool(re.search(r"\.(png|jpe?g|gif|webp|svg|pdf|zip|mp4|mov|css|js|ico)(\?|$)", url, re.I))
 
 
+# Reference-resource taxonomy: which KIND of off-site link a portfolio anchor is.
+# This classifies the *type* of resource (a demo video, a writeup, a live deploy)
+# so a project's YouTube demo and case-study link survive instead of being thrown
+# away as "not same-origin". It is a generic URL taxonomy, not a per-field list.
+_REFERENCE_HOSTS: tuple[tuple[str, str], ...] = (
+    # recorded demos / walkthroughs
+    ("youtube.com", "video"), ("youtu.be", "video"), ("vimeo.com", "video"),
+    ("loom.com", "video"), ("wistia.com", "video"), ("streamable.com", "video"),
+    # writeups / case studies / docs
+    ("medium.com", "writeup"), ("substack.com", "writeup"), ("dev.to", "writeup"),
+    ("hashnode.", "writeup"), ("notion.site", "writeup"), ("notion.so", "writeup"),
+    ("docs.google.com", "writeup"), ("drive.google.com", "writeup"),
+    ("devpost.com", "writeup"), ("producthunt.com", "writeup"),
+    # design artefacts
+    ("behance.net", "design"), ("dribbble.com", "design"), ("figma.com", "design"),
+    # live deployments
+    ("vercel.app", "demo"), ("netlify.app", "demo"), ("github.io", "demo"),
+    ("pages.dev", "demo"), ("streamlit.app", "demo"), ("herokuapp.com", "demo"),
+    ("fly.dev", "demo"), ("onrender.com", "demo"), ("replit.", "demo"), ("codepen.io", "demo"),
+    # source code
+    ("github.com", "code"), ("gitlab.com", "code"), ("bitbucket.org", "code"),
+    # social / profile
+    ("linkedin.com", "social"), ("twitter.com", "social"), ("x.com", "social"),
+    ("instagram.com", "social"),
+)
+
+
+def _external_ref_kind(url: str) -> str:
+    """Return the resource kind for an off-site link (video / writeup / design /
+    demo / code / social), or "" if it is not a recognized reference host."""
+    host = (urlparse(url).hostname or "").lower()
+    if not host:
+        return ""
+    for needle, kind in _REFERENCE_HOSTS:
+        if needle in host:
+            return kind
+    return ""
+
+
 def _normalize_block_text(value: str) -> str:
     value = re.sub(r"\r", "\n", value or "")
     value = re.sub(r"[ \t]+", " ", value)
