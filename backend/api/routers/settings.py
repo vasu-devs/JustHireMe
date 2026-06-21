@@ -241,15 +241,38 @@ def create_router(scheduler: AsyncIOScheduler, ghost_tick) -> APIRouter:
         provider = provider.strip().lower()
         cfg = _settings_with_incoming(repo, incoming)
         key = _provider_key(cfg, provider)
+        # ollama is local-only; its models come from the user's own server, not a
+        # public catalog. Keep it free-form (the picker accepts any typed id).
         if provider == "ollama":
-            return {"provider": provider, "models": []}
-        if not key:
-            return {"provider": provider, "models": [], "error": "not_configured"}
-        try:
-            models = await list_provider_models(provider, key, cfg)
-        except Exception:
-            return {"provider": provider, "models": [], "error": "unreachable"}
-        return {"provider": provider, "models": models}
+            return {"provider": provider, "models": [], "catalog": []}
+
+        # The always-current models.dev catalog needs no API key, so the picker is
+        # populated for browsing the moment a provider is chosen. When a key IS
+        # set, the live /v1/models call (what the key can actually reach) is merged
+        # IN FRONT, so the user's real models lead and the rest of the catalog
+        # follows. Anything neither knows about can still be typed in free-form.
+        from llm.model_catalog import catalog_for_provider
+
+        catalog = await asyncio.to_thread(catalog_for_provider, provider)
+        live: list[str] = []
+        if key:
+            try:
+                live = await list_provider_models(provider, key, cfg)
+            except Exception:
+                live = []  # fall back to the catalog silently rather than erroring
+
+        seen: set[str] = set()
+        merged: list[str] = []
+        for model_id in [*live, *[str(row["id"]) for row in catalog if row.get("id")]]:
+            low = model_id.lower()
+            if low and low not in seen:
+                seen.add(low)
+                merged.append(model_id)
+
+        resp = {"provider": provider, "models": merged, "catalog": catalog}
+        if not merged:
+            resp["error"] = "not_configured" if not key else "unreachable"
+        return resp
 
     @router.get("/settings/models/{provider}")
     async def get_provider_models(provider: str, repo: Repository = Depends(get_repository)):

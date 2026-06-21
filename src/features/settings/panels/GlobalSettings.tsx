@@ -9,9 +9,7 @@ type ValidationResult = Record<string, { status: KeyStatus; latency_ms?: number 
 
 export function GlobalSettings({ cfg, set, onChange, prov, api }: { cfg: Cfg; set: (k: keyof Cfg) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void; onChange: (k: keyof Cfg, v: string) => void; prov: string; api: ApiFetch }) {
   const [checking, setChecking] = useState(false);
-  const [loadingModels, setLoadingModels] = useState(false);
   const [results, setResults] = useState<ValidationResult | null>(null);
-  const [providerModels, setProviderModels] = useState<Record<string, string[]>>({});
   const [err, setErr] = useState<string | null>(null);
   const [subStatus, setSubStatus] = useState<Record<string, SubStatus>>({});
   const [signingIn, setSigningIn] = useState(false);
@@ -62,26 +60,6 @@ export function GlobalSettings({ cfg, set, onChange, prov, api }: { cfg: Cfg; se
       setErr(e instanceof Error ? e.message : "Key validation failed");
     } finally {
       setChecking(false);
-    }
-  };
-  const loadModels = async () => {
-    setLoadingModels(true);
-    setErr(null);
-    try {
-      const r = await settingsApi.models(api, prov, cfg);
-      const data = await r.json();
-      if (!r.ok) throw new Error(`Server returned ${r.status}`);
-      if (data.error === "not_configured") {
-        setProviderModels(prev => ({ ...prev, [prov]: [] }));
-        setErr(`Model list needs a real ${prov} API key. Paste the key, then load again.`);
-        return;
-      }
-      if (data.error) throw new Error(data.error);
-      setProviderModels(prev => ({ ...prev, [prov]: Array.isArray(data.models) ? data.models : [] }));
-    } catch (e) {
-      setErr(e instanceof Error ? `Model list: ${e.message}` : "Model list failed");
-    } finally {
-      setLoadingModels(false);
     }
   };
   const globalModelField = GLOBAL_MODEL_FIELD[prov];
@@ -136,15 +114,8 @@ export function GlobalSettings({ cfg, set, onChange, prov, api }: { cfg: Cfg; se
               )}
               {globalModelField && (
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 7 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Global Model</div>
-                    {prov !== "ollama" && !isSubscriptionProvider(prov) && (
-                      <button className="btn ghost" onClick={loadModels} disabled={loadingModels} style={{ fontSize: 11, padding: "5px 9px" }}>
-                        {loadingModels ? "Loading..." : "Load models"}
-                      </button>
-                    )}
-                  </div>
-                  <ModelChips provider={prov} value={cfg[globalModelField] as string} onChange={v => onChange(globalModelField, v)} extraModels={providerModels[prov] || []} />
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>Global Model</div>
+                  <ModelChips provider={prov} value={cfg[globalModelField] as string} onChange={v => onChange(globalModelField, v)} api={api} cfg={cfg} />
                 </div>
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>

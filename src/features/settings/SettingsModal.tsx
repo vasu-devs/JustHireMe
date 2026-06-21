@@ -201,7 +201,7 @@ export default function SettingsModal({ api, onClose }: Props) {
           <AppearanceSettings />
           <GlobalSettings cfg={cfg} set={set} onChange={onChange} prov={prov} api={api} />
           <ResumeTemplatesPanel api={api} />
-          <StepSettings cfg={cfg} onChange={onChange} />
+          <StepSettings cfg={cfg} onChange={onChange} api={api} />
           <DiscoverySettings cfg={cfg} set={set} onChange={onChange} />
           <AutomationSettings cfg={cfg} onChange={onChange} />
           <LegalSettings />

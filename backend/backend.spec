@@ -105,6 +105,9 @@ datas = (
     # C3: ship the profile import template so the /ingest/profile/template
     # endpoint can read it in a packaged build.
     + [(str(backend_root / "data" / "profile_schema_example.json"), "data")]
+    # Bundle the models.dev snapshot so the model picker is fully populated
+    # offline / before the first live refresh in a packaged build.
+    + [(str(backend_root / "llm" / "models_snapshot.json"), "llm")]
     # certifi's cacert.pem must be bundled so the first-run runtime-pack
     # downloader can verify GitHub's TLS cert on macOS.
     + collect_data_files("certifi")

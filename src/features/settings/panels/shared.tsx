@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Icon from "../../../shared/components/Icon";
+import { settingsApi } from "../../../api/settings";
+import type { ApiFetch } from "../../../types";
 
 export interface Cfg {
   llm_provider: string;
@@ -264,29 +266,122 @@ export function ProviderPills({ value, onChange, small }: { value: string; onCha
   );
 }
 
-export function ModelChips({ provider, value, onChange, extraModels = [] }: { provider: string; value: string; onChange: (v: string) => void; extraModels?: string[] }) {
-  const hints = Array.from(new Set([...(MODEL_HINTS[provider] || []), ...extraModels])).slice(0, 32);
-  const placeholder = hints[0] || "model-id";
+export type CatalogRow = {
+  id: string; name?: string; release_date?: string; reasoning?: boolean;
+  context?: number | null; input?: number | null; output?: number | null;
+};
+
+function fmtCtx(n?: number | null): string {
+  if (!n) return "";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 ? 1 : 0)}M`;
+  if (n >= 1000) return `${Math.round(n / 1000)}K`;
+  return String(n);
+}
+function fmtMeta(c?: CatalogRow): string {
+  if (!c) return "";
+  const parts: string[] = [];
+  const ctx = fmtCtx(c.context);
+  if (ctx) parts.push(`${ctx} ctx`);
+  if (c.input != null || c.output != null) parts.push(`$${c.input ?? "?"}/$${c.output ?? "?"}`);
+  if (c.reasoning) parts.push("reasoning");
+  if (c.release_date) parts.push(c.release_date.slice(0, 7));
+  return parts.join("  ·  ");
+}
+
+/**
+ * Model picker backed by the always-current models.dev catalog (fetched live and
+ * cached server-side, with an offline snapshot) plus whatever the user's own key
+ * can actually reach. It auto-loads the moment a provider is chosen — no button —
+ * is searchable (providers like OpenRouter list hundreds), shows context/price/
+ * date metadata, and is ALWAYS free-form: type any model id, even one neither the
+ * catalog nor your key knows yet. `MODEL_HINTS` is only an offline fallback now.
+ */
+export function ModelChips({ provider, value, onChange, api, cfg }: {
+  provider: string; value: string; onChange: (v: string) => void; api?: ApiFetch | null; cfg?: Cfg;
+}) {
+  const [models, setModels] = useState<string[]>([]);
+  const [catalog, setCatalog] = useState<CatalogRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const reload = useCallback(() => {
+    if (!api || !provider || isSubscriptionProvider(provider) || provider === "ollama") {
+      setModels([]); setCatalog([]); return;
+    }
+    setLoading(true);
+    settingsApi.models(api, provider, cfg || {})
+      .then(r => r.json())
+      .then(d => {
+        setModels(Array.isArray(d.models) ? d.models : []);
+        setCatalog(Array.isArray(d.catalog) ? d.catalog : []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+    // cfg intentionally excluded: reload on provider change, not every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, provider]);
+  useEffect(() => { reload(); }, [reload]);
+
+  const ids = models.length ? models : (MODEL_HINTS[provider] || []);
+  const meta = useMemo(() => new Map(catalog.map(c => [c.id, c])), [catalog]);
+  const q = value.trim().toLowerCase();
+  const exact = ids.some(m => m.toLowerCase() === q);
+  const filtered = (q && !exact) ? ids.filter(m => m.toLowerCase().includes(q)) : ids;
+  const shown = filtered.slice(0, 60);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-      {hints.length > 0 && (
-        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-          {hints.map(m => (
-            <button key={m} onClick={() => onChange(m)} style={{
-              padding: "3px 10px", borderRadius: 6, fontSize: 11, cursor: "pointer",
-              fontFamily: "var(--font-mono)",
-              background: value === m ? "var(--ink)" : "var(--paper-3)",
-              color: value === m ? "var(--paper)" : "var(--ink-3)",
-              border: "1px solid var(--line)", transition: "all .12s ease",
-            }}>{m}</button>
-          ))}
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ position: "relative" }}>
+        <input
+          type="text"
+          value={value}
+          onChange={e => { onChange(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => window.setTimeout(() => setOpen(false), 160)}
+          placeholder={ids.length ? `Search ${ids.length} models or type any id…` : "Type any model id…"}
+          className="mono field-input"
+          style={{ width: "100%", paddingRight: 70, fontSize: 12 }}
+        />
+        <div style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", gap: 6 }}>
+          {loading
+            ? <span className="spinner-sm" aria-hidden="true" />
+            : ids.length > 0 && <span style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--font-mono)" }}>{ids.length}</span>}
+          <button type="button" onMouseDown={e => { e.preventDefault(); setOpen(o => !o); }}
+            aria-label="Toggle model list" title="Browse models"
+            style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--ink-3)", padding: 0, fontSize: 11, lineHeight: 1 }}>
+            {open ? "▴" : "▾"}
+          </button>
+        </div>
+      </div>
+      {open && shown.length > 0 && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 30,
+          maxHeight: 300, overflowY: "auto", background: "var(--card)", border: "1px solid var(--line)",
+          borderRadius: 10, boxShadow: "var(--shadow-md, 0 8px 28px rgba(0,0,0,0.14))", padding: 4,
+        }}>
+          {shown.map(m => {
+            const c = meta.get(m);
+            const metaText = fmtMeta(c);
+            const active = value === m;
+            return (
+              <button key={m} type="button" onMouseDown={e => { e.preventDefault(); onChange(m); setOpen(false); }}
+                style={{
+                  width: "100%", textAlign: "left", border: "1px solid transparent", borderRadius: 7,
+                  background: active ? "var(--paper-2)" : "transparent", cursor: "pointer",
+                  padding: "7px 9px", display: "flex", flexDirection: "column", gap: 2,
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--paper-2)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = active ? "var(--paper-2)" : "transparent"; }}>
+                <span className="mono" style={{ fontSize: 12, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m}</span>
+                {metaText && <span style={{ fontSize: 10, color: "var(--ink-3)" }}>{metaText}</span>}
+              </button>
+            );
+          })}
+          {filtered.length > shown.length && (
+            <div style={{ fontSize: 10.5, color: "var(--ink-3)", padding: "6px 9px" }}>+{filtered.length - shown.length} more — keep typing to filter</div>
+          )}
         </div>
       )}
-      <input type="text" value={value} onChange={e => onChange(e.target.value)}
-        placeholder={`custom model - e.g. ${placeholder}`}
-        className="mono field-input"
-        style={{ width: "100%", padding: "8px 12px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--card)", fontSize: 12 }}
-      />
     </div>
   );
 }
@@ -374,7 +469,7 @@ export function SubscriptionNote({ provider, status, onSignIn, busy }: {
   );
 }
 
-export function StepCard({ step, cfg, onChange }: { step: typeof STEPS[0]; cfg: Cfg; onChange: (k: keyof Cfg, v: string) => void }) {
+export function StepCard({ step, cfg, onChange, api }: { step: typeof STEPS[0]; cfg: Cfg; onChange: (k: keyof Cfg, v: string) => void; api?: ApiFetch | null }) {
   const provKey  = `${step.id}_provider` as keyof Cfg;
   const apiKey   = `${step.id}_api_key`  as keyof Cfg;
   const modelKey = `${step.id}_model`    as keyof Cfg;
@@ -445,7 +540,7 @@ export function StepCard({ step, cfg, onChange }: { step: typeof STEPS[0]; cfg: 
           )}
           <div>
             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>Model</div>
-            <ModelChips provider={stepProv} value={cfg[modelKey] as string} onChange={v => onChange(modelKey, v)} />
+            <ModelChips provider={stepProv} value={cfg[modelKey] as string} onChange={v => onChange(modelKey, v)} api={api} cfg={cfg} />
           </div>
         </div>
       )}
