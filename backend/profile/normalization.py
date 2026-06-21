@@ -310,7 +310,7 @@ def _short_project_title(text: str) -> str:
 
 def normalize_projects(raw_items: list[Any], *, known_skills: list[str] | None = None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    seen: set[str] = set()
+    seen: dict[str, dict[str, Any]] = {}
     known = {_key(skill) for skill in (known_skills or [])}
     for raw in raw_items:
         item = _as_dict(raw)
@@ -368,11 +368,13 @@ def normalize_projects(raw_items: list[Any], *, known_skills: list[str] | None =
         if not (impact or repo or stack_items or _projectish_title(title)):
             continue
 
-        key = _key(repo or title)
-        if key in seen:
-            continue
-        seen.add(key)
-
+        # Dedup + merge by the project's identity. The SAME project written two
+        # ways — once as a plain name, once with a repo / GitHub link or URL —
+        # shares a cleaned title, so key on the canonical title (falling back to
+        # the repo when the title is empty). On a collision, MERGE richest-wins
+        # rather than dropping: fill a missing repo, union the stacks, and keep
+        # the longer impact, so no detail is lost to the duplicate.
+        ident = _key(title) or _key(repo)
         cleaned = {
             **item,
             "title": title,
@@ -380,6 +382,15 @@ def normalize_projects(raw_items: list[Any], *, known_skills: list[str] | None =
             "repo": repo,
             "impact": impact,
         }
+        if ident in seen:
+            existing = seen[ident]
+            if not existing.get("repo") and repo:
+                existing["repo"] = repo
+            existing["stack"] = ", ".join(_dedupe(_stack_list(existing.get("stack")) + stack_items))
+            if len(impact) > len(str(existing.get("impact") or "")):
+                existing["impact"] = impact
+            continue
+        seen[ident] = cleaned
         out.append(cleaned)
     return out[:80]
 
@@ -665,6 +676,17 @@ def _projectish_text(text: str) -> bool:
 
 def _clean_project_title(title: str) -> str:
     clean = _clean_inline_text(re.sub(r"^\d+\s*[.)/-]*\s*", "", title or ""))
+    # Strip a trailing source/URL annotation like "(GitHub)", "(github.com/…)",
+    # "(branchgpt.example.com)" or "(live demo)" so the same project written two
+    # ways — "Vaani" and "Vaani (GitHub)" — yields one clean title that dedupes
+    # to a single node (the graph project id derives from this title).
+    clean = re.sub(
+        r"\s*\((?:[^)]*(?:github|gitlab|bitbucket|gitea|repo|repository|source\s*code|live|demo|"
+        r"website|https?://|www\.|[a-z0-9-]+\.[a-z]{2,})[^)]*)\)\s*$",
+        "",
+        clean,
+        flags=re.I,
+    ).strip()
     clean = URL_RE.sub("", clean)
     clean = re.sub(r"(?i)\b(?:github|repo|repository|live|demo|source code)\s*:\s*$", "", clean)
     clean = re.sub(r"(?i)^(featured|selected)\s+(project|projects|work|case study)\s*[:|-]?\s*", "", clean).strip()

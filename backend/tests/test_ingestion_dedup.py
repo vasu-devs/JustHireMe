@@ -58,6 +58,35 @@ def test_dedupe_dict_items_collapses_same_job_with_different_ids():
     assert len(svc._dedupe_dict_items(items, "id")) == 1
 
 
+def test_same_project_named_two_ways_merges_into_one():
+    """A project listed once as a plain name and again with a repo / GitHub
+    annotation is ONE project — they must collapse to a single entry that keeps
+    the repo and the richest stack/impact, not two near-duplicate nodes."""
+    projects = [
+        {"title": "Vaani", "stack": "Python", "impact": "A voice assistant.", "repo": ""},
+        {"title": "Vaani (github.com/vasu/vaani)", "stack": "Python, FastAPI", "impact": "A real-time multilingual voice assistant with streaming ASR.", "repo": "https://github.com/vasu/vaani"},
+    ]
+    out = norm.normalize_projects(projects)
+    assert len(out) == 1, f"expected one merged project, got {[p['title'] for p in out]}"
+    merged = out[0]
+    assert merged["title"] == "Vaani"  # source annotation stripped
+    assert "github.com/vasu/vaani" in merged["repo"]  # repo salvaged from the richer mention
+    assert "FastAPI" in merged["stack"]  # stacks unioned
+    assert "streaming ASR" in merged["impact"]  # longer impact kept
+
+
+def test_source_annotation_does_not_merge_distinct_projects():
+    """Two genuinely different projects must stay separate even when one carries
+    a (GitHub) annotation — dedup is by cleaned title, not by stripping suffixes."""
+    projects = [
+        {"title": "Vaani (GitHub)", "stack": "Python", "impact": "Voice assistant.", "repo": "https://github.com/u/vaani"},
+        {"title": "BranchGPT", "stack": "TypeScript", "impact": "Git workflow copilot.", "repo": "https://github.com/u/branchgpt"},
+    ]
+    out = norm.normalize_projects(projects)
+    titles = sorted(p["title"] for p in out)
+    assert titles == ["BranchGPT", "Vaani"], titles
+
+
 def test_project_with_repo_is_not_absorbed_despite_detail_like_title():
     projects = [
         {"title": "Acme Dashboard", "stack": "React, TypeScript", "impact": "Internal ops console.", "repo": ""},
