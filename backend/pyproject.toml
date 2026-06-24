@@ -13,7 +13,7 @@ dependencies = [
     "openai~=2.43.0",
     "instructor~=1.15.1",
     "kuzu~=0.11.3",
-    "lancedb~=0.30.2",
+    "lancedb~=0.33.0",
     "langchain-core~=1.4.0",
     "langgraph~=1.2.0",
     # Embedding runtime: embeddings.py imports these directly (ONNX MiniLM + tokenizer
