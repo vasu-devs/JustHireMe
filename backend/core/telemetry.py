@@ -191,6 +191,103 @@ def get_top_errors(limit: int = 10, days: int = 7) -> list[dict]:
         return []
 
 
+def record_metric(name: str, value: int = 1) -> None:
+    """Increment a named counter in the ``metrics`` table (upsert).
+
+    Used for lifetime operational counters (scans run, leads found/saved/dropped).
+    Fails closed and silent — telemetry must never break the path it observes.
+    """
+    incr_metrics({name: value})
+
+
+def incr_metrics(counters: Mapping[str, int]) -> None:
+    """Increment several counters at once in a single transaction."""
+    if not counters:
+        return
+    try:
+        connection = import_module("data.sqlite.connection")
+        connection.init_sql()
+        conn = connection.get_connection()
+        for raw_name, raw_value in counters.items():
+            name = str(raw_name)[:120]
+            try:
+                delta = int(raw_value)
+            except (TypeError, ValueError):
+                continue
+            conn.execute(
+                """
+                INSERT INTO metrics(name, value, updated_at) VALUES(?, ?, datetime('now'))
+                ON CONFLICT(name) DO UPDATE SET value=value+excluded.value, updated_at=datetime('now')
+                """,
+                (name, delta),
+            )
+        conn.commit()
+    except Exception as log_exc:
+        logging.getLogger(__name__).debug('suppressed exception in backend/core/telemetry.py:incr_metrics: %s', log_exc)
+        return
+
+
+def set_metric_state(name: str, state: object) -> None:
+    """Store the latest JSON snapshot for ``name`` (e.g. the last scan summary).
+
+    The snapshot is redaction-passed like every other telemetry payload so a stray
+    URL/company can't leak sensitive tokens.
+    """
+    try:
+        connection = import_module("data.sqlite.connection")
+        connection.init_sql()
+        conn = connection.get_connection()
+        payload = json.dumps(redact_sensitive(state), ensure_ascii=False)[:8000]
+        conn.execute(
+            """
+            INSERT INTO metrics(name, state, updated_at) VALUES(?, ?, datetime('now'))
+            ON CONFLICT(name) DO UPDATE SET state=excluded.state, updated_at=datetime('now')
+            """,
+            (str(name)[:120], payload),
+        )
+        conn.commit()
+    except Exception as log_exc:
+        logging.getLogger(__name__).debug('suppressed exception in backend/core/telemetry.py:set_metric_state: %s', log_exc)
+        return
+
+
+def get_metrics() -> dict[str, int]:
+    """Return all counters as ``{name: value}`` (empty on any failure)."""
+    try:
+        connection = import_module("data.sqlite.connection")
+        connection.init_sql()
+        conn = connection.get_connection()
+        rows = conn.execute("SELECT name, value FROM metrics WHERE value != 0").fetchall()
+        out: dict[str, int] = {}
+        for row in rows:
+            name = row["name"] if hasattr(row, "keys") else row[0]
+            value = row["value"] if hasattr(row, "keys") else row[1]
+            out[str(name)] = int(value or 0)
+        return out
+    except Exception as log_exc:
+        logging.getLogger(__name__).debug('suppressed exception in backend/core/telemetry.py:get_metrics: %s', log_exc)
+        return {}
+
+
+def get_metric_state(name: str) -> dict:
+    """Return the latest JSON snapshot for ``name`` (empty dict if absent/unparseable)."""
+    try:
+        connection = import_module("data.sqlite.connection")
+        connection.init_sql()
+        conn = connection.get_connection()
+        row = conn.execute("SELECT state FROM metrics WHERE name=?", (str(name)[:120],)).fetchone()
+        if not row:
+            return {}
+        raw = row["state"] if hasattr(row, "keys") else row[0]
+        if not raw:
+            return {}
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception as log_exc:
+        logging.getLogger(__name__).debug('suppressed exception in backend/core/telemetry.py:get_metric_state: %s', log_exc)
+        return {}
+
+
 def get_error_count(hours: int = 24) -> int:
     try:
         connection = import_module("data.sqlite.connection")

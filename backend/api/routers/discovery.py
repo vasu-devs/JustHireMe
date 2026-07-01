@@ -93,6 +93,28 @@ def _merge_scan_usage(total: dict, incoming: dict, target_count: int) -> None:
         total.setdefault("by_source", {})[key] = value
 
 
+def _record_scan_telemetry(summary: dict) -> None:
+    """Persist a completed scan as lifetime counters + a last-scan snapshot.
+
+    Best-effort and fail-silent: telemetry must never break or slow a scan, so
+    the underlying helpers swallow their own errors. This answers "how many leads
+    did the last scan yield, and why were the rest dropped?" from /diagnostics.
+    """
+    from core.telemetry import incr_metrics, set_metric_state
+
+    incr_metrics({
+        "scans_run": 1,
+        "leads_found": int(summary.get("candidates", 0) or 0),
+        "leads_saved": int(summary.get("saved", 0) or 0),
+        "leads_duplicate": int(summary.get("duplicates", 0) or 0),
+        "leads_filtered": int(summary.get("filtered", 0) or 0),
+        "leads_scored": int(summary.get("scored", 0) or 0),
+        "eval_fallback": int(summary.get("fallback", 0) or 0),
+        "eval_prefiltered": int(summary.get("prefiltered", 0) or 0),
+    })
+    set_metric_state("last_scan", summary)
+
+
 def _target_batches(urls: list[str], size: int) -> list[list[str]]:
     size = max(1, size)
     return [urls[index:index + size] for index in range(0, len(urls), size)]
@@ -354,6 +376,15 @@ async def _run_scan_inner(
         })
     await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Evaluation cycle complete"})
     await asyncio.to_thread(repo.settings.save_settings, {"last_scan_finished_at": datetime.now(timezone.utc).isoformat()})
+    await asyncio.to_thread(_record_scan_telemetry, {
+        "at": datetime.now(timezone.utc).isoformat(),
+        "new_leads": len(leads),
+        "scored": len(to_score),
+        "fallback": fallback_count,
+        "prefiltered": prefiltered_count,
+        **{k: scout_usage.get(k, 0) for k in ("configured", "executed", "candidates", "saved", "duplicates", "filtered", "missing_url", "errors")},
+        "by_source": scout_usage.get("by_source", {}),
+    })
     job_store.update(job.job_id, status="succeeded", progress=100)
 
 

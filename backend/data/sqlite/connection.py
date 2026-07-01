@@ -375,6 +375,13 @@ def _ensure_core_tables(conn) -> None:
             first_seen TEXT DEFAULT (datetime('now')),
             last_seen TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS metrics(
+            name TEXT PRIMARY KEY,
+            value INTEGER DEFAULT 0,
+            state TEXT DEFAULT '',
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
         """
     )
 
