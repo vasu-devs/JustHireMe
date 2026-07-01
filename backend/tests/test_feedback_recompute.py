@@ -1,0 +1,89 @@
+"""Feedback learning actually reshapes ranking (the 'gets better with use' promise).
+
+Runs in a subprocess with an isolated ``JHM_APP_DATA_DIR`` — the recompute path
+touches real ``data.sqlite`` (feedback examples, leads-for-learning, learning-score
+update), which the suite's global ``sqlite3`` fake would poison. See
+``test_telemetry_metrics.py`` for the same pattern.
+"""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _run(script: str, tmp_path) -> subprocess.CompletedProcess:
+    env = dict(os.environ, JHM_APP_DATA_DIR=str(tmp_path))
+    return subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(REPO_ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+
+
+_RERANK = """
+import sys
+sys.path.insert(0, "backend")
+from data.sqlite.connection import init_sql
+init_sql()
+from data.sqlite.leads import save_lead, save_lead_feedback, get_lead_by_id
+from ranking.service import RankingService
+
+# Lead A is marked "good" and lives on greenhouse.
+save_lead({"job_id": "a", "title": "Registered Nurse", "company": "Mercy",
+           "platform": "greenhouse", "url": "https://x/a", "signal_score": 50,
+           "kind": "job", "status": "matched"})
+save_lead_feedback("a", "good", "")
+
+# Lead B has no feedback yet but shares the greenhouse platform.
+save_lead({"job_id": "b", "title": "Staff Nurse", "company": "Grace",
+           "platform": "greenhouse", "url": "https://x/b", "signal_score": 40,
+           "kind": "job", "status": "matched"})
+
+rs = RankingService()
+changed = rs._recompute_feedback_signals(500)
+b = get_lead_by_id("b")
+assert b["signal_score"] > 40, b                       # boosted by learned preference
+assert int(b.get("learning_delta") or 0) > 0, b
+assert any(c.get("job_id") == "b" for c in changed), changed
+
+# Idempotent: a second recompute must not stack the delta.
+first_delta = int(b["learning_delta"])
+rs._recompute_feedback_signals(500)
+b2 = get_lead_by_id("b")
+assert int(b2["learning_delta"]) == first_delta, (first_delta, b2)
+print("RELEARN_OK")
+"""
+
+
+_NOOP = """
+import sys
+sys.path.insert(0, "backend")
+from data.sqlite.connection import init_sql
+init_sql()
+from data.sqlite.leads import save_lead
+from ranking.service import RankingService
+
+save_lead({"job_id": "x", "title": "Welder", "platform": "lever",
+           "url": "https://x/x", "signal_score": 40, "kind": "job", "status": "matched"})
+# No feedback anywhere => nothing learned => no re-ranking.
+assert RankingService()._recompute_feedback_signals(500) == []
+print("NOOP_OK")
+"""
+
+
+def test_feedback_recompute_reranks_open_leads(tmp_path):
+    result = _run(_RERANK, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "RELEARN_OK" in result.stdout
+
+
+def test_recompute_is_noop_without_feedback(tmp_path):
+    result = _run(_NOOP, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "NOOP_OK" in result.stdout

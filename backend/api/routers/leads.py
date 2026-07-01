@@ -176,7 +176,12 @@ def create_router(manager) -> APIRouter:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.put("/leads/{job_id}/feedback")
-    async def update_feedback(job_id: str, body: FeedbackBody, repo: Repository = Depends(get_repository)):
+    async def update_feedback(
+        job_id: str,
+        body: FeedbackBody,
+        repo: Repository = Depends(get_repository),
+        ranking_service=Depends(get_ranking_service),
+    ):
         job_id = _safe_job_id(job_id)
         try:
             lead = await asyncio.to_thread(repo.leads.save_lead_feedback, job_id, body.feedback, body.note)
@@ -185,6 +190,28 @@ def create_router(manager) -> APIRouter:
         if not lead:
             raise HTTPException(status_code=404, detail="Lead not found")
         await manager.broadcast({"type": "LEAD_UPDATED", "data": lead})
+
+        # Feedback should make the tool better with use: re-rank the other still-open
+        # leads by what this thumbs-up/down just taught the model, and push the ones
+        # whose signal changed so the UI reflects it live. Fire-and-forget so the
+        # click returns instantly; failures are non-fatal.
+        async def _relearn() -> None:
+            try:
+                changed = await ranking_service.recompute_feedback_signals()
+                for updated in changed[:60]:
+                    await manager.broadcast({"type": "LEAD_UPDATED", "data": updated})
+                if changed:
+                    await manager.broadcast({
+                        "type": "agent",
+                        "event": "feedback_relearn",
+                        "msg": f"Re-ranked {len(changed)} lead(s) from your feedback",
+                    })
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    'suppressed exception in backend/api/routers/leads.py:update_feedback relearn: %s', exc
+                )
+
+        _track_background_task(asyncio.create_task(_relearn()))
         return lead
 
     @router.put("/leads/{job_id}/followup")

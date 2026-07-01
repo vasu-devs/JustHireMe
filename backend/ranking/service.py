@@ -71,6 +71,40 @@ class RankingService:
     async def apply_feedback(self, lead: dict, examples: list[dict]) -> dict:
         return await asyncio.to_thread(self.feedback.apply, lead, examples)
 
+    async def recompute_feedback_signals(self, *, limit: int = 500) -> list[dict]:
+        """Re-rank existing leads from the current feedback model and persist.
+
+        This is what makes the app "get better with use": after a user marks a
+        lead good/bad, every other still-open lead is re-scored by what that
+        feedback taught the model (liked platforms/companies/stacks get a signal
+        boost, disliked ones a penalty). Returns the leads whose signal changed so
+        the caller can push live updates.
+        """
+        return await asyncio.to_thread(self._recompute_feedback_signals, limit)
+
+    def _recompute_feedback_signals(self, limit: int) -> list[dict]:
+        repo = _settings_repository()
+        examples = repo.feedback.get_feedback_training_examples()
+        if not examples:
+            return []
+        leads = repo.leads.get_leads_for_learning(limit)
+        changed: list[dict] = []
+        for lead in leads:
+            # Re-rank from the ORIGINAL base signal, not the already-adjusted one,
+            # so repeated recomputes are idempotent instead of stacking deltas.
+            delta_applied = int(lead.get("learning_delta") or 0)
+            base = int(lead.get("base_signal_score") or 0) if delta_applied else int(lead.get("signal_score") or 0)
+            seed = {k: v for k, v in lead.items() if k not in ("learning_delta", "learning_reason")}
+            seed["signal_score"] = base
+            seed["base_signal_score"] = base
+            ranked = self.feedback.apply(seed, examples)
+            if int(ranked.get("signal_score") or 0) != int(lead.get("signal_score") or 0) or int(
+                ranked.get("learning_delta") or 0
+            ) != delta_applied:
+                repo.leads.update_learning_score(lead["job_id"], ranked, base)
+                changed.append(ranked)
+        return changed
+
     async def reevaluate_all(
         self,
         leads: list[dict],
