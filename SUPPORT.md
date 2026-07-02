@@ -2,7 +2,7 @@
 
 Thanks for checking out JustHireMe.
 
-This project is in alpha, so the best support channel depends on what you are trying to do.
+JustHireMe ships stable v1.x releases; the best support channel depends on what you are trying to do.
 
 ## Good GitHub Issues
 
@@ -32,4 +32,4 @@ Do not open public issues containing secrets or private user data. See [SECURITY
 
 ## Maintainer Expectations
 
-This is a source-available, non-commercial project with limited maintainer time. Clear reproduction steps, sanitized examples, and small PRs make it much easier to respond quickly.
+This is an AGPL-3.0-only open-source project (with a separate commercial-license option — see COMMERCIAL_LICENSE.md) and limited maintainer time. Clear reproduction steps, sanitized examples, and small PRs make it much easier to respond quickly.
