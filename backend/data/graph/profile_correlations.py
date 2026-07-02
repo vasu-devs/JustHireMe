@@ -130,7 +130,7 @@ def sync_vectors_from_graph() -> dict:
         cand_texts.append(text)
         profile_parts.append(text)
     if cand_rows:
-        embed_rows("candidates", cand_rows, cand_texts)
+        embed_rows("candidates", cand_rows, cand_texts, allow_recreate=True)
         synced += len(cand_rows)
 
     skill_rows: list[dict] = []
@@ -143,7 +143,7 @@ def sync_vectors_from_graph() -> dict:
         skill_texts.append(text)
         profile_parts.append(text)
     if skill_rows:
-        embed_rows("skills", skill_rows, skill_texts)
+        embed_rows("skills", skill_rows, skill_texts, allow_recreate=True)
         synced += len(skill_rows)
 
     proj_rows: list[dict] = []
@@ -156,7 +156,7 @@ def sync_vectors_from_graph() -> dict:
         proj_texts.append(text)
         profile_parts.append(text)
     if proj_rows:
-        embed_rows("projects", proj_rows, proj_texts)
+        embed_rows("projects", proj_rows, proj_texts, allow_recreate=True)
         synced += len(proj_rows)
 
     exp_rows: list[dict] = []
@@ -170,7 +170,7 @@ def sync_vectors_from_graph() -> dict:
         exp_texts.append(text)
         profile_parts.append(text)
     if exp_rows:
-        embed_rows("experiences", exp_rows, exp_texts)
+        embed_rows("experiences", exp_rows, exp_texts, allow_recreate=True)
         synced += len(exp_rows)
 
     cred_rows: list[dict] = []
@@ -183,7 +183,7 @@ def sync_vectors_from_graph() -> dict:
         cred_texts.append(text)
         profile_parts.append(text)
     if cred_rows:
-        embed_rows("credentials", cred_rows, cred_texts)
+        embed_rows("credentials", cred_rows, cred_texts, allow_recreate=True)
         synced += len(cred_rows)
 
     if profile_parts:

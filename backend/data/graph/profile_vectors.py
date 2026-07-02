@@ -269,7 +269,7 @@ def _upsert_rows(table, ids: list[str], rows: list[dict]) -> None:
         table.add(rows)
 
 
-def put_vec_rows(table_name: str, rows: list[dict]) -> None:
+def put_vec_rows(table_name: str, rows: list[dict], *, allow_recreate: bool = False) -> None:
     if not rows:
         return
     store = _vec()
@@ -280,12 +280,24 @@ def put_vec_rows(table_name: str, rows: list[dict]) -> None:
         if table_name in vec_table_names():
             # If the embedding dimensionality changed (e.g. the user switched
             # embedding provider, 1536<->384), the old table is in a different
-            # vector space and incompatible. Recreate it rather than letting the
-            # add silently fail and drop every new vector.
+            # vector space and incompatible.
             want_dim = _incoming_vector_dim(rows)
             have_dim = _existing_vector_dim(store, table_name)
             if want_dim and have_dim and want_dim != have_dim:
-                _log.warning("vector dim for %s changed %s->%s; recreating table", table_name, have_dim, want_dim)
+                if not allow_recreate:
+                    # A single-item write (add_skill/project/... after a provider
+                    # switch) must NEVER drop+recreate the table from just its own
+                    # rows — that would destroy every other embedding for this
+                    # entity type. Skip the write; a full sync_vectors_from_graph
+                    # rebuild (allow_recreate=True) re-embeds the whole table at the
+                    # new dim. Losing one just-written vector beats losing all of them.
+                    _log.warning(
+                        "vector dim for %s mismatched (%s!=%s) on a partial write; skipping to avoid data loss "
+                        "(run a full vector re-sync to rebuild at the new dimension)",
+                        table_name, have_dim, want_dim,
+                    )
+                    return
+                _log.warning("vector dim for %s changed %s->%s; recreating table (full rebuild)", table_name, have_dim, want_dim)
                 store.drop_table(table_name)
                 store.create_table(table_name, data=rows)
                 return
@@ -316,7 +328,10 @@ def _rows_for_existing_table(table_name: str, rows: list[dict]) -> list[dict]:
         return rows
 
 
-def embed_rows(table_name: str, rows: list[dict], texts: Iterable[str]) -> None:
+def embed_rows(table_name: str, rows: list[dict], texts: Iterable[str], *, allow_recreate: bool = False) -> None:
+    """Embed and write rows. ``allow_recreate=True`` only from a full-table rebuild
+    (sync_vectors_from_graph), where ``rows`` is the COMPLETE set for the table, so
+    a dimension change may safely drop+recreate. Single-item callers leave it False."""
     try:
         from data.vector.embeddings import embed_texts
 
@@ -336,7 +351,7 @@ def embed_rows(table_name: str, rows: list[dict], texts: Iterable[str]) -> None:
         put_vec_rows(table_name, [
             {**row, "text": text, "vector": vector}
             for row, text, vector in zip(clean_rows, clean_texts, vectors, strict=False)
-        ])
+        ], allow_recreate=allow_recreate)
     except Exception as exc:
         _log.warning("embedding write failed for %s: %s", table_name, exc)
 
