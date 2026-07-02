@@ -134,7 +134,11 @@ def _period_months(period: str) -> int:
 
 
 def _total_work_months(candidate_data: dict) -> int:
-    """Return total months of non-intern professional experience."""
+    """Total months of non-intern professional experience — from dated periods AND
+    from any explicit 'N years [of] experience' the candidate states in prose. Many
+    resumes (in every field) describe tenure in text rather than machine-readable
+    dates, and reading only dated periods made a 6-year nurse look like a fresher and
+    wrongly triggered the seniority cap."""
     exp_entries = candidate_data.get("exp", []) or []
     real_roles = []
     for entry in exp_entries:
@@ -144,7 +148,17 @@ def _total_work_months(candidate_data: dict) -> int:
         if any(kw in role for kw in ("intern", "trainee", "student", "assistant only")):
             continue
         real_roles.append(entry)
-    return sum(_period_months(e.get("period", "")) for e in real_roles)
+    dated_months = sum(_period_months(e.get("period", "")) for e in real_roles)
+    # Prose floor: the largest "N years"/"N yrs"/"N yoe" stated in the summary or any
+    # role description.
+    prose = " ".join([
+        str(candidate_data.get("s") or ""),
+        str(candidate_data.get("desired_position") or ""),
+        *[str(e.get("d") or e.get("description") or "") for e in real_roles],
+    ]).lower()
+    stated = [int(m) for m in re.findall(r"(\d{1,2})\s*\+?\s*(?:years|yrs|yoe)", prose)]
+    stated_months = (max(stated) * 12) if stated else 0
+    return max(dated_months, stated_months)
 
 
 def infer_experience_level(candidate_data: dict) -> str:
@@ -796,6 +810,12 @@ def score_job_lead(jd: str, candidate_data: dict) -> ScoreResult:
 
     candidate = analyze_candidate(candidate_data)
     posting = analyze_posting(jd, "Job lead")
+    # Whether the SOFTWARE taxonomy actually covers this JD (captured before domain
+    # generalization folds the candidate's own vocabulary into posting.terms). When it
+    # doesn't — i.e. ANY non-software field — the stack/keyword criteria are ~0 and
+    # would drag a genuine same-field match below the bar, so real semantic fit must
+    # lead instead of merely breaking ties.
+    tech_taxonomy_present = bool(posting.terms)
     # Field-agnostic step: credit the candidate's own domain vocabulary and make
     # the wrong-field judgement relative to the candidate (must run before the
     # criteria and caps read posting.terms / posting.wrong_field).
@@ -805,8 +825,23 @@ def score_job_lead(jd: str, candidate_data: dict) -> ScoreResult:
     constraints = evaluate_logistics(posting, candidate)
 
     semantic = _semantic_criterion(jd, candidate_data, weight=15)
-    if semantic is not None:
-        # Hybrid weighting: semantic acts as a tiebreaker, keyword/rubric still leads.
+    if semantic is not None and not tech_taxonomy_present:
+        # Non-software posting: the tech stack/keyword rubric can't judge it, so let
+        # meaning-level fit dominate (with the field-blind seniority/logistics still
+        # contributing). This is what lets a nurse/lawyer/teacher's genuine match
+        # score on the same scale as a software match instead of being under-scored.
+        stack = evaluate_stack_coverage(posting, candidate, 8)
+        proof = evaluate_evidence(posting, candidate, 15)
+        criteria = [
+            _with_weight(role, 12),
+            stack,
+            proof,
+            _with_weight(seniority, 18),
+            _with_weight(constraints, 12),
+            _with_weight(semantic, 45),
+        ]
+    elif semantic is not None:
+        # Software posting: semantic acts as a tiebreaker, keyword/rubric still leads.
         stack = evaluate_stack_coverage(posting, candidate, 20)
         proof = evaluate_evidence(posting, candidate, 18)
         criteria = [

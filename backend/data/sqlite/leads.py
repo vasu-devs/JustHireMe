@@ -445,6 +445,16 @@ def cleanup_bad_leads(limit: int = 1000, dry_run: bool = False, db_path: str = D
     return {"scanned": len(rows), "discarded": 0 if dry_run else len(touched), "candidates": len(touched), "dry_run": dry_run, "items": touched}
 
 
+def _score_threshold(db_path: str, key: str, default: int) -> int:
+    """Read a 0-100 score-band setting, falling back to the default."""
+    try:
+        from data.sqlite.settings import get_setting
+        raw = get_setting(key, str(default), db_path)
+        return max(0, min(int(raw or default), 100))
+    except Exception:
+        return default
+
+
 def update_lead_score(
     job_id: str,
     score: int,
@@ -464,12 +474,21 @@ def update_lead_score(
         if scored_by:
             source_meta["scored_by"] = scored_by
 
+        # Two settable bands so the loop surfaces genuine matches in EVERY field: the
+        # deterministic rubric scores non-software roles lower, so a single hard 76 bar
+        # hid a nurse/lawyer's real matches entirely. "tailoring" = strong fit ready to
+        # generate; "matched" = moderate-but-genuine fit, shown for the user to review
+        # (off-field junk is already capped to ~15 by the ranker, well below the bar).
+        tailor_at = _score_threshold(db_path, "tailor_threshold", 76)
+        show_at = min(_score_threshold(db_path, "match_threshold", 45), tailor_at)
         if preserve_status:
             status = current_status
-        elif kind == "freelance":
-            status = "matched" if score >= 76 else "discarded"
+        elif score >= tailor_at:
+            status = "matched" if kind == "freelance" else "tailoring"
+        elif score >= show_at:
+            status = "matched"
         else:
-            status = "tailoring" if score >= 76 else "discarded"
+            status = "discarded"
 
         if preserve_status:
             conn.execute(
