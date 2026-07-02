@@ -23,7 +23,7 @@ BACKEND = Path(__file__).resolve().parents[1]
 def _deletions(**kw):
     base = {key: [] for key in profile.PROFILE_DELETE_KEYS}
     for key, values in kw.items():
-        base[key] = sorted(profile._delete_tokens(values))
+        base[key] = sorted(profile._delete_tokens(key, values))
     return base
 
 

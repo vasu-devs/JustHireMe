@@ -28,11 +28,23 @@ def test_norm_key_distinguishes_c_family():
 # --- graph deletion identity: deleting "C" must not tombstone "C++"/"C#" -----------
 
 def test_delete_tokens_do_not_collide_across_c_family():
-    assert not (_delete_tokens("C") & _delete_tokens("C++")), "deleting C would tombstone C++"
-    assert not (_delete_tokens("C") & _delete_tokens("C#")), "deleting C would tombstone C#"
-    assert not (_delete_tokens("C++") & _delete_tokens("C#"))
+    assert not (_delete_tokens("skills", "C") & _delete_tokens("skills", "C++")), "deleting C would tombstone C++"
+    assert not (_delete_tokens("skills", "C") & _delete_tokens("skills", "C#")), "deleting C would tombstone C#"
+    assert not (_delete_tokens("skills", "C++") & _delete_tokens("skills", "C#"))
     # An exact match still deletes itself.
-    assert _delete_tokens("C++") & _delete_tokens("C++")
+    assert _delete_tokens("skills", "C++") & _delete_tokens("skills", "C++")
+
+
+def test_free_text_delete_tokens_do_not_collide_on_punctuation():
+    # Round-11: free-text credentials differing only by whitespace/colon/comma are
+    # DISTINCT graph nodes (_entry_key), so their deletion tombstones must not collide
+    # — deleting one must not hide/purge the other.
+    a = "AWS Certified: Solutions Architect"
+    b = "AWS Certified Solutions Architect"
+    assert not (_delete_tokens("certifications", a) & _delete_tokens("certifications", b))
+    assert not (_delete_tokens("education", "BSc, Physics") & _delete_tokens("education", "BSc Physics"))
+    # Exact match still self-deletes.
+    assert _delete_tokens("certifications", a) & _delete_tokens("certifications", a)
 
 
 # --- import dedup must keep C / C++ / C# as separate skills ------------------------

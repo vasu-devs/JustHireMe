@@ -40,7 +40,9 @@ def purge_profile_deletion_tombstones(db_path: str | None = None) -> dict:
     purged = 0
 
     def deleted(key: str, *values) -> bool:
-        tokens = _delete_tokens(values)
+        # key-aware tokens (free-text uses _entry_key) — must match how the tombstone
+        # was stored, else purge would miss (or, before this, over-match) free-text.
+        tokens = _delete_tokens(key, values)
         return bool(tokens.intersection(deletions.get(key, [])))
 
     for row in _query_rows("MATCH (s:Skill) RETURN s.id, s.n"):

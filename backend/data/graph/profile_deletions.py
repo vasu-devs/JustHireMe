@@ -21,6 +21,7 @@ from urllib.parse import unquote
 from data.graph.profile_base import (
     PROFILE_DELETE_KEYS,
     PROFILE_DELETIONS_KEY,
+    _entry_key,
     _entry_text,
     _norm_key,
     hash_id,
@@ -28,6 +29,20 @@ from data.graph.profile_base import (
     stack_list,
 )
 from data.sqlite.settings import get_setting, save_settings
+
+# Free-text credential lists (education/certifications/achievements) are identified
+# in the graph by _entry_key — whitespace-collapsed but punctuation-PRESERVED — so
+# their deletion tombstones must key the SAME way. _norm_key (which strips spaces,
+# colons and commas) collapsed distinct entries like "AWS Certified: Solutions
+# Architect" and "AWS Certified Solutions Architect" to one token, so deleting one
+# collaterally hid and later hard-purged the other. Skills/projects/exp keep
+# _norm_key, which matches their delete-id resolution (already preserves +#.- so
+# C/C++/C# stay distinct).
+_FREE_TEXT_DELETE_KEYS = {"education", "certifications", "achievements"}
+
+
+def _key_normalizer(key: str):
+    return _entry_key if key in _FREE_TEXT_DELETE_KEYS else _norm_key
 
 
 def _load_profile_deletions(db_path: str | None = None) -> dict[str, list[str]]:
@@ -37,18 +52,19 @@ def _load_profile_deletions(db_path: str | None = None) -> dict[str, list[str]]:
     except Exception as log_exc:
         logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:_load_profile_deletions: %s', log_exc)
         data = {}
-    return {
-        key: sorted({
-            _norm_key(token)
-            for token in (data.get(key) if isinstance(data, dict) else []) or []
-            if _norm_key(token)
-        })
-        for key in PROFILE_DELETE_KEYS
-    }
+    result: dict[str, list[str]] = {}
+    for key in PROFILE_DELETE_KEYS:
+        norm = _key_normalizer(key)
+        raw = (data.get(key) if isinstance(data, dict) else []) or []
+        result[key] = sorted({norm(token) for token in raw if norm(token)})
+    return result
 
 
 def _save_profile_deletions(deletions: dict[str, list[str]], db_path: str | None = None) -> None:
-    clean = {key: sorted({_norm_key(token) for token in deletions.get(key, []) if _norm_key(token)}) for key in PROFILE_DELETE_KEYS}
+    clean: dict[str, list[str]] = {}
+    for key in PROFILE_DELETE_KEYS:
+        norm = _key_normalizer(key)
+        clean[key] = sorted({norm(token) for token in deletions.get(key, []) if norm(token)})
     try:
         payload = {PROFILE_DELETIONS_KEY: json.dumps(clean, ensure_ascii=False)}
         if db_path:
@@ -60,11 +76,11 @@ def _save_profile_deletions(deletions: dict[str, list[str]], db_path: str | None
         pass
 
 
-def _delete_tokens(*values) -> set[str]:
+def _raw_delete_values(*values) -> set[str]:
     out: set[str] = set()
     for value in values:
         if isinstance(value, (list, tuple, set)):
-            out.update(_delete_tokens(*value))
+            out.update(_raw_delete_values(*value))
             continue
         text = str(value or "").strip()
         if not text:
@@ -72,21 +88,26 @@ def _delete_tokens(*values) -> set[str]:
         out.add(text)
         out.add(unquote(text))
         out.add(hash_id(unquote(text)))
-    return {_norm_key(item) for item in out if _norm_key(item)}
+    return out
+
+
+def _delete_tokens(key: str, *values) -> set[str]:
+    norm = _key_normalizer(key)
+    return {norm(item) for item in _raw_delete_values(*values) if norm(item)}
 
 
 def _remember_profile_deletion(key: str, values: Iterable, db_path: str | None = None) -> None:
     if key not in PROFILE_DELETE_KEYS:
         return
     deletions = _load_profile_deletions(db_path)
-    deletions[key] = sorted(set(deletions.get(key, [])) | _delete_tokens(values))
+    deletions[key] = sorted(set(deletions.get(key, [])) | _delete_tokens(key, values))
     _save_profile_deletions(deletions, db_path)
 
 
 def _forget_profile_deletion(key: str, values: Iterable, db_path: str | None = None) -> None:
     if key not in PROFILE_DELETE_KEYS:
         return
-    tokens = _delete_tokens(values)
+    tokens = _delete_tokens(key, values)
     if not tokens:
         return
     deletions = _load_profile_deletions(db_path)
@@ -114,7 +135,7 @@ def forget_profile_deletions_for_profile(profile: dict | None, db_path: str | No
 
 
 def _is_deleted(key: str, *values, db_path: str | None = None) -> bool:
-    tokens = _delete_tokens(values)
+    tokens = _delete_tokens(key, values)
     if not tokens:
         return False
     return bool(tokens.intersection(_load_profile_deletions(db_path).get(key, [])))
