@@ -45,6 +45,11 @@ LAST_USAGE: dict[str, Any] = {}
 # STABILITY: thread-safe scout diagnostics snapshot
 _STATE_LOCK = threading.RLock()
 _ERROR_SINK: ContextVar[list[str] | None] = ContextVar("free_scout_error_sink", default=None)
+# Per-call result sink: when set (by the caller, e.g. source_adapters.run_free_scout),
+# run()'s final _publish_state also writes usage/errors here. Because each concurrent
+# scan runs run() in its own asyncio.to_thread context, the ContextVar binding is
+# per-call, so overlapping scans can't read each other's usage via the module globals.
+_RESULT_SINK: ContextVar[dict | None] = ContextVar("free_scout_result_sink", default=None)
 
 DEFAULT_TARGETS: list[str] = []
 
@@ -59,6 +64,10 @@ def _publish_state(errors: list[str], usage: dict[str, Any]) -> None:
     with _STATE_LOCK:
         LAST_ERRORS = list(errors)
         LAST_USAGE = snapshot
+    sink = _RESULT_SINK.get()
+    if sink is not None:
+        sink["usage"] = snapshot
+        sink["errors"] = list(errors)
 
 
 def _error_sink(errors: list[str] | None = None) -> list[str]:

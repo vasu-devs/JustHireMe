@@ -25,9 +25,12 @@ def startup_warnings(repo: Repository) -> list[str]:
         warnings.append("Custom connectors are enabled but custom_connectors is empty.")
 
     provider = str(cfg.get("llm_provider") or "ollama").strip().lower()
-    if provider and provider not in ("ollama", "claude_cli", "codex_cli"):  # CLIs use a subscription, not a key
-        from llm import _ENV_NAMES, _KEY_NAMES
+    # Only key-based providers need a key — ollama + all subscription CLIs
+    # (claude_cli/codex_cli/gemini_cli/copilot_cli) are keyless. Gate on the central
+    # provider_needs_key set so newly-added CLIs never trip a spurious "no key" warning.
+    from llm import _ENV_NAMES, _KEY_NAMES, provider_needs_key
 
+    if provider and provider_needs_key(provider):
         key_name = _KEY_NAMES.get(provider, "")
         env_name = _ENV_NAMES.get(provider, "")
         if not (cfg.get(key_name) or os.environ.get(env_name or "")):

@@ -4,6 +4,7 @@ import hashlib
 import os
 import re
 import threading
+from contextvars import ContextVar
 from typing import Any
 from urllib.parse import urlencode
 
@@ -29,13 +30,22 @@ LAST_ERRORS: list[str] = []
 LAST_USAGE: dict[str, Any] = {}
 # STABILITY: thread-safe scout diagnostics snapshot
 _STATE_LOCK = threading.RLock()
+# Per-call result sink (see free_scout._RESULT_SINK): lets source_adapters read this
+# run()'s usage/errors from a per-call object instead of the shared module globals,
+# so overlapping scans don't cross-report each other's diagnostics.
+_RESULT_SINK: ContextVar[dict | None] = ContextVar("x_scout_result_sink", default=None)
 
 
 def _publish_state(errors: list[str], usage: dict[str, Any]) -> None:
     global LAST_ERRORS, LAST_USAGE
+    snapshot = dict(usage)
     with _STATE_LOCK:
         LAST_ERRORS = list(errors)
-        LAST_USAGE = dict(usage)
+        LAST_USAGE = snapshot
+    sink = _RESULT_SINK.get()
+    if sink is not None:
+        sink["usage"] = snapshot
+        sink["errors"] = list(errors)
 
 DEFAULT_QUERIES = [
     '("hiring" OR "job opening" OR "open role") ("AI engineer" OR "software engineer" OR "Python developer") lang:en -is:retweet',
