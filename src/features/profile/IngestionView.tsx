@@ -762,10 +762,18 @@ export function IngestionView({ api }: { api: ApiFetch }) {
                 border: `1px solid ${jsonResult.status === "ok" ? "var(--green)" : "var(--line)"}`,
               }}>
                 <div style={{ fontWeight: 600 }}>
-                  Imported: {jsonResult.stats?.skills ?? 0} skills - {jsonResult.stats?.experience ?? 0} jobs - {jsonResult.stats?.projects ?? 0} projects - {jsonResult.stats?.certifications ?? 0} certifications
+                  {jsonResult.summary
+                    || `Imported: ${jsonResult.stats?.skills ?? 0} skills - ${jsonResult.stats?.experience ?? 0} jobs - ${jsonResult.stats?.projects ?? 0} projects - ${jsonResult.stats?.certifications ?? 0} certifications`}
                 </div>
-                {jsonResult.status === "partial" && (
-                  <div style={{ fontSize: 13, marginTop: 4, color: "var(--ink-3)" }}>Some items were skipped.</div>
+                {(jsonResult.report?.skipped?.length > 0 || jsonResult.report?.capped?.length > 0) && (
+                  <div style={{ fontSize: 13, marginTop: 6, color: "var(--ink-3)", lineHeight: 1.6 }}>
+                    {jsonResult.report.skipped?.slice(0, 6).map((s: any, i: number) => (
+                      <div key={`sk-${i}`}>Skipped {s.count} {s.field} ({s.reason})</div>
+                    ))}
+                    {jsonResult.report.capped?.slice(0, 6).map((c: any, i: number) => (
+                      <div key={`cp-${i}`}>Kept the top {c.kept} of {c.original} {c.field} (cap)</div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
