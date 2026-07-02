@@ -7,6 +7,7 @@ candidate's actual role, skills, and project evidence rather than generic keywor
 """
 
 import re
+from datetime import datetime, timezone
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from pydantic import BaseModel
 from core.logging import get_logger
@@ -83,7 +84,11 @@ def _period_months(period: str) -> int:
     if not period:
         return 0
     text = str(period).lower()
-    text = re.sub(r"\bpresent\b|\bcurrent\b|\bnow\b|\btoday\b", "2099-12", text)
+    # An ongoing role ends TODAY, not at a 2099 sentinel — that would credit a
+    # brand-new hire with ~600 months and misclassify a junior as senior (mirrors
+    # ranking.scoring_engine._period_months).
+    now = datetime.now(timezone.utc).strftime("%b %Y").lower()
+    text = re.sub(r"\bpresent\b|\bcurrent\b|\bnow\b|\btoday\b", now, text)
     pairs = re.findall(
         r"([a-z]{3,4})?\s*(\d{4})\s*(?:to|-|–|—|->|→)\s*([a-z]{3,4})?\s*(\d{4})",
         text,

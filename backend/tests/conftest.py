@@ -42,6 +42,7 @@ def _reset_embedding_runtime_state():
     emb = sys.modules.get("data.vector.embeddings")
     if emb is not None:
         emb._openai_runtime_error = ""
+        emb._onnx_runtime_error = ""
 
 
 def pytest_configure(config):

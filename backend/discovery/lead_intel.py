@@ -187,13 +187,17 @@ def company_from_text(text: str, fallback: str = "Manual Lead") -> str:
             if value:
                 return value[:120]
     clean = clean_text(text)
+    # Keyword prefixes match case-insensitively (inline (?i:...)), but the
+    # [A-Z]-anchored captures must stay case-SENSITIVE — a global re.I let them
+    # match lowercase prose and grab noise as the company (same bug as the old
+    # location_from_text).
     patterns = [
-        r"(?:company|client|startup)\s*[:\-]\s*([A-Za-z0-9 .&_-]{2,80})",
-        r"\bat\s+([A-Z][A-Za-z0-9 .&_-]{2,80})",
+        r"(?i:company|client|startup)\s*[:\-]\s*([A-Za-z0-9 .&_-]{2,80})",
+        r"(?i:\bat)\s+([A-Z][A-Za-z0-9 .&_-]{2,80})",
         r"^([A-Z][A-Za-z0-9 .&_-]{2,80})\s+\|\s+",
     ]
     for pat in patterns:
-        match = re.search(pat, clean, flags=re.I)
+        match = re.search(pat, clean)
         if match:
             return match.group(1).strip(" .-|")[:120]
     return fallback

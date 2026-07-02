@@ -169,7 +169,10 @@ def _render_resume_template(md_text: str, filename: str) -> str:
                     prefix = prefix_match.group(0)
                     out.append(prefix + _shorten_text(re.sub(r"^[-*+]\s+", "", stripped), int(budget["chars"])))
                     continue
-                if heading in {"SUMMARY", "SKILLS", "CERTIFICATES", "CERTS", "ACHIEVEMENTS", "EDUCATION"}:
+                # EDUCATION is excluded: its entries are '### Institution' headings
+                # already bounded by the ### entry budget, so counting the degree/
+                # major lines under them too double-charged and dropped degrees.
+                if heading in {"SUMMARY", "SKILLS", "CERTIFICATES", "CERTS", "ACHIEVEMENTS"}:
                     if entry_count >= int(budget["entries"]):
                         continue
                     entry_count += 1

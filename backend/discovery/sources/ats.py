@@ -304,8 +304,10 @@ async def scrape_direct_ats_url(url: str) -> list[dict]:
     subdomain = host.split(".")[0]
     path = parsed.path.strip("/").split("/")
     if "greenhouse.io" in host and path:
-        slug = path[-1] if "boards.greenhouse.io" in host else path[0]
-        return await scrape_greenhouse(slug)
+        # Company is always the FIRST path segment for board hosts — both the bare
+        # /{company} board and the /{company}/jobs/{id} detail URL. path[-1] grabbed
+        # the job id for detail links and scraped a non-existent board.
+        return await scrape_greenhouse(path[0])
     if "lever.co" in host and path:
         return await scrape_lever(path[0])
     if "ashbyhq.com" in host and path:

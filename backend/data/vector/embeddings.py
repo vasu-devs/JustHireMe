@@ -33,10 +33,12 @@ _onnx_session: Any = None
 _onnx_tokenizer: Any = None
 _onnx_error: str = ""
 _onnx_loaded: bool = False
-# Set when a runtime OpenAI embedding call falls back to hash (network/401/429/off-dim);
-# cleared on the next success. Lets status honestly report degraded semantic matching
-# instead of claiming 'openai' while actually serving hash vectors.
+# Set when a runtime embedding call falls back to hash (openai: network/401/429/off-dim;
+# onnx: an inference/session error after the model loaded); cleared on the next success.
+# Lets status honestly report degraded semantic matching instead of claiming the
+# provider while actually serving hash vectors.
 _openai_runtime_error: str = ""
+_onnx_runtime_error: str = ""
 
 ONNX_MODEL_NAME = "all-MiniLM-L6-v2"
 ONNX_DIMS = 384
@@ -345,9 +347,15 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     provider = active_provider()
 
     if provider == "onnx":
+        global _onnx_runtime_error
         try:
-            return _onnx_embed(texts)
+            vecs = _onnx_embed(texts)
+            _onnx_runtime_error = ""  # success: clear any prior degraded state
+            return vecs
         except Exception as exc:
+            # Record the fallback so status/semantic don't keep claiming 'onnx'
+            # while actually serving non-semantic hash vectors.
+            _onnx_runtime_error = str(exc) or "onnx embedding call failed"
             _log.warning("ONNX embedding failed, falling back to hash@%d: %s", ONNX_DIMS, exc)
             return [hash_embedding(t, ONNX_DIMS) for t in texts]
 
@@ -395,10 +403,19 @@ def embedding_status() -> dict:
     }
 
     if provider == "onnx":
-        base["model"] = ONNX_MODEL_NAME
         base["dims"] = ONNX_DIMS
-        base["mode"] = "onnx"
         base["model_path"] = str(_onnx_model_dir())
+        if _onnx_runtime_error:
+            # Session loaded but inference fell back to hash at runtime — report the
+            # truth so semantic scoring uses the hash-baseline window and the user
+            # is told matching is degraded, not silently 'healthy'.
+            base["model"] = "built-in hashing embedder (ONNX unavailable)"
+            base["mode"] = "hashing"
+            base["degraded"] = True
+            base["onnx_error"] = _onnx_runtime_error
+        else:
+            base["model"] = ONNX_MODEL_NAME
+            base["mode"] = "onnx"
     elif provider == "openai":
         base["dims"] = OPENAI_DIMS
         if _openai_runtime_error:
@@ -425,12 +442,13 @@ def embedding_status() -> dict:
 
 def reset_onnx_session() -> None:
     """Force reload of the ONNX session on next use. Useful after model download."""
-    global _onnx_session, _onnx_tokenizer, _onnx_error, _onnx_loaded, _last_onnx_fallback_error, _openai_runtime_error
+    global _onnx_session, _onnx_tokenizer, _onnx_error, _onnx_loaded, _last_onnx_fallback_error, _openai_runtime_error, _onnx_runtime_error
     with _lock:
         _onnx_session = None
         _onnx_tokenizer = None
         _onnx_error = ""
         _onnx_loaded = False
         _last_onnx_fallback_error = None
-        # Clear the openai degraded flag too — a provider switch / reset is a fresh start.
+        # Clear the runtime degraded flags too — a provider switch / reset is a fresh start.
         _openai_runtime_error = ""
+        _onnx_runtime_error = ""

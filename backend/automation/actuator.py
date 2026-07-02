@@ -209,6 +209,20 @@ def _ready_to_submit(result: dict) -> bool:
     return bool(result.get("uploaded")) and bool(result.get("fields"))
 
 
+def _submit_mode(has_submit: bool, ready: bool, dry_run: bool, auto_apply: bool) -> str:
+    """The submit safety decision, centralized so it can be unit-tested.
+
+    Returns 'dry_run' | 'read_only' | 'submit' | 'blocked'. Crucially, 'submit'
+    (the ONLY mode that actually clicks the button) requires a real submit button,
+    a DOM-verified ready form, auto-apply explicitly enabled, and not a dry run.
+    """
+    if dry_run:
+        return "dry_run"
+    if not auto_apply:
+        return "read_only"
+    return "submit" if (has_submit and ready) else "blocked"
+
+
 # Labels/controls the vision actuator must never click. The page is untrusted, so
 # a hallucinated or prompt-injected coordinate cannot be allowed to hit a submit,
 # payment, or authorization control — we enforce this, we don't just ask the model.
@@ -495,8 +509,9 @@ async def _run(job: dict, asset: str, dry_run: bool = False) -> bool | dict:
 
             submit_btn = await _find_submit(pg)
             ready = _ready_to_submit(filled)
+            mode = _submit_mode(bool(submit_btn), ready, dry_run, _AUTO_APPLY_ENABLED)
 
-            if dry_run:
+            if mode == "dry_run":
                 if submit_btn:
                     await submit_btn.scroll_into_view_if_needed()
                     await submit_btn.evaluate("el => el.style.outline = '3px solid #ef4444'")
@@ -510,7 +525,7 @@ async def _run(job: dict, asset: str, dry_run: bool = False) -> bool | dict:
                     "ready_to_submit": bool(submit_btn and ready),
                 }
 
-            if not _AUTO_APPLY_ENABLED:
+            if mode == "read_only":
                 _log.warning(
                     "auto-apply is disabled — form was read but not submitted. "
                     "Set JHM_AUTO_APPLY=true to re-enable."
@@ -524,7 +539,7 @@ async def _run(job: dict, asset: str, dry_run: bool = False) -> bool | dict:
                     "ready_to_submit": bool(submit_btn and ready),
                 }
 
-            if submit_btn and ready:
+            if mode == "submit":
                 await submit_btn.click(timeout=5000)
                 ok = True
             else:
