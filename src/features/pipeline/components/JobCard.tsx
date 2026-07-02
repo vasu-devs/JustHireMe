@@ -90,7 +90,7 @@ export function JobCard({ lead, onOpen, onDelete, showScore = false, showGenerat
         )}
         {/* Delete button */}
         <button
-          onClick={e => { e.stopPropagation(); onDelete(lead.job_id); }}
+          onClick={e => { e.stopPropagation(); Promise.resolve(onDelete(lead.job_id)).catch(() => {}); }}
           title="Remove"
           style={{
             flexShrink: 0, width: 26, height: 26, borderRadius: 7,
@@ -259,7 +259,7 @@ export function PipelineJobCard({ lead, onOpen, onDelete, showGenerate = false, 
             <Icon name="external-link" size={13} />
           </button>
           <button className="btn" onClick={e => { e.stopPropagation(); onOpen(lead); }}>Details</button>
-          <button className="btn btn-icon danger" onClick={e => { e.stopPropagation(); onDelete(lead.job_id); }} title="Delete lead">
+          <button className="btn btn-icon danger" onClick={e => { e.stopPropagation(); Promise.resolve(onDelete(lead.job_id)).catch(() => {}); }} title="Delete lead">
             <Icon name="trash" size={13} />
           </button>
         </div>
