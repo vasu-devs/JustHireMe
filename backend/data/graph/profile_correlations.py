@@ -22,6 +22,7 @@ from data.graph.profile_vectors import (
     add_profile_vec,
     credential_text,
     delete_vec_id_from_all,
+    drop_vec_table,
     embed_rows,
     experience_text,
     profile_text,
@@ -192,6 +193,22 @@ def sync_vectors_from_graph() -> dict:
         # profile:default at the old dimension (dim-guard skips a partial write).
         add_profile_vec("profile:default", "Complete profile", "\n".join(profile_parts), allow_recreate=True)
         synced += 1
+
+    # Any entity table that produced zero rows this rebuild (all items deleted, or
+    # none of a kind) is never touched by the embed_rows() calls above, so after a
+    # provider/dim switch it stays stranded at the old dimension and every later
+    # single-item write to it is silently skipped by the dim-guard. Drop the empty
+    # ones so the next add_* recreates them at the current dim.
+    empties = {
+        "candidates": cand_rows, "skills": skill_rows, "projects": proj_rows,
+        "experiences": exp_rows, "credentials": cred_rows,
+    }
+    if not profile_parts:
+        empties["profile"] = []
+    for table_name, rows in empties.items():
+        if not rows:
+            drop_vec_table(table_name)
+
     return {"status": "ok", "synced": synced, "deleted_bad_rows": deleted_bad_rows}
 
 

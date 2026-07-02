@@ -62,7 +62,10 @@ def read_profile_from_vectors(db_path: str | None = None) -> dict:
 
     for row in [*_vector_rows("candidates"), *_vector_rows("profile")]:
         name = _first_text(row, "n", "name", "label")
-        summary = _first_text(row, "s", "summary", "text")
+        # Do NOT fall back to 'text' for the summary: on the aggregate 'profile' row
+        # that field is the whole concatenated profile dump, which would become the
+        # candidate summary when the candidate has no real summary.
+        summary = _first_text(row, "s", "summary")
         if name.lower() in {"complete profile", "profile", "candidate"}:
             name = ""
         if name and not is_bad_vector_label(name) and not profile["n"]:
@@ -151,6 +154,20 @@ def delete_vec_id_from_all(row_id: str) -> None:
 
 def drop_profile_aggregate_vector() -> None:
     delete_vec_rows("profile", ["profile:default"])
+
+
+def drop_vec_table(table_name: str) -> None:
+    """Drop a vector table entirely so the next write recreates it at the current
+    embedding dim. Needed when a rebuild leaves a table with zero rows: a provider
+    switch changes the vector dimension, but embed_rows() only recreates tables it
+    actually writes to, so an emptied table stays stranded at the old dim and every
+    later single-item write is silently skipped by the dim-guard."""
+    try:
+        if table_name not in vec_table_names():
+            return
+        _vec().drop_table(table_name)
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:drop_vec_table: %s', log_exc)
 
 
 def prune_bad_vector_rows() -> int:
