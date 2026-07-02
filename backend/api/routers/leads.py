@@ -26,6 +26,40 @@ def _track_background_task(task: asyncio.Task) -> None:
     task.add_done_callback(_background_tasks.discard)
 
 
+# Coalesce feedback re-ranks: bulk/rapid feedback clicks would otherwise each spawn
+# a full 500-lead recompute that duplicates work and contends on the SQLite write
+# lock. At most one runs at a time; concurrent requests just mark it dirty so it
+# loops once more, covering the whole burst in ~2 passes.
+_relearn_state = {"running": False, "again": False}
+
+
+async def _run_relearn(ranking_service, manager) -> None:
+    if _relearn_state["running"]:
+        _relearn_state["again"] = True
+        return
+    _relearn_state["running"] = True
+    try:
+        while True:
+            _relearn_state["again"] = False
+            changed = await ranking_service.recompute_feedback_signals()
+            for updated in changed[:60]:
+                await manager.broadcast({"type": "LEAD_UPDATED", "data": updated})
+            if changed:
+                await manager.broadcast({
+                    "type": "agent",
+                    "event": "feedback_relearn",
+                    "msg": f"Re-ranked {len(changed)} lead(s) from your feedback",
+                })
+            if not _relearn_state["again"]:
+                break
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            'suppressed exception in backend/api/routers/leads.py:_run_relearn: %s', exc
+        )
+    finally:
+        _relearn_state["running"] = False
+
+
 def default_assets_dir() -> str:
     return str(app_data_path("assets"))
 
@@ -195,23 +229,7 @@ def create_router(manager) -> APIRouter:
         # leads by what this thumbs-up/down just taught the model, and push the ones
         # whose signal changed so the UI reflects it live. Fire-and-forget so the
         # click returns instantly; failures are non-fatal.
-        async def _relearn() -> None:
-            try:
-                changed = await ranking_service.recompute_feedback_signals()
-                for updated in changed[:60]:
-                    await manager.broadcast({"type": "LEAD_UPDATED", "data": updated})
-                if changed:
-                    await manager.broadcast({
-                        "type": "agent",
-                        "event": "feedback_relearn",
-                        "msg": f"Re-ranked {len(changed)} lead(s) from your feedback",
-                    })
-            except Exception as exc:
-                logging.getLogger(__name__).warning(
-                    'suppressed exception in backend/api/routers/leads.py:update_feedback relearn: %s', exc
-                )
-
-        _track_background_task(asyncio.create_task(_relearn()))
+        _track_background_task(asyncio.create_task(_run_relearn(ranking_service, manager)))
         return lead
 
     @router.put("/leads/{job_id}/followup")

@@ -272,6 +272,41 @@ def update_learning_score(job_id: str, ranked: dict, base_signal_score: int, db_
         conn.close()
 
 
+def update_learning_scores(updates: list[tuple[str, dict, int]], db_path: str = DEFAULT_DB_PATH) -> None:
+    """Batch form of update_learning_score: one connection + one commit for the whole
+    feedback recompute (up to 1000 leads) instead of a connect/commit/close per lead.
+    The recompute now runs on every feedback click (via the coalescing relearn runner),
+    so per-row transaction overhead was the dominant cost."""
+    if not updates:
+        return
+    params = [
+        (
+            int(ranked.get("signal_score") or 0),
+            str(ranked.get("signal_reason") or "")[:700],
+            json.dumps(ranked.get("source_meta") or {}, ensure_ascii=False),
+            int(ranked.get("base_signal_score") or base_signal_score),
+            int(ranked.get("learning_delta") or 0),
+            str(ranked.get("learning_reason") or "")[:700],
+            job_id,
+        )
+        for job_id, ranked, base_signal_score in updates
+    ]
+    conn = get_connection(db_path)
+    try:
+        conn.executemany(
+            """
+            UPDATE leads
+            SET signal_score=?, signal_reason=?, source_meta=?, base_signal_score=?,
+                learning_delta=?, learning_reason=?
+            WHERE job_id=?
+            """,
+            params,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def cleanup_text(lead: dict) -> str:
     parts = [
         lead.get("title", ""),

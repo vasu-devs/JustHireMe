@@ -40,17 +40,26 @@ save_lead({"job_id": "a", "title": "Registered Nurse", "company": "Mercy",
            "kind": "job", "status": "matched"})
 save_lead_feedback("a", "good", "")
 
-# Lead B has no feedback yet but shares the greenhouse platform.
+# Leads B and C have no feedback yet but share the greenhouse platform.
+# Two of them force the batch writer (update_learning_scores) to persist >1 row
+# in a single executemany/commit.
 save_lead({"job_id": "b", "title": "Staff Nurse", "company": "Grace",
            "platform": "greenhouse", "url": "https://x/b", "signal_score": 40,
+           "kind": "job", "status": "matched"})
+save_lead({"job_id": "c", "title": "ICU Nurse", "company": "Hope",
+           "platform": "greenhouse", "url": "https://x/c", "signal_score": 42,
            "kind": "job", "status": "matched"})
 
 rs = RankingService()
 changed = rs._recompute_feedback_signals(500)
 b = get_lead_by_id("b")
+c = get_lead_by_id("c")
 assert b["signal_score"] > 40, b                       # boosted by learned preference
+assert c["signal_score"] > 42, c                       # second row in the same batch
 assert int(b.get("learning_delta") or 0) > 0, b
-assert any(c.get("job_id") == "b" for c in changed), changed
+assert int(c.get("learning_delta") or 0) > 0, c
+assert any(x.get("job_id") == "b" for x in changed), changed
+assert any(x.get("job_id") == "c" for x in changed), changed
 
 # Idempotent: a second recompute must not stack the delta.
 first_delta = int(b["learning_delta"])

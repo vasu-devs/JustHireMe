@@ -96,6 +96,7 @@ class RankingService:
         model = self.feedback.build_model(examples)
         leads = repo.leads.get_leads_for_learning(limit)
         changed: list[dict] = []
+        pending: list[tuple[str, dict, int]] = []
         for lead in leads:
             # Re-rank from the ORIGINAL base signal, not the already-adjusted one,
             # so repeated recomputes are idempotent instead of stacking deltas.
@@ -108,8 +109,11 @@ class RankingService:
             if int(ranked.get("signal_score") or 0) != int(lead.get("signal_score") or 0) or int(
                 ranked.get("learning_delta") or 0
             ) != delta_applied:
-                repo.leads.update_learning_score(lead["job_id"], ranked, base)
+                pending.append((lead["job_id"], ranked, base))
                 changed.append(ranked)
+        # One transaction for the whole burst instead of one-per-lead (see
+        # data.sqlite.leads.update_learning_scores).
+        repo.leads.update_learning_scores(pending)
         return changed
 
     async def reevaluate_all(
