@@ -170,6 +170,33 @@ def drop_vec_table(table_name: str) -> None:
         logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:drop_vec_table: %s', log_exc)
 
 
+def current_embedding_dim() -> int | None:
+    """Dimensionality of the active embedding provider, via a tiny probe embed.
+    None when embeddings are unavailable. Used by a rebuild to detect vector tables
+    stranded at an OLD dimension after a provider switch (1536<->384)."""
+    try:
+        from data.vector.embeddings import embed_texts
+        vectors = embed_texts(["probe"])
+        if vectors:
+            try:
+                return len(vectors[0])
+            except TypeError:
+                return None
+    except Exception as log_exc:
+        logging.getLogger(__name__).warning('suppressed exception in backend/data/graph/profile.py:current_embedding_dim: %s', log_exc)
+    return None
+
+
+def vec_table_dim(table_name: str) -> int | None:
+    """Stored vector dimension of an existing table, or None if absent/unknown."""
+    store = _vec()
+    if getattr(store, "available", True) is False:
+        return None
+    if table_name not in vec_table_names():
+        return None
+    return _existing_vector_dim(store, table_name)
+
+
 def prune_bad_vector_rows() -> int:
     deleted = 0
     for table_name in ["profile", "candidates", "skills", "projects", "experiences", "credentials"]:
