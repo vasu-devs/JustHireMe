@@ -289,8 +289,11 @@ def update_learning_scores(updates: list[tuple[str, dict, int]], db_path: str = 
             int(ranked.get("learning_delta") or 0),
             str(ranked.get("learning_reason") or "")[:700],
             # Match score + its idempotency base (feedback re-rank). Fall back to the
-            # base so a caller that didn't compute a match delta never zeroes the score.
-            int(ranked.get("score") or ranked.get("base_score") or 0),
+            # base only when the caller didn't compute a match score at all (key
+            # absent/None) — a legitimately-computed score of exactly 0 (a strong
+            # negative feedback delta driving a low-base lead to the floor) must
+            # persist as 0, not silently revert to the higher base_score.
+            int(ranked["score"] if ranked.get("score") is not None else (ranked.get("base_score") or 0)),
             int(ranked.get("base_score") or 0),
             job_id,
         )

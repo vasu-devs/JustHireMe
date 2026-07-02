@@ -115,6 +115,34 @@ print("MATCH_RERANK_OK")
 """
 
 
+_MATCH_ZERO = """
+import sys
+sys.path.insert(0, "backend")
+from unittest import mock
+from data.sqlite.connection import init_sql
+init_sql()
+from data.sqlite.leads import save_lead, save_lead_feedback, update_lead_score, get_lead_by_id
+from ranking.service import RankingService
+
+save_lead({"job_id": "a", "title": "Registered Nurse", "platform": "greenhouse",
+           "url": "https://x/a", "signal_score": 50, "kind": "job", "status": "matched"})
+save_lead_feedback("a", "not_relevant", "")   # an example must exist or recompute no-ops
+save_lead({"job_id": "b", "title": "Line Cook", "platform": "greenhouse",
+           "url": "https://x/b", "signal_score": 40, "kind": "job", "status": "matched"})
+update_lead_score("b", 10, "weak base match", [], [], preserve_status=True)  # low base match = 10
+
+rs = RankingService()
+# Strong negative preference delta drives b's match score to exactly 0.
+with mock.patch("ranking.feedback_semantic.preference_deltas", return_value={"b": -10, "a": -10}):
+    rs._recompute_feedback_signals(500)
+persisted = int(get_lead_by_id("b")["score"])
+# The regression: `0 or base_score` used to short-circuit and persist the base (10);
+# a legitimately-computed match score of exactly 0 must survive as 0.
+assert persisted == 0, persisted
+print("MATCH_ZERO_OK")
+"""
+
+
 def test_feedback_recompute_reranks_open_leads(tmp_path):
     result = _run(_RERANK, tmp_path)
     assert result.returncode == 0, result.stderr
@@ -125,6 +153,12 @@ def test_feedback_reranks_match_score_idempotently(tmp_path):
     result = _run(_MATCH_RERANK, tmp_path)
     assert result.returncode == 0, result.stderr
     assert "MATCH_RERANK_OK" in result.stdout
+
+
+def test_feedback_reranks_match_score_to_exactly_zero(tmp_path):
+    result = _run(_MATCH_ZERO, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "MATCH_ZERO_OK" in result.stdout
 
 
 def test_recompute_is_noop_without_feedback(tmp_path):
