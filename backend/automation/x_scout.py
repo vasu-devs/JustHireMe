@@ -108,9 +108,18 @@ def _h(value: str) -> str:
 
 
 def _int_setting(value, default: int, min_value: int, max_value: int) -> int:
+    # `value or ""` treated a legitimate integer 0 as unset (0 is falsy) and fell
+    # back to the default — silently overriding a user's explicit x_min_signal_score
+    # of 0 ("accept all"). Only None/blank is unset; a real 0 is a valid choice.
+    # (Same explicit-0-vs-unset fix free_scout.run already carries.)
+    if value is None:
+        return default
+    text = str(value).strip()
+    if not text:
+        return default
     try:
-        parsed = int(str(value or "").strip())
-    except Exception as log_exc:
+        parsed = int(text)
+    except (ValueError, TypeError) as log_exc:
         logging.getLogger(__name__).warning('suppressed exception in backend/automation/x_scout.py:_int_setting: %s', log_exc)
         parsed = default
     return max(min_value, min(parsed, max_value))

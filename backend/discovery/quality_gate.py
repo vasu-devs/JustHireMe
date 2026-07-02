@@ -171,7 +171,11 @@ def evaluate_lead_quality(
     if signal <= 0:
         signal = int(signal_quality(text).get("score") or 0)
     score = max(0, min(100, signal - penalties))
-    accepted = score >= max(0, min(int(min_quality or MIN_DEFAULT_QUALITY), 100))
+    # `min_quality or MIN_DEFAULT_QUALITY` treated an explicit 0 ("accept all") as
+    # unset and forced the default back on — silently defeating free_scout's own
+    # explicit-0 handling (it passes min_quality=min_score, which can be 0). A real
+    # 0 is a valid threshold; just clamp it to [0, 100].
+    accepted = score >= max(0, min(min_quality, 100))
 
     if not reasons:
         reasons.append("passes source quality checks")
