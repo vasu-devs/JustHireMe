@@ -1,6 +1,7 @@
 import asyncio
 import re
 import threading
+from contextvars import ContextVar
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
@@ -28,6 +29,10 @@ LAST_ERRORS: list[str] = []
 LAST_USAGE: dict[str, Any] = {}
 # STABILITY: thread-safe scout diagnostics snapshot
 _STATE_LOCK = threading.RLock()
+# Per-call result sink (see free_scout._RESULT_SINK): lets source_adapters read this
+# run()'s usage/errors from a per-call object instead of the shared module globals,
+# so overlapping scans don't cross-report each other's diagnostics.
+_RESULT_SINK: ContextVar[dict | None] = ContextVar("scout_result_sink", default=None)
 
 
 def _publish_state(errors: list[str], usage: dict[str, Any]) -> None:
@@ -38,6 +43,10 @@ def _publish_state(errors: list[str], usage: dict[str, Any]) -> None:
     with _STATE_LOCK:
         LAST_ERRORS = list(errors)
         LAST_USAGE = snapshot
+    sink = _RESULT_SINK.get()
+    if sink is not None:
+        sink["usage"] = snapshot
+        sink["errors"] = list(errors)
 
 _SOURCE_CAPS = {
     "hn_hiring": 25,
@@ -232,15 +241,17 @@ def classify_job_seniority(lead: dict) -> str:
         return "fresher"
     if _has_seniority_term(text, _JUNIOR_TERMS):
         return "junior"
-    if _has_seniority_term(text, _SENIOR_TERMS):
-        return "senior"
-    if _has_seniority_term(text, _MID_TERMS) or max_years >= 3:
-        return "mid"
-    # Year-range fallback (reachable): 0-1yr -> fresher, 2yr -> junior.
+    # A low required-experience RANGE is itself an explicit entry-level signal, so
+    # it outranks an incidental senior noun ('Support Lead — 2 yrs' is junior, not
+    # senior): 0-1yr -> fresher, 2yr -> junior. Checked BEFORE the senior-term test.
     if years and max_years <= 1:
         return "fresher"
     if years and max_years <= 2:
         return "junior"
+    if _has_seniority_term(text, _SENIOR_TERMS):
+        return "senior"
+    if _has_seniority_term(text, _MID_TERMS) or max_years >= 3:
+        return "mid"
     return "unknown"
 
 

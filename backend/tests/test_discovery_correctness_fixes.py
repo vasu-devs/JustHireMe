@@ -60,6 +60,20 @@ def test_genuine_senior_still_senior():
     assert _scout_classify({"title": "Senior Backend Engineer"}) == "senior"
 
 
+def test_bare_low_year_range_beats_incidental_senior_noun():
+    # Round-6 regression: a bare "<=2 years" range with an incidental senior NOUN
+    # (no junior WORD/range-term) must classify junior, not senior — otherwise these
+    # genuinely entry-level postings get dropped from the beginner feed and hit the
+    # quality-gate senior penalty. The <=2yr fallback must run BEFORE the senior test.
+    for lead in (
+        {"title": "Support Lead", "description": "requires 2 years experience"},
+        {"title": "Marketing Manager", "description": "2 yoe"},
+        {"title": "Solutions Architect", "description": "2 yrs"},
+    ):
+        assert classify_job_seniority(lead) == "junior", lead
+        assert _scout_classify(lead) == "junior", lead
+
+
 # --- quality_gate freshness (future date) -------------------------------------
 
 def test_future_posting_date_is_not_fresh():

@@ -211,16 +211,18 @@ def classify_job_seniority(lead: dict) -> str:
         return "fresher"
     if _has_seniority_term(text, JUNIOR_TERMS):
         return "junior"
-    if _has_seniority_term(text, SENIOR_TERMS):
-        return "senior"
-    if _has_seniority_term(text, MID_TERMS) or max_years >= 3:
-        return "mid"
-    # Year-range fallback (kept AFTER the term checks so it's reachable): a 0-1yr
-    # posting is fresher, a 2yr posting is junior.
+    # A low required-experience RANGE is itself an explicit entry-level signal (per
+    # the comment above), so it must be tested BEFORE the senior-term check —
+    # otherwise an incidental senior noun ('Account Manager — 2 yrs') wrongly wins.
+    # 0-1yr -> fresher, 2yr -> junior.
     if years and max_years <= 1:
         return "fresher"
     if years and max_years <= 2:
         return "junior"
+    if _has_seniority_term(text, SENIOR_TERMS):
+        return "senior"
+    if _has_seniority_term(text, MID_TERMS) or max_years >= 3:
+        return "mid"
     return "unknown"
 
 
