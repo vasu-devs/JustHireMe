@@ -86,10 +86,45 @@ print("NOOP_OK")
 """
 
 
+_MATCH_RERANK = """
+import sys
+sys.path.insert(0, "backend")
+from unittest import mock
+from data.sqlite.connection import init_sql
+init_sql()
+from data.sqlite.leads import save_lead, save_lead_feedback, update_lead_score, get_lead_by_id
+from ranking.service import RankingService
+
+save_lead({"job_id": "a", "title": "Registered Nurse", "platform": "greenhouse",
+           "url": "https://x/a", "signal_score": 50, "kind": "job", "status": "matched"})
+save_lead_feedback("a", "good", "")
+save_lead({"job_id": "b", "title": "Staff Nurse", "platform": "greenhouse",
+           "url": "https://x/b", "signal_score": 40, "kind": "job", "status": "matched"})
+update_lead_score("b", 50, "base match", [], [], preserve_status=True)   # base MATCH score = 50, keep status
+
+rs = RankingService()
+# Force a deterministic +10 match delta for b (bypasses the embedding model).
+with mock.patch("ranking.feedback_semantic.preference_deltas", return_value={"b": 10, "a": 10}):
+    rs._recompute_feedback_signals(500)
+    first = int(get_lead_by_id("b")["score"])
+    rs._recompute_feedback_signals(500)   # repeat -> must re-apply from base, not stack
+    second = int(get_lead_by_id("b")["score"])
+assert first == 60, first            # 50 base + 10 preference
+assert second == 60, (first, second) # idempotent, NOT 70
+print("MATCH_RERANK_OK")
+"""
+
+
 def test_feedback_recompute_reranks_open_leads(tmp_path):
     result = _run(_RERANK, tmp_path)
     assert result.returncode == 0, result.stderr
     assert "RELEARN_OK" in result.stdout
+
+
+def test_feedback_reranks_match_score_idempotently(tmp_path):
+    result = _run(_MATCH_RERANK, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "MATCH_RERANK_OK" in result.stdout
 
 
 def test_recompute_is_noop_without_feedback(tmp_path):

@@ -18,7 +18,7 @@ LEAD_SELECT_COLUMNS = (
     "signal_reason,signal_tags,outreach_reply,outreach_dm,source_meta,feedback,"
     "feedback_note,followup_due_at,last_contacted_at,outreach_email,proposal_draft,"
     "fit_bullets,followup_sequence,proof_snippet,tech_stack,location,urgency,"
-    "base_signal_score,learning_delta,learning_reason,created_at,resume_version"
+    "base_signal_score,learning_delta,learning_reason,created_at,resume_version,base_score"
 )
 LEAD_COLUMN_NAMES = tuple(part.strip() for part in LEAD_SELECT_COLUMNS.split(","))
 
@@ -125,6 +125,7 @@ def lead_row_dict(row) -> dict:
         "learning_reason": row_get(row, "learning_reason") or "",
         "created_at": row_get(row, "created_at") or "",
         "resume_version": row_get(row, "resume_version") or 0,
+        "base_score": row_get(row, "base_score") or 0,
     }
 
 
@@ -287,6 +288,10 @@ def update_learning_scores(updates: list[tuple[str, dict, int]], db_path: str = 
             int(ranked.get("base_signal_score") or base_signal_score),
             int(ranked.get("learning_delta") or 0),
             str(ranked.get("learning_reason") or "")[:700],
+            # Match score + its idempotency base (feedback re-rank). Fall back to the
+            # base so a caller that didn't compute a match delta never zeroes the score.
+            int(ranked.get("score") or ranked.get("base_score") or 0),
+            int(ranked.get("base_score") or 0),
             job_id,
         )
         for job_id, ranked, base_signal_score in updates
@@ -297,7 +302,7 @@ def update_learning_scores(updates: list[tuple[str, dict, int]], db_path: str = 
             """
             UPDATE leads
             SET signal_score=?, signal_reason=?, source_meta=?, base_signal_score=?,
-                learning_delta=?, learning_reason=?
+                learning_delta=?, learning_reason=?, score=?, base_score=?
             WHERE job_id=?
             """,
             params,

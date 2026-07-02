@@ -58,6 +58,10 @@ _LEGACY_LEAD_COLUMNS = [
     ("base_signal_score", "INTEGER DEFAULT 0"),
     ("learning_delta", "INTEGER DEFAULT 0"),
     ("learning_reason", "TEXT DEFAULT ''"),
+    # Original evaluator MATCH score, so feedback can re-rank leads.score idempotently
+    # (always from the base, never stacking deltas) — the "gets better with use" signal
+    # for the score the user actually ranks/applies on.
+    ("base_score", "INTEGER DEFAULT 0"),
     ("resume_version", "INTEGER DEFAULT 0"),
 ]
 

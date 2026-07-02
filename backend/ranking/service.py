@@ -95,6 +95,10 @@ class RankingService:
         # examples are loop-invariant, so rebuilding per lead was O(leads x examples).
         model = self.feedback.build_model(examples)
         leads = repo.leads.get_leads_for_learning(limit)
+        # Content-based feedback for the MATCH score the user actually ranks on:
+        # "jobs like ones you rated good score higher" (field-agnostic, via embeddings).
+        from ranking.feedback_semantic import preference_deltas
+        score_deltas = preference_deltas(examples, leads)
         changed: list[dict] = []
         pending: list[tuple[str, dict, int]] = []
         for lead in leads:
@@ -106,9 +110,18 @@ class RankingService:
             seed["signal_score"] = base
             seed["base_signal_score"] = base
             ranked = self.feedback.apply_with_model(seed, model)
-            if int(ranked.get("signal_score") or 0) != int(lead.get("signal_score") or 0) or int(
+
+            # Shift the match score toward semantically-liked jobs, ALWAYS from the
+            # original evaluator score (base_score) so repeated recomputes are idempotent.
+            match_base = int(lead.get("base_score") or 0) or int(lead.get("score") or 0)
+            new_score = max(0, min(100, match_base + int(score_deltas.get(lead["job_id"], 0))))
+            ranked["base_score"] = match_base
+            ranked["score"] = new_score
+
+            signal_changed = int(ranked.get("signal_score") or 0) != int(lead.get("signal_score") or 0) or int(
                 ranked.get("learning_delta") or 0
-            ) != delta_applied:
+            ) != delta_applied
+            if signal_changed or new_score != int(lead.get("score") or 0):
                 pending.append((lead["job_id"], ranked, base))
                 changed.append(ranked)
         # One transaction for the whole burst instead of one-per-lead (see
