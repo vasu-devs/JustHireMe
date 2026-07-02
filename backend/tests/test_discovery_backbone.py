@@ -50,6 +50,19 @@ def test_profile_free_source_targets_are_zero_config_and_adaptive():
     assert not any(x.startswith("ats:") for x in nurse_lines)   # but no tech ATS flood
 
 
+def test_clean_role_query_strips_noise():
+    from core.config import _clean_role_query
+    # project-laden title + em-dash separator -> just the role phrase (internal hyphen kept)
+    assert _clean_role_query(["Full-Stack Engineer — Internal Finance & P&L Platform"]) == "Full-Stack Engineer"
+    # non-ASCII/mojibake acts as a separator, not deleted
+    assert _clean_role_query(["Full-Stack Engineer � Internal Finance"]) == "Full-Stack Engineer"
+    # summary filler dropped, sentence split on ". "
+    assert _clean_role_query(["Applied AI Engineer. Engineer Summary"]) == "Applied AI Engineer"
+    # falls through to the next usable term when the first is empty after cleaning
+    assert _clean_role_query(["", "Registered Nurse"]) == "Registered Nurse"
+    assert _clean_role_query([]) == "jobs"
+
+
 def test_aggregator_target_parsing_and_category_mapping():
     assert agg._muse_category(agg._role_terms("registered nurse icu")) == "Healthcare"
     assert agg._muse_category(agg._role_terms("senior software engineer")) == "Software Engineering"

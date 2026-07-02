@@ -116,8 +116,10 @@ async def _fetch_arbeitnow(role_terms: list[str]) -> list[dict]:
         if not title or not url:
             continue
         tags = job.get("tags") or []
-        haystack = " ".join([title, " ".join(str(t) for t in tags if t)])
-        if not _matches_role(haystack, role_terms):
+        # Match the TITLE (not tags): Arbeitnow is a broad, Germany-heavy feed and a
+        # tag-based match let unrelated roles ("Technical Sales Support" tagged
+        # "engineering") through. The role phrase must be in the actual job title.
+        if not _matches_role(title, role_terms):
             continue
         location = str(job.get("location") or "").strip()
         remote = "remote" if job.get("remote") else ""
