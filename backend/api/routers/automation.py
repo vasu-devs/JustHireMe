@@ -158,10 +158,14 @@ def create_router(manager) -> APIRouter:
             raise HTTPException(400, "no url available for this lead")
 
         profile = repo.profile.get_profile()
-        candidate = profile.get("candidate") or {}
         cfg = repo.settings.get_settings()
+        # The profile is FLAT: the candidate name is profile["n"], not a "candidate"
+        # sub-dict (there is none), and no "full_name" setting is ever written. Read
+        # it the way get_lead_for_fire_sync does, else the form-read preview shows a
+        # blank name/first/last for a fully-configured candidate.
+        candidate_name = str(profile.get("n") or "").strip() if isinstance(profile, dict) else ""
         identity = {
-            "name": cfg.get("full_name", "") or candidate.get("n", ""),
+            "name": cfg.get("full_name", "") or candidate_name,
             "email": cfg.get("email", ""),
             "phone": cfg.get("phone", ""),
             "linkedin_url": cfg.get("linkedin_url", ""),

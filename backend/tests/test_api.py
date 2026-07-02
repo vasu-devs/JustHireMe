@@ -604,6 +604,35 @@ class TestFormReaderEndpoints(unittest.TestCase):
             app.dependency_overrides.pop(get_repository, None)
         self.assertEqual(resp.status_code, 400)
 
+    def test_form_read_resolves_candidate_name_from_flat_profile(self):
+        # Regression: the profile is FLAT (name at profile["n"]); reading
+        # profile["candidate"]["n"] (no such key) left the auto-fill name blank.
+        from api.dependencies import get_automation_service, get_repository
+
+        captured: dict = {}
+
+        class Service:
+            async def read_form(self, url, identity, cover_letter=""):
+                captured["identity"] = identity
+                return {"fields": [], "url": url}
+
+        mock_lead = {"job_id": "form-name-1", "url": "https://example.com/apply", "cover_letter_asset": "", "kind": "job"}
+        fake_repo = types.SimpleNamespace(
+            leads=types.SimpleNamespace(get_lead_by_id=lambda _job_id: mock_lead),
+            profile=types.SimpleNamespace(get_profile=lambda: {"n": "Ada Lovelace", "identity": {}}),
+            settings=types.SimpleNamespace(get_settings=lambda: {"email": "ada@example.com"}),
+        )
+        app.dependency_overrides[get_repository] = lambda: fake_repo
+        app.dependency_overrides[get_automation_service] = lambda: Service()
+        try:
+            resp = post("/api/v1/leads/form-name-1/form/read", json={"url": "https://example.com/apply"})
+        finally:
+            app.dependency_overrides.pop(get_repository, None)
+            app.dependency_overrides.pop(get_automation_service, None)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(captured["identity"]["name"], "Ada Lovelace")
+        self.assertEqual(captured["identity"]["email"], "ada@example.com")
+
     def test_identity_endpoint(self):
         resp = get("/api/v1/identity")
         self.assertEqual(resp.status_code, 200)
