@@ -188,10 +188,25 @@ def create_lifespan(scheduler: AsyncIOScheduler, ghost_tick, logger):
         ensure_ghost_job(scheduler, ghost_tick)
         log_startup_warnings(get_repository(), logger)
         scheduler.start()
+
+        # Warm real semantic embeddings in the background: auto-download the ONNX model
+        # if it's missing so ranking uses meaning-level fit (not the near-random hash
+        # fallback) by default, with no manual setup. Non-blocking — the scan uses hash
+        # until the model is ready, then upgrades automatically.
+        async def _warm_embeddings() -> None:
+            try:
+                from data.vector.embeddings import ensure_onnx_model
+                active = await asyncio.to_thread(ensure_onnx_model)
+                logger.info("embedding warm-up done (onnx active=%s)", active)
+            except Exception as exc:
+                logger.warning("embedding warm-up skipped: %s", exc)
+
+        warm_task = asyncio.create_task(_warm_embeddings())
         logger.info("FastAPI live.")
         try:
             yield
         finally:
+            warm_task.cancel()
             scheduler.shutdown(wait=False)
             close_all()
         logger.info("FastAPI shutdown.")

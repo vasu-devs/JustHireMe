@@ -440,6 +440,33 @@ def embedding_status() -> dict:
     return base
 
 
+def ensure_onnx_model() -> bool:
+    """Make real ONNX semantics the default with zero manual setup: if the ONNX
+    provider is preferred but the model isn't downloaded yet, fetch it and reload the
+    session. No-op when the user chose hash, when a keyed OpenAI provider is set, or
+    when the model is already present. Safe to call at startup on a background thread —
+    an offline/failed download just leaves the hashing fallback in place. Returns True
+    when ONNX is active afterward.
+    """
+    pref = _configured_provider()
+    if pref == "hash":
+        return False
+    if pref == "openai" and _openai_api_key():
+        return False  # a keyed OpenAI provider is in use; don't pull the local model
+    if _onnx_model_ready():
+        return _load_onnx_session()
+    try:
+        result = download_onnx_model()
+    except Exception as exc:
+        _log.info("auto-download of ONNX embedding model skipped: %s", exc)
+        return False
+    if str((result or {}).get("status")) in ("ok", "exists", "downloaded"):
+        reset_onnx_session()
+        return _load_onnx_session()
+    _log.info("auto-download of ONNX embedding model did not complete: %s", (result or {}).get("error"))
+    return False
+
+
 def reset_onnx_session() -> None:
     """Force reload of the ONNX session on next use. Useful after model download."""
     global _onnx_session, _onnx_tokenizer, _onnx_error, _onnx_loaded, _last_onnx_fallback_error, _openai_runtime_error, _onnx_runtime_error
