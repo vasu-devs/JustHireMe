@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass, field
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
+# Apify actor ids are "<owner>/<name>" slugs (e.g. "apify/web-scraper"). Constrain
+# the path segment so a configured actor can't reshape the acts/... URL (path
+# traversal / host smuggling): each segment must start and end alphanumeric, with
+# only ".", "_", "-" allowed inside, so "..", "../x", and "apify/" are rejected.
+_ACTOR_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?(?:/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)?$")
 
 
 @dataclass
@@ -21,6 +28,8 @@ class BoardScanResult:
     reraise=True,
 )
 async def run_actor(actor: str, inp: dict, token: str) -> list:
+    if not _ACTOR_RE.match(str(actor or "")):
+        raise ValueError(f"invalid apify actor: {actor!r}")
     async with httpx.AsyncClient(timeout=60) as cx:
         response = await cx.post(
             f"https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items",
