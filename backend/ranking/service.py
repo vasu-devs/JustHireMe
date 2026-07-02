@@ -87,6 +87,9 @@ class RankingService:
         examples = repo.feedback.get_feedback_training_examples()
         if not examples:
             return []
+        # Build the feedback model ONCE, then score every lead against it — the
+        # examples are loop-invariant, so rebuilding per lead was O(leads x examples).
+        model = self.feedback.build_model(examples)
         leads = repo.leads.get_leads_for_learning(limit)
         changed: list[dict] = []
         for lead in leads:
@@ -97,7 +100,7 @@ class RankingService:
             seed = {k: v for k, v in lead.items() if k not in ("learning_delta", "learning_reason")}
             seed["signal_score"] = base
             seed["base_signal_score"] = base
-            ranked = self.feedback.apply(seed, examples)
+            ranked = self.feedback.apply_with_model(seed, model)
             if int(ranked.get("signal_score") or 0) != int(lead.get("signal_score") or 0) or int(
                 ranked.get("learning_delta") or 0
             ) != delta_applied:

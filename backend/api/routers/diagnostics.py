@@ -17,9 +17,11 @@ def _embedding_mode() -> str:
     fail-safe so a diagnostics hit never pulls in a heavy import or raises.
     """
     try:
-        from data.vector.embeddings import active_provider
+        from data.vector.embeddings import embedding_status
 
-        return active_provider()
+        # Use the status mode (not active_provider): it reports 'hashing' when a
+        # runtime openai/onnx fallback happened, so degradation is honest here too.
+        return str(embedding_status().get("mode") or "unknown")
     except Exception as log_exc:
         logging.getLogger(__name__).debug('suppressed exception in diagnostics._embedding_mode: %s', log_exc)
         return "unknown"

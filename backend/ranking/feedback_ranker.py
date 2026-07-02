@@ -124,15 +124,37 @@ def _feature_weight(feature: str) -> float:
     return FEATURE_WEIGHTS.get(prefix, 2.0)
 
 
+_LEARNING_SUFFIX_RE = re.compile(r"(?:;\s*)?feedback learning [+-]\d+")
+
+
+def _strip_learning_suffix(reason: str) -> str:
+    """Drop any prior '; feedback learning +N' fragment so a re-score REPLACES it
+    instead of appending a second one (recompute re-applies to the same lead)."""
+    return _LEARNING_SUFFIX_RE.sub("", reason or "").strip(" ;")
+
+
 def apply_feedback_learning(lead: dict, examples: list[dict], max_delta: int = 18) -> dict:
+    """Build the feedback model from ``examples`` and score one ``lead``.
+
+    For batch re-ranking, build the model ONCE with :func:`build_model` and call
+    :func:`score_with_model` per lead — otherwise the model is rebuilt for every
+    lead (O(leads x examples))."""
+    return score_with_model(lead, build_model(examples), max_delta=max_delta)
+
+
+def score_with_model(lead: dict, model: dict[str, dict], max_delta: int = 18) -> dict:
+    """Apply a prebuilt feedback ``model`` to one lead (see apply_feedback_learning)."""
     out = dict(lead)
     base = int(out.get("signal_score") or 0)
     out.setdefault("base_signal_score", base)
+    # Reset any learning suffix a previous scoring left on signal_reason so we
+    # replace it, never stack it.
+    clean_reason = _strip_learning_suffix(str(out.get("signal_reason") or "").strip())
 
-    model = build_model(examples)
     if not model:
         out["learning_delta"] = 0
         out["learning_reason"] = ""
+        out["signal_reason"] = clean_reason
         return out
 
     contributions: list[tuple[str, float]] = []
@@ -149,6 +171,7 @@ def apply_feedback_learning(lead: dict, examples: list[dict], max_delta: int = 1
     if not contributions:
         out["learning_delta"] = 0
         out["learning_reason"] = ""
+        out["signal_reason"] = clean_reason
         return out
 
     raw_delta = sum(value for _, value in contributions)
@@ -163,10 +186,11 @@ def apply_feedback_learning(lead: dict, examples: list[dict], max_delta: int = 1
         pretty.append(f"{label} {'+' if value > 0 else ''}{round(value, 1)}")
     direction = "boost" if delta > 0 else "penalty"
     out["learning_reason"] = f"Feedback {direction}: " + ", ".join(pretty)
-    reason = str(out.get("signal_reason") or "").strip()
     if delta:
         suffix = f"feedback learning {'+' if delta > 0 else ''}{delta}"
-        out["signal_reason"] = f"{reason}; {suffix}" if reason else suffix
+        out["signal_reason"] = f"{clean_reason}; {suffix}" if clean_reason else suffix
+    else:
+        out["signal_reason"] = clean_reason
 
     meta = dict(out.get("source_meta") or {})
     meta["learning"] = {
@@ -181,3 +205,9 @@ def apply_feedback_learning(lead: dict, examples: list[dict], max_delta: int = 1
 class FeedbackRanker:
     def apply(self, lead: dict, examples: list[dict], max_delta: int = 18) -> dict:
         return apply_feedback_learning(lead, examples, max_delta=max_delta)
+
+    def build_model(self, examples: list[dict]) -> dict[str, dict]:
+        return build_model(examples)
+
+    def apply_with_model(self, lead: dict, model: dict[str, dict], max_delta: int = 18) -> dict:
+        return score_with_model(lead, model, max_delta=max_delta)

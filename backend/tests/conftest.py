@@ -28,6 +28,22 @@ def _reset_rate_limiters():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _reset_embedding_runtime_state():
+    """Clear the module-global embedding runtime-degradation flag between tests.
+
+    ``data.vector.embeddings._openai_runtime_error`` is a sticky process global
+    (it self-heals in production on the next success). A test that exercises the
+    openai fallback would otherwise leak the degraded state into a later test that
+    asserts the healthy 'openai' status. Reset ONLY if the module is already
+    imported so tests that never touch embeddings pay no import cost.
+    """
+    yield
+    emb = sys.modules.get("data.vector.embeddings")
+    if emb is not None:
+        emb._openai_runtime_error = ""
+
+
 def pytest_configure(config):
     """Redirect pytest's temp root if the default one is inaccessible.
 
