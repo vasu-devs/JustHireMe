@@ -88,7 +88,7 @@ Avoid mixing unrelated refactors with feature work.
 
 ### Requirements
 
-- Node.js 20+
+- Node.js 24 (matches CI)
 - Python 3.13+
 - Rust stable
 - uv

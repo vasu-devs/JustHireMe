@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0 - 2026-06-22
+
+- Keyless, zero-config discovery by default. The free ATS/community/RSS sources (Greenhouse, Lever, Ashby, Workable, RemoteOK, Remotive, Jobicy, Hacker News, GitHub, RSS/Atom, …) are enabled out of the box, so a brand-new profile in any field or country gets real, deduplicated leads with no API key. A neutral, field-agnostic quality gate keeps discovery unbiased across professions.
+- Lighter runtime. Dropped the unused heavy ML stack (torch and friends) in favor of the bundled ONNX embedding model, shrinking the first-run runtime download while keeping local semantic matching keyless.
+- Broader keyless model options and a feature test matrix to keep the keyless/subscription paths honest across releases.
+
 ## 1.1.1 - 2026-06-14
 
 - Codex (ChatGPT) subscription: use the models your account actually supports. ChatGPT-account Codex only allows its own default model (gpt-5.5 as of June 2026); the older `gpt-5-codex`/`gpt-5.1`/`gpt-5` options were rejected with "not supported when using Codex with a ChatGPT account." The model picker now offers the supported set (default = your codex config's own model), and if a selected model is ever rejected the app transparently retries on your account's default instead of failing. Verified end-to-end: résumé ingestion, fit scoring, and text generation all run on the Codex subscription.

@@ -24,7 +24,7 @@ Recommended:
 
 ## Quality Gate
 
-Before saving, leads should pass `agents.quality_gate.evaluate_lead_quality`.
+Before saving, leads should pass `discovery.quality_gate.evaluate_lead_quality`.
 
 The gate rejects or down-ranks:
 
