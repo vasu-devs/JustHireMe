@@ -475,8 +475,13 @@ def _semantic_result(
     # (ONNX/OpenAI) produce higher cosine similarity for matching content than
     # the hash embedder, so their stretch windows differ.
     mode = _embedding_mode()
-    if source == "local-profile" and not _is_semantic_provider(mode):
-        # Hash embedder: lower baselines, narrower useful range
+    if source == "local-profile":
+        # The local-profile fallback ALWAYS computes its similarities with the hash
+        # embedder (_local_rows_by_similarity -> _hash_embedding), never the semantic
+        # model — so it must use the hash window regardless of which provider is
+        # active for the (here unavailable/empty) vector store. Gating this on the
+        # provider mode collapsed genuine matches (~score 95 -> ~27) whenever ONNX or
+        # OpenAI was active but LanceDB had no tables.
         stretched = (combined - 0.06) / 0.30
     elif _is_semantic_provider(mode):
         # ONNX or OpenAI: real semantic similarity, wider range

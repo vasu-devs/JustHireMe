@@ -219,6 +219,43 @@ class RegressionTests(unittest.TestCase):
         self.assertTrue(any(name == "FastAPI" for name, _sim in result["skill_matches"]))
         self.assertTrue(any(name == "ProbeGraph" for name, _sim in result["project_matches"]))
 
+    def test_local_profile_score_is_mode_independent(self):
+        """The local-profile fallback ALWAYS computes similarities with the hash
+        embedder, so its score must not depend on the active embedding provider mode.
+        Regression: with ONNX/OpenAI active but the vector store empty, the hash-derived
+        similarity was pushed through the wider semantic stretch window, collapsing a
+        genuine match's score (~95 -> ~27)."""
+        from ranking import semantic
+
+        profile = {
+            "n": "Candidate",
+            "s": "Applied AI engineer",
+            "skills": [{"n": "Python"}, {"n": "FastAPI"}, {"n": "React"}, {"n": "LangGraph"}, {"n": "RAG"}],
+            "projects": [{
+                "title": "ProbeGraph",
+                "stack": ["FastAPI", "React", "LangGraph", "RAG"],
+                "impact": "Built knowledge graph ingestion and semantic search.",
+            }],
+            "exp": [{"role": "AI Engineer", "co": "Probe Labs", "d": "Built RAG systems with FastAPI and React."}],
+            "certifications": ["Vector Search Systems"],
+        }
+        jd = "Need Python FastAPI React LangGraph RAG engineer for knowledge graph ingestion and semantic search"
+
+        def run(mode):
+            with mock.patch.object(semantic, "_vec_store", return_value=_FakeSemanticStore({})), \
+                 mock.patch.object(semantic, "_embed_jd", side_effect=AssertionError("vector path must not run")), \
+                 mock.patch.object(semantic, "_embedding_mode", return_value=mode):
+                return semantic.semantic_fit(jd, candidate_data=profile)
+
+        hashing = run("hashing")
+        onnx = run("onnx")
+        self.assertEqual(hashing["source"], "local-profile")
+        self.assertEqual(onnx["source"], "local-profile")
+        # Same hash-derived similarities -> identical score regardless of provider mode,
+        # and a genuine match must still land in a high band.
+        self.assertEqual(hashing["score"], onnx["score"])
+        self.assertGreaterEqual(onnx["score"], 70)
+
     def test_semantic_local_fallback_uses_experience_and_credentials(self):
         from ranking import semantic
 
