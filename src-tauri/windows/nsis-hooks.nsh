@@ -50,10 +50,14 @@
   CreateDirectory "$SMPROGRAMS"
   CreateShortCut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 SW_SHOWNORMAL "" "${PRODUCTNAME}"
 
-  IfFileExists "$DESKTOP\${PRODUCTNAME}.lnk" 0 +2
+  ; Create the shortcut when it is MISSING: IfFileExists jumps to the first label
+  ; when present, the second when absent. "+2 0" => if present skip the CreateShortCut,
+  ; if absent fall through and create it. ("0 +2" was inverted — it only recreated an
+  ; already-present shortcut, so a fresh install/repair got no desktop/taskbar shortcut.)
+  IfFileExists "$DESKTOP\${PRODUCTNAME}.lnk" +2 0
     CreateShortCut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 SW_SHOWNORMAL "" "${PRODUCTNAME}"
 
-  IfFileExists "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\${PRODUCTNAME}.lnk" 0 +2
+  IfFileExists "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\${PRODUCTNAME}.lnk" +2 0
     CreateShortCut "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0 SW_SHOWNORMAL "" "${PRODUCTNAME}"
 
   Goto jhm_postinstall_done

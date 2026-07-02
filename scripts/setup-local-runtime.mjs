@@ -79,7 +79,11 @@ console.log(`[setup:local] app-data dir for the dev sidecar: ${dataDir}`);
 // 1) ONNX embedding model -> <app-data>/models/all-MiniLM-L6-v2 (skips if present).
 runPython(
   "Download ONNX embedding model (semantic search)",
-  "import json\nfrom data.vector.embeddings import download_onnx_model\nprint(json.dumps(download_onnx_model()))\n",
+  // download_onnx_model() catches its own errors and RETURNS {status:"error"} rather
+  // than raising, so assert the status and exit non-zero on failure — otherwise a
+  // failed/partial download prints an error dict but exits 0 and setup:local falsely
+  // reports success while the dev sidecar silently degrades to the hash fallback.
+  "import json, sys\nfrom data.vector.embeddings import download_onnx_model\nr = download_onnx_model()\nprint(json.dumps(r))\nsys.exit(0 if r.get('status') in ('ok', 'exists') else 1)\n",
   { JHM_APP_DATA_DIR: dataDir },
 );
 
