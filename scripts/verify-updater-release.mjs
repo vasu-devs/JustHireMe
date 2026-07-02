@@ -15,7 +15,10 @@ const expectedVersion = normalizeVersion(versionRaw);
 const manifestPath = join(releaseDir, "latest.json");
 
 function normalizeVersion(raw) {
-  const version = raw.trim().replace(/^v/, "");
+  // Case-insensitive prefix strip — the release workflow triggers on both "v*" and
+  // "V*" tags and version.mjs normalizes with /^v/i, so an uppercase-V tag must not
+  // slip through as invalid semver here and crash the publish step.
+  const version = raw.trim().replace(/^v/i, "");
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
     throw new Error(`Invalid version "${raw}". Expected semver like 0.1.32 or v0.1.32.`);
   }

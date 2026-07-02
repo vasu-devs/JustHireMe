@@ -919,7 +919,10 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
-          version="${tag#v}"
+          # Strip a leading v OR V — the workflow triggers on both "v*" and "V*"
+          # tags, so a case-sensitive "${tag#v}" would leave "V1.2.0" and write
+          # invalid semver into latest.json / crash the updater verifier.
+          version="${tag#[vV]}"
           cd release-assets
 
           find . -type f ! -name "SHA256SUMS*.txt" ! -name "ASSET-SIZES.txt" -printf "%P\n" | sort | while read -r asset; do
