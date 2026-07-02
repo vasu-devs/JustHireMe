@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 - 2026-07-03
+
+- Gets better the more you use it. Thumbs-up / thumbs-down on a lead now moves the actual match score, not just a hidden signal: every still-open lead is instantly re-ranked from what your feedback taught the app (jobs, companies, and stacks like the ones you liked rise; ones like those you disliked fall). Re-ranking is idempotent — it always works from the original evaluator score, so repeated feedback never double-counts.
+- Real jobs in any field, with no API key. The zero-config discovery backbone is more reliable and returns relevant, deduplicated leads for any profession and country out of the box — a keyless aggregator plus auto-seeded company boards, with a cleaned role query and strict title matching so results actually match your field instead of drifting into noise. New keyless ATS adapters: SmartRecruiters, Recruitee, and Personio.
+- Genuinely field-agnostic ranking. Matches are scored relative to your own profile's field and level, so a nurse, electrician, accountant, teacher, or chef surfaces their real best-fit roles (non-technical experience is weighted fairly, tenure is read from prose, and a symmetric off-field cap keeps clearly-wrong-field postings out of your list for every profession — not just software).
+- Meaning-level matching on by default. The local ONNX semantic embedding model now auto-downloads in the background at first launch, so ranking understands the meaning of a posting out of the box (it falls back to fast hashing until the model is ready, then upgrades automatically — no setup, no key).
+- Lower LLM cost. Fit evaluation now spends the model only on the top leads by a cheap local pre-score, and the per-lead prompt was slimmed and reordered — roughly 78% fewer evaluation tokens per scan on a typical run, so running the intelligence on your own subscription or API key stays cheap. Advanced knobs: `max_llm_evaluations`, `ghost_max_llm_evaluations`, `llm_eval_floor`.
+- Field-neutral application materials. When the language model is unavailable, the fallback résumé and cover letter no longer leak software-specific phrasing into non-technical applications.
+- Security and reliability hardening. SSRF guards now abort every outbound request type (not just document fetches), private-host navigation is blocked in the crawler and actuator browser paths, and the desktop shell only kills a stale sidecar process once it has confirmed the process is actually ours — plus roughly 68 correctness fixes from a deep recursive audit across discovery, ranking, generation, the vector store, the profile graph, and the UI.
+
 ## 1.2.0 - 2026-06-22
 
 - Keyless, zero-config discovery by default. The free ATS/community/RSS sources (Greenhouse, Lever, Ashby, Workable, RemoteOK, Remotive, Jobicy, Hacker News, GitHub, RSS/Atom, …) are enabled out of the box, so a brand-new profile in any field or country gets real, deduplicated leads with no API key. A neutral, field-agnostic quality gate keeps discovery unbiased across professions.

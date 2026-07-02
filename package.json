@@ -1,7 +1,7 @@
 {
   "name": "justhireme",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Local-first AI job intelligence workbench for scraping, ranking, and tailoring applications.",
   "license": "AGPL-3.0-only",
   "repository": {
