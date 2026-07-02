@@ -34,3 +34,18 @@ def test_empty_model_clears_stale_suffix():
     assert out["learning_delta"] == 0
     assert "feedback learning" not in out["signal_reason"]
     assert out["signal_reason"] == "quality signal"
+
+
+def test_demotion_clears_stale_learning_meta():
+    # A previously-boosted lead re-scored with a model that no longer matches it
+    # (delta -> 0) must not keep a contradictory source_meta.learning block.
+    lead = {
+        "signal_score": 47,
+        "platform": "greenhouse",
+        "source_meta": {"learning": {"base_signal_score": 40, "delta": 7, "reason": "Feedback boost"}},
+    }
+    # Model that shares no feature with the lead -> no contribution -> delta 0.
+    model = {"platform:other": {"sum": 1.0, "count": 1}}
+    out = score_with_model(lead, model)
+    assert out["learning_delta"] == 0
+    assert "learning" not in (out.get("source_meta") or {}), out.get("source_meta")

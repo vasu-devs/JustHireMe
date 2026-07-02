@@ -243,7 +243,18 @@ async def scrape_recruitee(slug: str) -> list[dict]:
     return results
 
 
-async def scrape_personio(slug: str, tld: str = "com") -> list[dict]:
+async def scrape_personio(slug: str, tld: str = "") -> list[dict]:
+    """Scrape a Personio tenant. With no explicit TLD (the watchlist / ats: form
+    carries none), try .com then .de so a .de-only tenant isn't silently missed."""
+    candidates = [tld.lstrip(".")] if tld else ["com", "de"]
+    for candidate in candidates:
+        results = await _scrape_personio_at(slug, candidate)
+        if results:
+            return results
+    return []
+
+
+async def _scrape_personio_at(slug: str, tld: str) -> list[dict]:
     from defusedxml import ElementTree as DefusedET
 
     tld = (tld or "com").lstrip(".")

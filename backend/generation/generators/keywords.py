@@ -112,7 +112,10 @@ def _keyword_coverage(profile: dict, lead: dict, resume_markdown: str = "") -> d
         "covered_terms": covered[:18],
         "missing_terms": missing[:12],
         "incorporated_terms": incorporated[:18],
-        "coverage_pct": round((len(covered) / len(jd_terms)) * 100) if jd_terms else 100,
+        # None (not a fake 100) when the JD extractor found no known keywords
+        # (e.g. a non-tech role vs the software-only taxonomy) so no consumer
+        # surfaces a fabricated "100% coverage".
+        "coverage_pct": round((len(covered) / len(jd_terms)) * 100) if jd_terms else None,
     }
 
 

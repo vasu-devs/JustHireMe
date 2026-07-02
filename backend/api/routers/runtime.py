@@ -170,6 +170,11 @@ async def download_onnx_model_endpoint():
         result = download_onnx_model()
         if result.get("status") == "ok":
             reset_onnx_session()
+            # hash -> onnx is a SAME-dimension (384) transition, so put_vec_rows'
+            # dim-mismatch guard can't detect it and no rebuild would otherwise
+            # happen — leaving profile tables full of hash vectors compared against
+            # ONNX query vectors. Re-embed the graph with the now-active ONNX model.
+            _spawn_vector_resync()
 
     _ONNX_DOWNLOAD_JOB = threading.Thread(
         target=_worker, name="jhm-onnx-download", daemon=True

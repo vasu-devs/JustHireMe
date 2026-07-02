@@ -90,7 +90,7 @@ def create_ghost_tick(manager):
         approved = []
         for lead in discovered:
             try:
-                result = await ranking_service.evaluate_lead(lead, profile)
+                result = await ranking_service.evaluate_lead(lead, profile, cfg)
                 # H1: background re-scoring must not overwrite a status the user
                 # changed (approved/applied/interviewing) during this slow eval
                 # loop. preserve_status keeps the lead's current status; the

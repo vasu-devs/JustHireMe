@@ -39,8 +39,12 @@ class RankingService:
         self.semantic = semantic or SemanticMatcher()
         self.feedback = feedback or FeedbackRanker()
 
-    async def evaluate_lead(self, lead: dict, profile: dict) -> dict:
-        settings = await asyncio.to_thread(self._load_settings)
+    async def evaluate_lead(self, lead: dict, profile: dict, settings: dict | None = None) -> dict:
+        # `settings` is loop-invariant across a scan/reevaluate; callers that loop
+        # over many leads pass the already-loaded cfg to avoid an N+1 SELECT on the
+        # settings table (and an extra thread hop) per lead.
+        if settings is None:
+            settings = await asyncio.to_thread(self._load_settings)
         return await asyncio.to_thread(
             self.evaluator.score, self.job_document(lead), profile, settings
         )

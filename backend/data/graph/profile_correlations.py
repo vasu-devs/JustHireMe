@@ -187,7 +187,10 @@ def sync_vectors_from_graph() -> dict:
         synced += len(cred_rows)
 
     if profile_parts:
-        add_profile_vec("profile:default", "Complete profile", "\n".join(profile_parts))
+        # Rebuild the aggregate 'profile' table at the new dim too, exactly like the
+        # five sibling tables above — otherwise a provider/dim switch strands
+        # profile:default at the old dimension (dim-guard skips a partial write).
+        add_profile_vec("profile:default", "Complete profile", "\n".join(profile_parts), allow_recreate=True)
         synced += 1
     return {"status": "ok", "synced": synced, "deleted_bad_rows": deleted_bad_rows}
 

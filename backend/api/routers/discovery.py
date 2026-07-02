@@ -346,7 +346,7 @@ async def _run_scan_inner(
             await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Scan stopped during evaluation."})
             return
         try:
-            result = await ranking_service.evaluate_lead(lead, profile)
+            result = await ranking_service.evaluate_lead(lead, profile, cfg)
             await asyncio.to_thread(
                 repo.leads.update_lead_score,
                 lead["job_id"], result["score"], result["reason"],
@@ -472,7 +472,7 @@ async def _run_reevaluate_jobs_inner(
             return
 
         try:
-            result = await ranking_service.evaluate_lead(lead, profile)
+            result = await ranking_service.evaluate_lead(lead, profile, cfg)
             preserve_status = should_preserve_job_status(lead.get("status", ""))
             await asyncio.to_thread(
                 repo.leads.update_lead_score,

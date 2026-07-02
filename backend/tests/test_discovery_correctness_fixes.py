@@ -75,6 +75,27 @@ def test_recent_posting_still_fresh():
     assert ok is True
 
 
+def test_sub_day_future_skew_is_still_fresh():
+    # NTP/timezone skew: a posting a few hours ahead must stay fresh, not be
+    # rejected by the future-date guard (timedelta.days floors to -1).
+    soon = (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat()
+    ok, _reason = quality_gate._freshness({"posted_date": soon})
+    assert ok is True
+
+
+def test_personio_auto_tld_tries_com_then_de(monkeypatch):
+    # A bare slug (watchlist / ats: form carries no TLD) must try .com then .de.
+    seen = []
+
+    async def fake_xml_get(url, params=None):
+        seen.append(url)
+        return "<positions></positions>"  # empty -> triggers the .de retry
+
+    monkeypatch.setattr(ats, "xml_get", fake_xml_get)
+    asyncio.run(ats.scrape_personio("acme"))  # no explicit tld
+    assert seen == ["https://acme.jobs.personio.com/xml", "https://acme.jobs.personio.de/xml"]
+
+
 # --- Personio .de TLD ---------------------------------------------------------
 
 def test_personio_uses_real_tld(monkeypatch):

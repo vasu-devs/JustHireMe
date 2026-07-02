@@ -102,12 +102,14 @@ def _freshness(lead: dict, max_age_days: int = 7) -> tuple[bool, str]:
             return True, "freshness assumed (recency-constrained source)"
         return False, "no posting date"
     newest = max(dates)
-    age_days = (datetime.now(timezone.utc) - newest).days
-    if age_days < 0:
-        # A future posting date is almost always a mis-parse (e.g. DD/MM/YYYY read
-        # as MM/DD/YYYY) or bad source data. Don't let a negative age slip past the
-        # `age_days > max_age_days` staleness gate — treat it as unverified.
-        return False, f"future posting date ({-age_days} days ahead); treating as unverified"
+    age_seconds = (datetime.now(timezone.utc) - newest).total_seconds()
+    if age_seconds < -86400:
+        # More than a day in the future = mis-parse (e.g. DD/MM read as MM/DD) or
+        # bad source data; don't let it slip past the staleness gate. A few hours
+        # ahead is ordinary NTP/timezone skew on a genuinely fresh posting — allow
+        # it (timedelta.days floors, so the old `.days < 0` rejected those too).
+        return False, "future posting date; treating as unverified"
+    age_days = max(0, int(age_seconds // 86400))
     if age_days > max_age_days:
         return False, f"stale posting: {age_days} days old"
     return True, f"fresh posting: {age_days} days old"

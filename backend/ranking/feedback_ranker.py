@@ -133,6 +133,14 @@ def _strip_learning_suffix(reason: str) -> str:
     return _LEARNING_SUFFIX_RE.sub("", reason or "").strip(" ;")
 
 
+def _without_learning_meta(source_meta) -> dict:
+    """Return source_meta without a stale nested 'learning' block, so a demoted
+    lead (delta -> 0) doesn't keep a contradictory old {delta, reason}."""
+    meta = dict(source_meta or {})
+    meta.pop("learning", None)
+    return meta
+
+
 def apply_feedback_learning(lead: dict, examples: list[dict], max_delta: int = 18) -> dict:
     """Build the feedback model from ``examples`` and score one ``lead``.
 
@@ -155,6 +163,7 @@ def score_with_model(lead: dict, model: dict[str, dict], max_delta: int = 18) ->
         out["learning_delta"] = 0
         out["learning_reason"] = ""
         out["signal_reason"] = clean_reason
+        out["source_meta"] = _without_learning_meta(out.get("source_meta"))
         return out
 
     contributions: list[tuple[str, float]] = []
@@ -172,6 +181,7 @@ def score_with_model(lead: dict, model: dict[str, dict], max_delta: int = 18) ->
         out["learning_delta"] = 0
         out["learning_reason"] = ""
         out["signal_reason"] = clean_reason
+        out["source_meta"] = _without_learning_meta(out.get("source_meta"))
         return out
 
     raw_delta = sum(value for _, value in contributions)

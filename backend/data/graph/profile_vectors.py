@@ -382,8 +382,11 @@ def add_candidate_vec(candidate_id: str, name: str, summary: str) -> None:
     embed_rows("candidates", [row], [profile_text(name, summary)])
 
 
-def add_profile_vec(profile_id: str, label: str, text: str) -> None:
-    embed_rows("profile", [{"id": profile_id, "label": label, "kind": "profile"}], [text])
+def add_profile_vec(profile_id: str, label: str, text: str, *, allow_recreate: bool = False) -> None:
+    # allow_recreate=True only from a full rebuild (sync_vectors_from_graph): the
+    # single profile:default row IS the complete "profile" table, so recreating
+    # from it on a dim change is safe and keeps it in step with the sibling tables.
+    embed_rows("profile", [{"id": profile_id, "label": label, "kind": "profile"}], [text], allow_recreate=allow_recreate)
 
 
 def add_skill_vec(skill_id: str, name: str, category: str) -> None:

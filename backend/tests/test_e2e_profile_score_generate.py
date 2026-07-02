@@ -151,7 +151,7 @@ class FakeRankingService:
     async def apply_feedback(self, lead: dict, _examples: list[dict]) -> dict:
         return lead
 
-    async def evaluate_lead(self, lead: dict, profile: dict) -> dict:
+    async def evaluate_lead(self, lead: dict, profile: dict, settings: dict | None = None) -> dict:
         self.evaluated.append(lead["job_id"])
         text = f"{lead.get('title', '')} {lead.get('description', '')}".lower()
         score = 91 if "fastapi" in text and "react" in text else 68

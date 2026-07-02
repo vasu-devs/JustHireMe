@@ -61,6 +61,32 @@ def test_full_rebuild_recreates_on_dim_mismatch(monkeypatch):
     assert store.created == [("skills", 30)], "full rebuild recreates from the complete row set"
 
 
+def test_add_profile_vec_recreate_rebuilds_profile_table(monkeypatch):
+    # The full-rebuild aggregate write (allow_recreate=True) must recreate the
+    # 'profile' table at the new dim, not skip it (round-2 regression).
+    store = FakeStore()
+    monkeypatch.setattr(pv, "_vec", lambda: store)
+    monkeypatch.setattr(pv, "vec_table_names", lambda: ["profile"])
+    monkeypatch.setattr(pv, "_existing_vector_dim", lambda _s, _t: 384)
+    monkeypatch.setattr(pv, "_incoming_vector_dim", lambda _rows: 1536)
+    import data.vector.embeddings as emb
+    monkeypatch.setattr(emb, "embed_texts", lambda texts: [[0.0] * 1536 for _ in texts])
+    pv.add_profile_vec("profile:default", "Complete profile", "text", allow_recreate=True)
+    assert store.dropped == ["profile"], "full rebuild must recreate the profile table at the new dim"
+
+
+def test_add_profile_vec_default_skips_on_mismatch(monkeypatch):
+    store = FakeStore()
+    monkeypatch.setattr(pv, "_vec", lambda: store)
+    monkeypatch.setattr(pv, "vec_table_names", lambda: ["profile"])
+    monkeypatch.setattr(pv, "_existing_vector_dim", lambda _s, _t: 384)
+    monkeypatch.setattr(pv, "_incoming_vector_dim", lambda _rows: 1536)
+    import data.vector.embeddings as emb
+    monkeypatch.setattr(emb, "embed_texts", lambda texts: [[0.0] * 1536 for _ in texts])
+    pv.add_profile_vec("profile:default", "Complete profile", "text")  # single-item default
+    assert store.dropped == [], "a single-item profile write must not wipe the table"
+
+
 def test_add_skill_vec_uses_partial_write(monkeypatch):
     # The single-item convenience wrapper must inherit the safe (non-recreating) path.
     store = FakeStore()
