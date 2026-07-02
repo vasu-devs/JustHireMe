@@ -48,7 +48,7 @@ function isActionableSubsystemIssue(name: string, value: SubsystemHealth[string]
 }
 
 export default function App() {
-  const { conn, port, apiToken, sidecarError, logs, addLog: wsAddLog, progress } = useWS();
+  const { conn, port, apiToken, sidecarError, logs, addLog: wsAddLog, progress, resetProgress } = useWS();
   const api = useMemo<ApiFetch | null>(() => {
     if (!port || !apiToken) return null;
     return createApiFetch(port, apiToken);
@@ -92,12 +92,15 @@ export default function App() {
     if (!scanning) return;
     const timer = window.setTimeout(() => {
       setScanning(false);
+      // Also clear the progress bar — otherwise a scan that dies without a
+      // terminal WS event leaves the "Scanning…" bar stuck active forever.
+      resetProgress();
       const msg = "Scan indicator cleared after 15 minutes without backend progress.";
       setScanErr(msg);
       wsAddLog(msg, "system", "scan");
     }, 15 * 60 * 1000);
     return () => window.clearTimeout(timer);
-  }, [scanning, progress.updatedAt, setScanning, setScanErr, wsAddLog]);
+  }, [scanning, progress.updatedAt, setScanning, setScanErr, wsAddLog, resetProgress]);
 
   useEffect(() => {
     if (api) return;

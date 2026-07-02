@@ -356,5 +356,7 @@ export function useWS() {
     };
   }, [connect]);
 
-  return { conn, port, apiToken, sidecarError, logs, beat, addLog, progress };
+  const resetProgress = useCallback(() => setProgress(emptyProgress()), []);
+
+  return { conn, port, apiToken, sidecarError, logs, beat, addLog, progress, resetProgress };
 }
