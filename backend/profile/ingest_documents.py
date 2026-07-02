@@ -20,6 +20,12 @@ _log = get_logger(__name__)
 # under this.
 _MAX_DOCX_MEMBER_BYTES = 64 * 1024 * 1024
 
+# Bounds on PDF extraction: a résumé is a handful of pages. These stop a
+# decompression-bomb / thousands-of-pages PDF from hanging pypdf or exhausting
+# memory and stalling the sidecar.
+_MAX_PDF_PAGES = 300
+_MAX_PDF_TEXT_CHARS = 200_000
+
 
 def _read_zip_member(archive: zipfile.ZipFile, name: str) -> bytes:
     info = archive.getinfo(name)
@@ -70,9 +76,31 @@ def _document(path: str) -> str:
 def _pdf(path: str) -> str:
     try:
         from pypdf import PdfReader
-        pages = PdfReader(path).pages
-        text = "\n".join(pg.extract_text() or "" for pg in pages)
-        if not text.strip():
+        # strict=False: tolerate the malformed-but-readable PDFs real users upload
+        # instead of raising on the first spec violation.
+        reader = PdfReader(path, strict=False)
+        parts: list[str] = []
+        total = 0
+        truncated = False
+        for index, page in enumerate(reader.pages):
+            if index >= _MAX_PDF_PAGES:
+                _log.warning("PDF exceeds %d pages; reading only the first %d: %s", _MAX_PDF_PAGES, _MAX_PDF_PAGES, path)
+                truncated = True
+                break
+            try:
+                chunk = page.extract_text() or ""
+            except Exception as exc:
+                # One bad page must not abort extraction of the rest.
+                _log.warning("PDF page %d extract error (%s): %s", index, path, exc)
+                continue
+            parts.append(chunk)
+            total += len(chunk)
+            if total >= _MAX_PDF_TEXT_CHARS:
+                _log.warning("PDF text exceeded %d chars; truncating: %s", _MAX_PDF_TEXT_CHARS, path)
+                truncated = True
+                break
+        text = "\n".join(parts)
+        if not text.strip() and not truncated:
             _log.warning("PDF has no extractable text (may be scanned/image-only): %s", path)
         return text
     except Exception as exc:

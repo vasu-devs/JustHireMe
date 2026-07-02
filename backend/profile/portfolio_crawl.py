@@ -31,6 +31,10 @@ _log = get_logger(__name__)
 
 MAX_PAGES = 100
 MAX_TEXT_PER_PAGE = 200000
+# Hard ceiling on a single fetched page body in the HTTP fallback. A hostile or
+# misconfigured host can otherwise stream an unbounded body and OOM the sidecar
+# (or starve the default thread pool). A real portfolio page is well under this.
+MAX_HTTP_RESPONSE_BYTES = 8 * 1024 * 1024
 # Per page, click up to this many candidate cards/buttons to reveal modal or
 # inline-expanded detail (case studies, demo videos) that is not in the initial
 # DOM. Bounded so a click-heavy page can't blow the crawl budget.
@@ -365,12 +369,29 @@ def _crawl_portfolio_http(url: str) -> list[PageSnapshot]:
                 continue
             seen.add(current)
             try:
-                response = client.get(current)
-                response.raise_for_status()
-                content_type = response.headers.get("content-type", "")
-                if "text/html" not in content_type and "<html" not in response.text.lower():
+                # Stream so a non-text or oversized body is rejected BEFORE it is
+                # fully buffered/decoded (avoids OOM + wasted whole-body .lower()).
+                with client.stream("GET", current) as response:
+                    response.raise_for_status()
+                    final_url = str(response.url)
+                    content_type = response.headers.get("content-type", "").lower()
+                    if content_type and "html" not in content_type and "text" not in content_type:
+                        continue
+                    declared = response.headers.get("content-length", "")
+                    if declared.isdigit() and int(declared) > MAX_HTTP_RESPONSE_BYTES:
+                        _log.warning("portfolio page %s too large (%s bytes); skipping", current, declared)
+                        continue
+                    buf = bytearray()
+                    for chunk in response.iter_bytes():
+                        buf.extend(chunk)
+                        if len(buf) > MAX_HTTP_RESPONSE_BYTES:
+                            _log.warning("portfolio page %s exceeded %d bytes; truncating", current, MAX_HTTP_RESPONSE_BYTES)
+                            break
+                    charset = response.charset_encoding or "utf-8"
+                body_text = bytes(buf).decode(charset, errors="replace")
+                if "text/html" not in content_type and "<html" not in body_text.lower():
                     continue
-                snapshot = _snapshot_html(str(response.url), response.text)
+                snapshot = _snapshot_html(final_url, body_text)
                 pages.append(snapshot)
                 for link in _prioritize_links(url, snapshot.links):
                     href = _canonical_url(link["href"])

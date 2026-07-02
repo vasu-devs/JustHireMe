@@ -6,6 +6,10 @@ from core.logging import get_logger
 
 _log = get_logger(__name__)
 
+# Decompressed-size ceiling per CSV member: a ~tens-of-MB zip whose members expand
+# to gigabytes would OOM-kill the sidecar otherwise. A real LinkedIn CSV is small.
+_MAX_CSV_MEMBER_BYTES = 64 * 1024 * 1024
+
 
 def _read_csv(zf: zipfile.ZipFile, name: str) -> list[dict]:
     """Find and parse a CSV by filename pattern (case-insensitive)."""
@@ -14,11 +18,19 @@ def _read_csv(zf: zipfile.ZipFile, name: str) -> list[dict]:
     if not candidates:
         _log.warning("linkedin export: %s not found in ZIP", name)
         return []
-    with zf.open(candidates[0]) as f:
+    member = candidates[0]
+    # Reject on the declared uncompressed size first (cheap), then bound the actual
+    # bytes read in case a crafted archive under-reports its member size.
+    if zf.getinfo(member).file_size > _MAX_CSV_MEMBER_BYTES:
+        raise ValueError(f"LinkedIn export member {member!r} too large (zip-bomb guard)")
+    with zf.open(member) as f:
+        raw = f.read(_MAX_CSV_MEMBER_BYTES + 1)
+        if len(raw) > _MAX_CSV_MEMBER_BYTES:
+            raise ValueError(f"LinkedIn export member {member!r} exceeded {_MAX_CSV_MEMBER_BYTES} bytes")
         # Lenient decode (like the other ingest paths): some real LinkedIn exports —
         # and files re-saved by Excel — carry cp1252/latin-1 bytes, and a strict
         # decode aborted the ENTIRE import over one bad character. utf-8-sig strips BOM.
-        text = f.read().decode("utf-8-sig", errors="replace")
+        text = raw.decode("utf-8-sig", errors="replace")
     reader = csv.DictReader(io.StringIO(text))
     return [dict(r) for r in reader]
 
@@ -70,7 +82,9 @@ def parse_linkedin_export(zip_bytes: bytes) -> dict:
             desc  = (row.get("Description") or "").strip()
             loc   = (row.get("Location") or "").strip()
             if role or co:
-                period = f"{start} – {end}" if start else end
+                # Without a start date, a bare "Present" is contextless noise —
+                # emit an empty period instead (matches the Education branch).
+                period = f"{start} – {end}" if start else ""
                 d = desc
                 if loc:
                     d = f"{d}\n{loc}".strip() if d else loc
