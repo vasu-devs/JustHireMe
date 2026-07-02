@@ -137,8 +137,23 @@ def _prioritized_skills(profile: dict, lead: dict, limit: int = 28) -> list[str]
     return _compact_list([*exact, *fuzzy, *rest], limit)
 
 
+def _fallback_role(profile: dict, lead: dict) -> str:
+    """Field-neutral role label: the JD title, else the candidate's own target role /
+    summary, else a neutral phrase — never a hardcoded 'Software Engineer'."""
+    title = str(lead.get("title") or "").strip()
+    if title:
+        return title
+    desired = str(profile.get("desired_position") or "").strip()
+    if desired:
+        return desired
+    summary = str(profile.get("s") or "").strip()
+    if summary:
+        return summary.split(".")[0].split(",")[0].strip()[:60] or "the advertised role"
+    return "the advertised role"
+
+
 def _role_headline(profile: dict, lead: dict, skills: list[str]) -> str:
-    target = _safe_text(str(lead.get("title") or "Software Engineer").strip()) or "Software Engineer"
+    target = _safe_text(_fallback_role(profile, lead)) or "the advertised role"
     summary = _safe_summary(str(profile.get("s") or "").strip())
     if summary:
         first = _clean_sentence(summary).rstrip(".")
@@ -331,7 +346,7 @@ def _fallback_package(profile: dict, lead: dict, template: str = "") -> _DocPack
     selected = _rank_projects(profile, lead, limit=2)
     name = profile.get("n") or "Candidate"
     identity: dict = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
-    title = _safe_text(str(lead.get("title") or "Software Engineer")) or "Software Engineer"
+    title = _safe_text(_fallback_role(profile, lead)) or "the advertised role"
     company = _safe_text(str(lead.get("company") or "the company")) or "the company"
     skills_raw = profile.get("skills", [])
     education = profile.get("education", [])
@@ -417,11 +432,15 @@ def _fallback_package(profile: dict, lead: dict, template: str = "") -> _DocPack
         resume += f"\n## EDUCATION\n{edu_lines}\n"
 
     all_skills = prioritized_skills
+    # Field-neutral fallback: no hardcoded "software engineering" / "stack" / "production
+    # systems" language, so a nurse/lawyer/teacher's fallback cover letter reads correctly.
+    background = ", ".join(all_skills[:5]) if all_skills else (_safe_text(str(profile.get("s") or "").strip()) or "this field")
+    recent = ", ".join(p.get("title", "a key project") for p in selected[:3]) if selected else "relevant work in this field"
     cover = f"""Dear {company} team,
 
-I am writing to apply for the {title} position at {company}. My background in {", ".join(all_skills[:5]) if all_skills else "software engineering"} aligns directly with the requirements outlined in your posting.
+I am writing to apply for the {title} position at {company}. My background in {background} aligns directly with the requirements outlined in your posting.
 
-In my recent work, I have built and shipped {", ".join(p.get('title','Project') for p in selected[:3]) if selected else "production systems"} using technologies central to your stack. These projects demonstrate hands-on experience with the tools and patterns your team uses daily.
+In my recent work on {recent}, I have built directly relevant experience and a track record of delivering the outcomes your team is looking for.
 
 I would welcome the opportunity to discuss how my experience maps to your needs. Thank you for your consideration.
 
