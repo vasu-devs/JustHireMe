@@ -35,15 +35,20 @@ async def scrape_greenhouse(slug: str) -> list[dict]:
         return []
     results = []
     for job in data.get("jobs", []):
+        # A single non-dict element (proxy/CDN-mangled response) must not abort the
+        # whole board — skip it and keep the valid postings. (Mirrors scrape_workable.)
+        if not isinstance(job, dict):
+            continue
         updated = job.get("updated_at") or ""
         if updated and not is_recent(updated):
             continue
         desc = strip_html_text(job.get("content") or "")
+        loc_field = job.get("location")
         location = ", ".join(
             loc.get("name", "")
             for loc in (job.get("offices") or [])
             if isinstance(loc, dict) and loc.get("name")
-        ) or (job.get("location") or {}).get("name", "")
+        ) or (loc_field.get("name", "") if isinstance(loc_field, dict) else "")
         if location:
             desc = (desc + f"\nLocation: {location}").strip()
         results.append(text_lead({
@@ -62,6 +67,8 @@ async def scrape_lever(slug: str) -> list[dict]:
     data = await json_get(f"https://api.lever.co/v0/postings/{slug}", {"mode": "json"})
     results = []
     for job in data if isinstance(data, list) else []:
+        if not isinstance(job, dict):
+            continue
         created = ""
         if job.get("createdAt"):
             try:
@@ -93,6 +100,8 @@ async def scrape_ashby(slug: str) -> list[dict]:
     jobs = data.get("jobs", []) if isinstance(data, dict) else []
     results = []
     for job in jobs:
+        if not isinstance(job, dict):
+            continue
         posted = job.get("publishedDate") or job.get("updatedAt") or ""
         if posted and not is_recent(posted):
             continue
