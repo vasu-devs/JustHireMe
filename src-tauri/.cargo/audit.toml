@@ -1,0 +1,17 @@
+# cargo-audit configuration.
+#
+# These advisories are in `quick-xml` 0.39.x, pulled in transitively as
+# tauri -> tauri-utils -> plist -> quick-xml. The fix is quick-xml >= 0.41.0,
+# but `plist` (latest 1.9.0) still requires `quick-xml ^0.39.2`, so the upgrade
+# is blocked upstream until tauri/plist bump their quick-xml dependency. The
+# affected code path is Apple .plist parsing inside Tauri's own bundling/config,
+# not attacker-controlled input in this app, so the practical DoS surface is
+# negligible. Remove these entries once tauri/plist ship a quick-xml >= 0.41.
+#
+# Mirrors the PIP_AUDIT_IGNORE_VULNS pattern used for transitive Python ML
+# advisories in .github/workflows/{ci,release}.yml.
+[advisories]
+ignore = [
+    "RUSTSEC-2026-0194",  # quick-xml: quadratic run time on duplicate attribute names
+    "RUSTSEC-2026-0195",  # quick-xml: unbounded namespace-declaration allocation (DoS)
+]
