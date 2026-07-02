@@ -34,6 +34,7 @@ def sensitive_keys(settings: dict) -> set:
 async def probe_provider_key(provider: str, key: str, settings: dict | None = None) -> dict:
     import httpx
     from llm import _OPENAI_COMPAT_BASE_URLS
+    from llm.client import _validate_base_url
 
     started = time.perf_counter()
     try:
@@ -53,53 +54,97 @@ async def probe_provider_key(provider: str, key: str, settings: dict | None = No
                         "messages": [{"role": "user", "content": "ping"}],
                     },
                 )
-                status = "ok" if response.status_code in {200, 400} else "invalid_key" if response.status_code == 401 else "unreachable"
+                status = (
+                    "ok"
+                    if response.status_code in {200, 400}
+                    else "invalid_key"
+                    if response.status_code == 401
+                    else "unreachable"
+                )
             elif provider == "openai":
                 response = await client.get(
                     "https://api.openai.com/v1/models",
                     headers={"Authorization": f"Bearer {key}"},
                 )
-                status = "ok" if response.status_code == 200 else "invalid_key" if response.status_code == 401 else "unreachable"
+                status = (
+                    "ok"
+                    if response.status_code == 200
+                    else "invalid_key"
+                    if response.status_code == 401
+                    else "unreachable"
+                )
             elif provider == "groq":
                 response = await client.get(
                     "https://api.groq.com/openai/v1/models",
                     headers={"Authorization": f"Bearer {key}"},
                 )
-                status = "ok" if response.status_code == 200 else "invalid_key" if response.status_code == 401 else "unreachable"
+                status = (
+                    "ok"
+                    if response.status_code == 200
+                    else "invalid_key"
+                    if response.status_code == 401
+                    else "unreachable"
+                )
             elif provider == "gemini":
                 response = await client.get(
                     "https://generativelanguage.googleapis.com/v1beta/openai/models",
                     headers={"Authorization": f"Bearer {key}"},
                 )
-                status = "ok" if response.status_code == 200 else "invalid_key" if response.status_code in {401, 403} else "unreachable"
+                status = (
+                    "ok"
+                    if response.status_code == 200
+                    else "invalid_key"
+                    if response.status_code in {401, 403}
+                    else "unreachable"
+                )
             elif provider == "deepseek":
                 response = await client.get(
                     "https://api.deepseek.com/models",
                     headers={"Authorization": f"Bearer {key}"},
                 )
-                status = "ok" if response.status_code == 200 else "invalid_key" if response.status_code in {401, 403} else "unreachable"
+                status = (
+                    "ok"
+                    if response.status_code == 200
+                    else "invalid_key"
+                    if response.status_code in {401, 403}
+                    else "unreachable"
+                )
             elif provider in _OPENAI_COMPAT_BASE_URLS:
                 response = await client.get(
                     f"{_OPENAI_COMPAT_BASE_URLS[provider].rstrip('/')}/models",
                     headers={"Authorization": f"Bearer {key}"},
                 )
-                status = "ok" if response.status_code == 200 else "invalid_key" if response.status_code in {401, 403} else "unreachable"
+                status = (
+                    "ok"
+                    if response.status_code == 200
+                    else "invalid_key"
+                    if response.status_code in {401, 403}
+                    else "unreachable"
+                )
             elif provider == "azure":
                 cfg = settings or {}
-                endpoint = str(
-                    cfg.get("azure_openai_endpoint")
-                    or os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-                ).strip().rstrip("/")
+                endpoint = (
+                    str(cfg.get("azure_openai_endpoint") or os.environ.get("AZURE_OPENAI_ENDPOINT", ""))
+                    .strip()
+                    .rstrip("/")
+                )
                 if not endpoint:
                     status = "unchecked"
                 else:
                     if not endpoint.endswith("/openai/v1"):
                         endpoint = f"{endpoint}/openai/v1"
+                    _validate_base_url(endpoint)
                     response = await client.get(
                         f"{endpoint}/models",
                         headers={"api-key": key},
                     )
-                    status = "ok" if response.status_code == 200 else "invalid_key" if response.status_code in {401, 403} else "unreachable"
+                    status = (
+                        "ok"
+                        if response.status_code == 200
+                        else "invalid_key"
+                        if response.status_code in {401, 403}
+                        else "unreachable"
+                    )
             else:
                 status = "unchecked"
     except Exception:
@@ -110,6 +155,7 @@ async def probe_provider_key(provider: str, key: str, settings: dict | None = No
 async def list_provider_models(provider: str, key: str, settings: dict | None = None) -> list[str]:
     import httpx
     from llm import _OPENAI_COMPAT_BASE_URLS
+    from llm.client import _validate_base_url
 
     cfg = settings or {}
     headers = {"Authorization": f"Bearer {key}"}
@@ -128,15 +174,15 @@ async def list_provider_models(provider: str, key: str, settings: dict | None = 
     elif provider == "deepseek":
         url = "https://api.deepseek.com/models"
     elif provider == "azure":
-        endpoint = str(
-            cfg.get("azure_openai_endpoint")
-            or os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-        ).strip().rstrip("/")
+        endpoint = (
+            str(cfg.get("azure_openai_endpoint") or os.environ.get("AZURE_OPENAI_ENDPOINT", "")).strip().rstrip("/")
+        )
         if not endpoint:
             return []
         if not endpoint.endswith("/openai/v1"):
             endpoint = f"{endpoint}/openai/v1"
         url = f"{endpoint}/models"
+        _validate_base_url(url)
         headers = {"api-key": key}
     elif provider in _OPENAI_COMPAT_BASE_URLS:
         url = f"{_OPENAI_COMPAT_BASE_URLS[provider].rstrip('/')}/models"
@@ -296,6 +342,7 @@ def create_router(scheduler: AsyncIOScheduler, ghost_tick) -> APIRouter:
     async def subscription_status():
         """Install + login state for the subscription-CLI providers (no API key needed)."""
         from llm import SUBSCRIPTION_CLI_PROVIDERS, subscription_cli
+
         out = {}
         for p in sorted(SUBSCRIPTION_CLI_PROVIDERS):
             s = subscription_cli.status(p)
@@ -308,13 +355,18 @@ def create_router(scheduler: AsyncIOScheduler, ghost_tick) -> APIRouter:
     async def subscription_login(provider: str):
         """Launch the CLI's own browser sign-in; the UI then polls subscription-status."""
         from llm import SUBSCRIPTION_CLI_PROVIDERS, subscription_cli
+
         if provider not in SUBSCRIPTION_CLI_PROVIDERS:
             raise HTTPException(status_code=400, detail="unknown subscription provider")
         try:
             return subscription_cli.login(provider)
         except subscription_cli.CliNotInstalled as exc:
-            return {"started": False, "error": "not_installed",
-                    "hint": subscription_cli.install_hint(provider), "detail": str(exc)}
+            return {
+                "started": False,
+                "error": "not_installed",
+                "hint": subscription_cli.install_hint(provider),
+                "detail": str(exc),
+            }
 
     @router.post("/settings")
     async def save_cfg(body: SettingsBody, repo: Repository = Depends(get_repository)):
