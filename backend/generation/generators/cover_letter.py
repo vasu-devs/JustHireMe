@@ -58,6 +58,25 @@ def _split_cover_from_resume(text: str) -> tuple[str, str]:
     return resume, cover
 
 
+def _shorten_chars(text: str, limit: int) -> str:
+    """Trim to <= limit chars on a word boundary (clean for copy-paste)."""
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    if " " in cut:
+        cut = cut[:cut.rfind(" ")]
+    return cut.rstrip(" ,;:-–—")
+
+
+def _shorten_words(text: str, max_words: int) -> str:
+    text = (text or "").strip()
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    return " ".join(words[:max_words]).rstrip(" ,;:-")
+
+
 def _normalize_package(package: _DocPackage, profile: dict, lead: dict, template: str = "") -> _DocPackage:
     """Defensively split combined LLM output into two real documents."""
     resume = package.resume_markdown or ""
@@ -118,6 +137,12 @@ def _normalize_package(package: _DocPackage, profile: dict, lead: dict, template
         if not package.cold_email or len(package.cold_email.strip()) < 30:
             package.cold_email = ofb["cold_email"]
 
+    # Enforce the documented caps on EVERY path. The accepted-LLM outreach was
+    # never truncated, so an over-limit LinkedIn note (LinkedIn hard-caps the
+    # connection note at 300 chars) was copied verbatim and rejected downstream.
+    package.founder_message = _shorten_chars(package.founder_message, 280)
+    package.linkedin_note = _shorten_chars(package.linkedin_note, 300)
+    package.cold_email = _shorten_words(package.cold_email, 150)
     return package
 
 
