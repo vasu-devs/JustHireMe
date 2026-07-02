@@ -1,6 +1,6 @@
 # Roadmap
 
-> Status: JustHireMe ships stable **v1.x** (currently 1.3.0). The early milestones
+> Status: JustHireMe ships stable **v1.x** (currently 1.4.0). The early milestones
 > below are largely shipped (see the README "Shipped" roadmap and CHANGELOG);
 > items marked ✓ are done. This file tracks direction, not release order.
 

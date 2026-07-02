@@ -7,14 +7,27 @@ import tempfile
 import contextlib
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from pydantic import Field
 
 from api.rate_limit import RateLimiter, require_rate_limit
 from api.dependencies import get_profile_service
 from core.types import StrictBody
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+# Serialized-JSON ceiling for the profile-import body: generous for any real
+# profile (a rich profile is a few hundred KB) while refusing an abusive blob
+# before it is parsed/normalized. Kept separate from MAX_UPLOAD_SIZE (files).
+MAX_PROFILE_JSON_BYTES = 5 * 1024 * 1024
+# Hard cap on pasted résumé text, so a giant paste can't buffer unbounded in the
+# form parser. The parser itself truncates further (profile.ingestor MAX_INGEST_CHARS).
+MAX_RAW_RESUME_CHARS = 2_000_000
+
+_EMPTY_IMPORT_STATS = {
+    "skills": 0, "experience": 0, "projects": 0,
+    "education": 0, "certifications": 0, "achievements": 0,
+    "vector_sync": "skipped",
+}
 
 
 class GithubIngestBody(StrictBody):
@@ -31,54 +44,12 @@ class PortfolioIngestBody(StrictBody):
     )
 
 
-class ProfileSkill(BaseModel):
-    name: str = Field(max_length=160)
-    category: str = Field(default="general", max_length=80)
-
-
-class ProfileExperience(BaseModel):
-    role: str = Field(default="", max_length=200)
-    company: str = Field(default="", max_length=200)
-    period: str = Field(default="", max_length=100)
-    description: str = Field(default="", max_length=5000)
-
-
-class ProfileProject(BaseModel):
-    title: str = Field(default="", max_length=200)
-    stack: str = Field(default="", max_length=500)
-    repo: str = Field(default="", max_length=500)
-    impact: str = Field(default="", max_length=1000)
-
-
-class ProfileEntry(BaseModel):
-    title: str = Field(max_length=500)
-
-
-class ProfileIdentity(BaseModel):
-    email: str = Field(default="", max_length=200)
-    phone: str = Field(default="", max_length=50)
-    linkedin_url: str = Field(default="", max_length=500)
-    github_url: str = Field(default="", max_length=500)
-    website_url: str = Field(default="", max_length=500)
-    city: str = Field(default="", max_length=200)
-
-
-class ProfileCandidate(BaseModel):
-    name: str = Field(default="", max_length=160)
-    summary: str = Field(default="", max_length=4000)
-
-
-class ProfileImportBody(BaseModel):
-    """Accepts any subset of fields - all are optional."""
-
-    candidate: ProfileCandidate = Field(default_factory=ProfileCandidate)
-    identity: ProfileIdentity = Field(default_factory=ProfileIdentity)
-    skills: list[ProfileSkill] = Field(default_factory=list)
-    experience: list[ProfileExperience] = Field(default_factory=list)
-    projects: list[ProfileProject] = Field(default_factory=list)
-    education: list[ProfileEntry] = Field(default_factory=list)
-    certifications: list[ProfileEntry] = Field(default_factory=list)
-    achievements: list[ProfileEntry] = Field(default_factory=list)
+# NOTE: POST /ingest/profile intentionally does NOT bind a strict Pydantic body.
+# Profile JSON shapes vary too much (grouped-dict skills, list stacks, alt keys),
+# and a strict model 422'd valid data before the tolerant normalizer could run.
+# The endpoint takes the raw JSON object; profile.normalization.normalize_profile_payload
+# coerces + bounds every field. Field caps that used to live on the removed
+# Profile* models are enforced there by truncation.
 
 
 def _read_profile_template(path: Path, logger) -> dict:
@@ -173,6 +144,11 @@ def create_router(manager, logger) -> APIRouter:
         require_rate_limit(ingest_limiter)
         if file and file.filename and file.size and file.size > MAX_UPLOAD_SIZE:
             raise HTTPException(status_code=413, detail=f"File too large (max {MAX_UPLOAD_SIZE // 1024 // 1024} MB)")
+        # Bound pasted text so an oversized paste can't pin the parser; the parser
+        # truncates further for LLM cost. Truncate rather than 413 — a best-effort
+        # parse of the first ~2M chars beats rejecting the whole paste.
+        if raw and len(raw) > MAX_RAW_RESUME_CHARS:
+            raw = raw[:MAX_RAW_RESUME_CHARS]
         try:
             async with _temp_upload(file) as pdf_path:
                 profile = await get_profile_service().ingest_resume(raw, pdf_path)
@@ -223,25 +199,28 @@ def create_router(manager, logger) -> APIRouter:
         return result
 
     @router.post("/ingest/profile")
-    async def import_profile_json(body: ProfileImportBody):
+    async def import_profile_json(request: Request):
+        # Accept the raw JSON object rather than a rigid Pydantic model: real
+        # profile exports vary in shape (skills as a grouped {category:[...]}
+        # dict, a flat string list, or [{name,category}]; stack as a list or a
+        # string; alternate keys). The service + normalizer already coerce all
+        # of these — validating against a strict schema here 422'd valid data
+        # BEFORE the tolerant path (and the fallback below) could ever run.
         require_rate_limit(ingest_limiter)
+        raw_body = await request.body()
+        if len(raw_body) > MAX_PROFILE_JSON_BYTES:
+            raise HTTPException(413, f"Profile JSON too large (max {MAX_PROFILE_JSON_BYTES // 1024 // 1024} MB)")
         try:
-            return await get_profile_service().import_profile_data(body)
+            data = json.loads(raw_body or b"{}")
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise HTTPException(400, f"Body is not valid JSON: {exc}") from exc
+        if not isinstance(data, dict):
+            raise HTTPException(400, "Profile JSON must be a JSON object (e.g. {\"skills\": ...})")
+        try:
+            return await get_profile_service().import_profile_data(data)
         except Exception as exc:
             logger.error("profile import failed: %s", exc)
-            return {
-                "status": "partial",
-                "stats": {
-                    "skills": 0,
-                    "experience": 0,
-                    "projects": 0,
-                    "education": 0,
-                    "certifications": 0,
-                    "achievements": 0,
-                    "vector_sync": "skipped",
-                },
-                "errors": [str(exc)],
-            }
+            return {"status": "partial", "stats": dict(_EMPTY_IMPORT_STATS), "errors": [str(exc)]}
 
     @router.get("/ingest/profile/template")
     async def get_profile_template():

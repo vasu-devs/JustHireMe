@@ -65,7 +65,7 @@ def stack_list(value) -> list[str]:
 # on the source (resume parser, LinkedIn export, portfolio scrape, manual JSON).
 # Linking only off `stack` left projects whose skills came in under `skills` /
 # `technologies` / `tools` disconnected in the knowledge graph.
-PROJECT_SKILL_FIELDS = ("stack", "s", "skills", "tech", "technologies", "tools", "tech_stack")
+PROJECT_SKILL_FIELDS = ("stack", "s", "skills", "tech", "technologies", "tools", "tech_stack", "keywords")
 
 
 def project_stack_list(item: dict) -> list[str]:

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0 - 2026-07-03
+
+- Import your profile from almost any format. The profile-JSON import used to reject anything that wasn't our exact template — a grouped `{"languages": [...], "frontend": [...]}` skills object, or an export from another tool, failed with a raw validation error. It now accepts the JSON Resume open standard (jsonresume.org), camelCase and alternate keys (`firstName`/`lastName`, `work`/`employment`/`positions`, `contact`/`links` blocks, `linkedinUrl`, and more), grouped or flat skill lists, and list-or-string project stacks — the right data lands in your profile instead of an error. Only genuinely broken input is refused, with a clear message.
+- See exactly what was imported. Every profile-JSON import now returns a one-line summary and a breakdown — "Imported 45 skills, 3 roles; skipped 2, capped skills 230→200" — so nothing is ever silently dropped. The import screen shows what was skipped (invalid or duplicate) and what was capped.
+- Fixed "Read form" making the app briefly report the backend as unreachable. Reading a job's application form could stall the local backend (a wedged headless browser or a blocking database read on the request thread). Form-reading now runs under a hard time limit, always cleans up the browser, checks the URL's safety before launching it, and moves database reads off the request thread — so the backend stays responsive.
+- Hardened every ingestion path against malformed or oversized input. Résumé text and PDFs are bounded (page/character caps, tolerant of slightly-malformed PDFs, skips an unreadable page instead of failing); LinkedIn `.zip` imports reject decompression bombs; portfolio crawling caps each page's size; and GitHub imports handle secondary rate limits gracefully. A single bad document can no longer stall the app.
+
 ## 1.3.0 - 2026-07-03
 
 - Gets better the more you use it. Thumbs-up / thumbs-down on a lead now moves the actual match score, not just a hidden signal: every still-open lead is instantly re-ranked from what your feedback taught the app (jobs, companies, and stacks like the ones you liked rise; ones like those you disliked fall). Re-ranking is idempotent — it always works from the original evaluator score, so repeated feedback never double-counts.

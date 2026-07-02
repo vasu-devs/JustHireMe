@@ -137,18 +137,29 @@ async def _fetch(url: str, token: str | None, *, _retries: int = 2) -> dict | li
     last_exc: Exception | None = None
     for attempt in range(_retries + 1):
         try:
-            async with httpx.AsyncClient(timeout=45) as client:
+            async with httpx.AsyncClient(timeout=20) as client:
                 response = await client.get(url, headers=_gh_headers(token))
                 if response.status_code == 404:
                     return None
                 if response.status_code in {403, 429}:
                     limit_remaining = response.headers.get("x-ratelimit-remaining")
-                    # If rate-limited (429 or 403 with 0 remaining), retry after back-off
-                    is_rate_limit = response.status_code == 429 or (
-                        limit_remaining is not None and limit_remaining == "0"
+                    retry_after_hdr = response.headers.get("retry-after")
+                    try:
+                        remaining = int(limit_remaining) if limit_remaining is not None else None
+                    except (TypeError, ValueError):
+                        remaining = None
+                    # Rate-limited when: 429, OR 403 with the primary quota exhausted
+                    # (remaining <= 0), OR a SECONDARY rate limit — a 403 carrying a
+                    # Retry-After header even though remaining > 0. The old check
+                    # string-compared remaining to "0" and ignored Retry-After, so
+                    # secondary limits skipped the backoff and failed immediately.
+                    is_rate_limit = (
+                        response.status_code == 429
+                        or (remaining is not None and remaining <= 0)
+                        or retry_after_hdr is not None
                     )
                     if is_rate_limit and attempt < _retries:
-                        retry_after = int(response.headers.get("retry-after", "0") or "0")
+                        retry_after = int(retry_after_hdr or "0") if str(retry_after_hdr or "").isdigit() else 0
                         wait = max(retry_after, 2 ** (attempt + 1))
                         _log.info("github rate limit on %s, retrying in %ds (attempt %d/%d)", url, wait, attempt + 1, _retries)
                         await asyncio.sleep(min(wait, 30))

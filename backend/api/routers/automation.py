@@ -149,7 +149,11 @@ def create_router(manager) -> APIRouter:
         repo: Repository = Depends(get_repository),
         service=Depends(get_automation_service),
     ):
-        lead = repo.leads.get_lead_by_id(job_id)
+        # Run the blocking SQLite/graph/file reads off the event loop (as the
+        # sibling `fire` endpoint does). On the single-worker sidecar, a blocking
+        # read under DB-lock contention would stall EVERY coroutine — including
+        # /health — so the UI reports the backend as unreachable.
+        lead = await asyncio.to_thread(repo.leads.get_lead_by_id, job_id)
         if not lead:
             raise HTTPException(404, "lead not found")
 
@@ -157,8 +161,8 @@ def create_router(manager) -> APIRouter:
         if not url:
             raise HTTPException(400, "no url available for this lead")
 
-        profile = repo.profile.get_profile()
-        cfg = repo.settings.get_settings()
+        profile = await asyncio.to_thread(repo.profile.get_profile)
+        cfg = await asyncio.to_thread(repo.settings.get_settings)
         # The profile is FLAT: the candidate name is profile["n"], not a "candidate"
         # sub-dict (there is none), and no "full_name" setting is ever written. Read
         # it the way get_lead_for_fire_sync does, else the form-read preview shows a
@@ -175,7 +179,7 @@ def create_router(manager) -> APIRouter:
             "current_company": cfg.get("current_company", ""),
         }
 
-        cover_letter = resolve_cover_letter_text(lead.get("cover_letter_asset", ""), _log)
+        cover_letter = await asyncio.to_thread(resolve_cover_letter_text, lead.get("cover_letter_asset", ""), _log)
 
         return await service.read_form(url, identity, cover_letter=cover_letter)
 
