@@ -449,7 +449,11 @@ async def _run_reevaluate_jobs_inner(
     repo = repo or get_repository()
     ranking_service = ranking_service or get_ranking_service()
     cfg = await asyncio.to_thread(repo.settings.get_settings)
-    profile = await asyncio.to_thread(repo.profile.get_profile)
+    # Enrich with the settings desired-position/target-role like the scan, ghost and
+    # free-source paths do — otherwise re-evaluate scores each lead against a poorer
+    # summary (missing the role signal) and can regress a matched lead to the
+    # wrong-field cap, giving a different score than the identical scan produced.
+    profile = profile_for_discovery(await asyncio.to_thread(repo.profile.get_profile), cfg)
     jobs = await asyncio.to_thread(repo.leads.get_job_leads_for_evaluation)
     total = len(jobs)
     scored = 0

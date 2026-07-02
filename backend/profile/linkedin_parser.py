@@ -15,7 +15,10 @@ def _read_csv(zf: zipfile.ZipFile, name: str) -> list[dict]:
         _log.warning("linkedin export: %s not found in ZIP", name)
         return []
     with zf.open(candidates[0]) as f:
-        text = f.read().decode("utf-8-sig")   # handles BOM
+        # Lenient decode (like the other ingest paths): some real LinkedIn exports —
+        # and files re-saved by Excel — carry cp1252/latin-1 bytes, and a strict
+        # decode aborted the ENTIRE import over one bad character. utf-8-sig strips BOM.
+        text = f.read().decode("utf-8-sig", errors="replace")
     reader = csv.DictReader(io.StringIO(text))
     return [dict(r) for r in reader]
 

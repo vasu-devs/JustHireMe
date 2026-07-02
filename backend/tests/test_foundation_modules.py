@@ -202,3 +202,18 @@ def test_linkedin_parser_extracts_profile_sections():
     assert parsed["skills"] == [{"n": "Python", "cat": "general"}]
     assert parsed["experience"][0]["co"] == "Analytical Engines"
     assert parsed["stats"]["projects"] == 1
+
+
+def test_linkedin_parser_tolerates_non_utf8_bytes():
+    # Some real LinkedIn exports (and Excel re-saves) carry cp1252/latin-1 bytes;
+    # a strict UTF-8 decode aborted the ENTIRE import over one bad character.
+    from profile.linkedin_parser import parse_linkedin_export
+
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as zf:
+        # 0xE9 is 'é' in cp1252 — an invalid standalone UTF-8 byte.
+        zf.writestr("Profile.csv", b"First Name,Last Name,Headline\nJos\xe9,Do\xe9,Ing\xe9nieur\n")
+
+    parsed = parse_linkedin_export(archive.getvalue())  # must not raise
+    assert isinstance(parsed, dict)
+    assert parsed["candidate"]["n"].startswith("Jos")
