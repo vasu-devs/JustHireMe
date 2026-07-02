@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from discovery.sources.common import retry_after_seconds
+
 
 @dataclass
 class BoardScanResult:
@@ -28,7 +30,7 @@ async def run_actor(actor: str, inp: dict, token: str) -> list:
             json=inp,
         )
         if response.status_code == 429:
-            retry_after = int(response.headers.get("Retry-After", 15))
+            retry_after = retry_after_seconds(response.headers.get("Retry-After"))
             await asyncio.sleep(retry_after)
             response.raise_for_status()
         response.raise_for_status()

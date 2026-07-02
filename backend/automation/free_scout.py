@@ -22,6 +22,7 @@ from discovery.normalizer import (
     classify_job_seniority,
 )
 from discovery.sources.ats import scrape_ashby as _source_scrape_ashby
+from discovery.sources.common import retry_after_seconds as _retry_after_seconds
 from discovery.sources.ats import scrape_direct_ats_url as _source_scrape_direct_ats_url
 from discovery.sources.ats import scrape_greenhouse as _source_scrape_greenhouse
 from discovery.sources.ats import scrape_lever as _source_scrape_lever
@@ -228,7 +229,7 @@ async def _json_get(url: str, params: dict | None = None) -> dict | list:
     async with httpx.AsyncClient(timeout=30, headers=headers, follow_redirects=True) as cx:
         r = await cx.get(url, params=params)
         if r.status_code == 429:
-            retry_after = int(r.headers.get("Retry-After", 15))
+            retry_after = _retry_after_seconds(r.headers.get("Retry-After"))
             await asyncio.sleep(retry_after)
             r.raise_for_status()
         r.raise_for_status()

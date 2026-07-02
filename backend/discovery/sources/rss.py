@@ -11,6 +11,7 @@ from discovery.sources.net import guarded_async_client
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from discovery.normalizer import is_recent, looks_role_like, strip_html_text
+from discovery.sources.common import retry_after_seconds
 
 SOURCE_CAPS = {
     "hn_hiring": 25,
@@ -180,7 +181,7 @@ async def scrape_rss(u: str) -> list:
     async with guarded_async_client(timeout=30, headers=http_headers(platform), follow_redirects=True) as cx:
         r = await cx.get(u)
         if r.status_code == 429:
-            retry_after = int(r.headers.get("Retry-After", 15))
+            retry_after = retry_after_seconds(r.headers.get("Retry-After"))
             await asyncio.sleep(retry_after)
             r.raise_for_status()
         r.raise_for_status()
@@ -225,7 +226,7 @@ async def scrape_remoteok() -> list:
     async with httpx.AsyncClient(timeout=30, headers=headers) as cx:
         r = await cx.get("https://remoteok.com/api")
         if r.status_code == 429:
-            retry_after = int(r.headers.get("Retry-After", 15))
+            retry_after = retry_after_seconds(r.headers.get("Retry-After"))
             await asyncio.sleep(retry_after)
             r.raise_for_status()
         r.raise_for_status()
@@ -276,7 +277,7 @@ async def scrape_remotive(u: str) -> list:
     async with guarded_async_client(timeout=30, headers=http_headers("remotive"), follow_redirects=True) as cx:
         r = await cx.get(u)
         if r.status_code == 429:
-            retry_after = int(r.headers.get("Retry-After", 15))
+            retry_after = retry_after_seconds(r.headers.get("Retry-After"))
             await asyncio.sleep(retry_after)
             r.raise_for_status()
         r.raise_for_status()
@@ -329,7 +330,7 @@ async def scrape_jobicy_api(u: str) -> list:
     async with guarded_async_client(timeout=30, headers=http_headers("jobicy"), follow_redirects=True) as cx:
         r = await cx.get(u)
         if r.status_code == 429:
-            retry_after = int(r.headers.get("Retry-After", 15))
+            retry_after = retry_after_seconds(r.headers.get("Retry-After"))
             await asyncio.sleep(retry_after)
             r.raise_for_status()
         r.raise_for_status()

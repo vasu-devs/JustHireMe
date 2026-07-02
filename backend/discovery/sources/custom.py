@@ -4,7 +4,7 @@ import asyncio
 import json
 
 from discovery.normalizer import clean_text, is_recent
-from discovery.sources.common import text_lead
+from discovery.sources.common import retry_after_seconds, text_lead
 from discovery.sources.net import guarded_async_client
 
 CONNECTOR_MAX_ITEMS = 60
@@ -74,7 +74,7 @@ async def scrape_custom_connector(
     async with guarded_async_client(timeout=30, headers=headers, follow_redirects=True) as cx:
         r = await cx.get(url, params=params)
         if r.status_code == 429:
-            retry_after = int(r.headers.get("Retry-After", 15))
+            retry_after = retry_after_seconds(r.headers.get("Retry-After"))
             await asyncio.sleep(retry_after)
             r.raise_for_status()
         r.raise_for_status()

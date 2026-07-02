@@ -106,7 +106,11 @@ def get_lead_for_fire_sync(job_id: str, repo: Repository | None = None) -> tuple
         "email": settings.get("candidate_email") or settings.get("email") or contact["email"],
         "phone": settings.get("candidate_phone") or settings.get("phone") or contact["phone"],
         "linkedin_url": settings.get("linkedin_url") or settings.get("candidate_linkedin") or contact["linkedin_url"],
-        "website": settings.get("website") or settings.get("portfolio_url") or contact["website"],
+        # website_url is the canonical settings key update_identity writes (and that
+        # read_lead_form / GET /identity read); the legacy "website"/"portfolio_url"
+        # keys are never populated, so without website_url first the fire/preview
+        # auto-fill dropped a user-configured website. Keep the aliases as fallbacks.
+        "website": settings.get("website_url") or settings.get("website") or settings.get("portfolio_url") or contact["website"],
         "github": settings.get("github") or settings.get("github_url") or contact["github"],
         "cover_letter": cover_text.strip(),
     }, path

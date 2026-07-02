@@ -9,7 +9,7 @@ import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from discovery.normalizer import hn_company_role, is_recent, looks_like_hn_job_post, strip_html_text
-from discovery.sources.common import json_get, text_lead
+from discovery.sources.common import json_get, retry_after_seconds, text_lead
 
 
 def is_hn_hiring_story(story: dict) -> bool:
@@ -70,7 +70,7 @@ async def scrape_hn_hiring() -> list:
     async with httpx.AsyncClient(timeout=30) as cx:
         r = await cx.get(search_url, params=params)
         if r.status_code == 429:
-            retry_after = int(r.headers.get("Retry-After", 15))
+            retry_after = retry_after_seconds(r.headers.get("Retry-After"))
             await asyncio.sleep(retry_after)
             r.raise_for_status()
         r.raise_for_status()
@@ -87,7 +87,7 @@ async def scrape_hn_hiring() -> list:
     async with httpx.AsyncClient(timeout=60) as cx:
         r = await cx.get(items_url)
         if r.status_code == 429:
-            retry_after = int(r.headers.get("Retry-After", 15))
+            retry_after = retry_after_seconds(r.headers.get("Retry-After"))
             await asyncio.sleep(retry_after)
             r.raise_for_status()
         r.raise_for_status()

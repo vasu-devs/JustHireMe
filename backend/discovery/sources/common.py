@@ -30,6 +30,30 @@ def _is_retryable_source_error(exc: BaseException) -> bool:
     return False
 
 
+def retry_after_seconds(value, default: int = 15) -> int:
+    """Parse an HTTP ``Retry-After`` header. RFC 7231 allows either delay-seconds
+    OR an HTTP-date; a bare ``int(value)`` raised ValueError on the date form, and
+    since ValueError isn't retryable that aborted the 429 back-off entirely. Returns
+    a sane seconds value clamped to [1, 300], falling back to ``default``."""
+    text = str(value or "").strip()
+    if not text:
+        return default
+    if text.isdigit():
+        return max(1, min(int(text), 300))
+    try:
+        from datetime import datetime, timezone
+        from email.utils import parsedate_to_datetime
+        when = parsedate_to_datetime(text)
+        if when is not None:
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            delta = int((when - datetime.now(timezone.utc)).total_seconds())
+            return max(1, min(delta, 300))
+    except Exception:
+        pass
+    return default
+
+
 def text_lead(item: dict, default_kind: str = "job") -> dict:
     text = "\n".join(str(item.get(k, "")) for k in ("title", "company", "description", "url"))
     quality = signal_quality(text, default_kind=default_kind)
@@ -85,7 +109,7 @@ async def json_get(url: str, params: dict | None = None) -> dict | list:
     async with guarded_async_client(timeout=30, headers=headers, follow_redirects=True) as cx:
         r = await cx.get(url, params=params)
         if r.status_code == 429:
-            retry_after = int(r.headers.get("Retry-After", 15))
+            retry_after = retry_after_seconds(r.headers.get("Retry-After"))
             await asyncio.sleep(retry_after)
             r.raise_for_status()
         r.raise_for_status()
@@ -111,7 +135,7 @@ async def xml_get(url: str, params: dict | None = None) -> str:
     async with guarded_async_client(timeout=30, headers=headers, follow_redirects=True) as cx:
         r = await cx.get(url, params=params)
         if r.status_code == 429:
-            retry_after = int(r.headers.get("Retry-After", 15))
+            retry_after = retry_after_seconds(r.headers.get("Retry-After"))
             await asyncio.sleep(retry_after)
             r.raise_for_status()
         r.raise_for_status()
