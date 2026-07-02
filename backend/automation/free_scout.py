@@ -21,6 +21,7 @@ from discovery.normalizer import (
     urgency_from_text,
     classify_job_seniority,
 )
+from discovery.sources.aggregator import scrape_aggregator_target as _source_scrape_aggregator
 from discovery.sources.ats import scrape_ashby as _source_scrape_ashby
 from discovery.sources.common import retry_after_seconds as _retry_after_seconds
 from discovery.sources.ats import scrape_direct_ats_url as _source_scrape_direct_ats_url
@@ -274,6 +275,30 @@ async def _scrape_direct_ats_url(url: str) -> list[dict]:
 
 async def _scrape_target(target: str) -> list[dict]:
     lower = target.lower()
+    if lower.startswith("aggregator:"):
+        return await _source_scrape_aggregator(target)
+    if lower.startswith("ats:") or lower.startswith(("http://", "https://")):
+        leads = await _scrape_ats_target(lower, target)
+        # A job listed on an ATS board is a CURRENTLY-OPEN role regardless of when it
+        # was posted, so it must not be fail-closed-dropped by the staleness gate the
+        # way an undated scraped feed item is. Tag it as a fresh (recency-trusted)
+        # source unless the scraper already carried a machine-readable date through.
+        for lead in leads:
+            if isinstance(lead, dict) and not str(lead.get("posted_date") or "").strip():
+                lead.setdefault("_fresh_source", "ats")
+        return leads
+    if lower.startswith("github:"):
+        return await _scrape_github(target)
+    if lower.startswith("hn:"):
+        return await _scrape_hn(target)
+    if lower.startswith("reddit:"):
+        return await _scrape_reddit(target)
+    if lower.startswith("site:github.com"):
+        return await _scrape_github(target.replace("site:github.com", "github:", 1))
+    return []
+
+
+async def _scrape_ats_target(lower: str, target: str) -> list[dict]:
     if lower.startswith("ats:greenhouse:"):
         return await _scrape_greenhouse(target.split(":", 2)[2].strip())
     if lower.startswith("ats:lever:"):
@@ -286,17 +311,7 @@ async def _scrape_target(target: str) -> list[dict]:
         # smartrecruiters / recruitee / personio (and any future keyless ATS):
         # route through the canonical dispatcher instead of duplicating branches.
         return await _source_scrape_ats_target(target)
-    if lower.startswith(("http://", "https://")):
-        return await _scrape_direct_ats_url(target)
-    if lower.startswith("github:"):
-        return await _scrape_github(target)
-    if lower.startswith("hn:"):
-        return await _scrape_hn(target)
-    if lower.startswith("reddit:"):
-        return await _scrape_reddit(target)
-    if lower.startswith("site:github.com"):
-        return await _scrape_github(target.replace("site:github.com", "github:", 1))
-    return []
+    return await _scrape_direct_ats_url(target)
 
 
 def run(

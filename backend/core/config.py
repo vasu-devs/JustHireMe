@@ -4,6 +4,8 @@ import logging
 import os
 import re
 
+from .company_seeds import ats_seed_targets
+
 
 DEFAULT_JOB_TARGETS = [
     "hn-hiring",
@@ -278,11 +280,20 @@ def profile_free_source_targets(profile: dict) -> str:
         return ""
     terms = terms_for_discovery(profile, 3)
     role_query = " ".join(terms[:2])
-    return "\n".join([
+    location = str((profile or {}).get("_discovery_location") or "").strip()
+    lines = [
+        # Keyless structured aggregator FIRST: real jobs for the candidate's role in
+        # any field/region via plain JSON APIs — no headless browser, no LLM, no key.
+        "aggregator:" + role_query + (f"@@{location}" if location else ""),
         f"github:{role_query} hiring help wanted",
         f"hn:{role_query} remote hiring",
         f"reddit:forhire:{role_query} hiring job remote",
-    ])
+    ]
+    # Auto-derived ATS company targets (greenhouse/lever/ashby/... JSON APIs) matched
+    # to the candidate's field + region, so the keyless structured backbone fires with
+    # zero manual watchlist config.
+    lines.extend(ats_seed_targets(profile))
+    return "\n".join(lines)
 
 
 def profile_x_queries(profile: dict, market_focus: str = "global") -> str:
