@@ -87,10 +87,17 @@ def create_ghost_tick(manager):
         discovered = await asyncio.to_thread(repo.leads.get_discovered_leads)
         await manager.broadcast({"type": "agent", "event": "ghost_eval", "msg": f"Ghost Mode: evaluating {len(discovered)} leads"})
 
+        # Token gate: the background cycle LLM-evaluates only the top-K by the cheap
+        # deterministic score, so an unattended Ghost run can't quietly burn tokens on
+        # the whole backlog.
+        from core.config import int_cfg
+        ghost_max_llm = int_cfg(cfg, "ghost_max_llm_evaluations", 15, 0, 500)
+        llm_ids = await ranking_service.select_llm_eval_ids(discovered, profile, max_llm=ghost_max_llm)
+
         approved = []
         for lead in discovered:
             try:
-                result = await ranking_service.evaluate_lead(lead, profile, cfg)
+                result = await ranking_service.evaluate_lead(lead, profile, cfg, use_llm=lead["job_id"] in llm_ids)
                 # H1: background re-scoring must not overwrite a status the user
                 # changed (approved/applied/interviewing) during this slow eval
                 # loop. preserve_status keeps the lead's current status; the

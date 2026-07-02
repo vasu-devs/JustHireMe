@@ -39,14 +39,15 @@ class RankingService:
         self.semantic = semantic or SemanticMatcher()
         self.feedback = feedback or FeedbackRanker()
 
-    async def evaluate_lead(self, lead: dict, profile: dict, settings: dict | None = None) -> dict:
+    async def evaluate_lead(self, lead: dict, profile: dict, settings: dict | None = None, use_llm: bool = True) -> dict:
         # `settings` is loop-invariant across a scan/reevaluate; callers that loop
         # over many leads pass the already-loaded cfg to avoid an N+1 SELECT on the
-        # settings table (and an extra thread hop) per lead.
+        # settings table (and an extra thread hop) per lead. `use_llm=False` lets the
+        # caller gate the expensive LLM call to only the top-K leads of a scan.
         if settings is None:
             settings = await asyncio.to_thread(self._load_settings)
         return await asyncio.to_thread(
-            self.evaluator.score, self.job_document(lead), profile, settings
+            self.evaluator.score, self.job_document(lead), profile, settings, use_llm
         )
 
     @staticmethod
@@ -67,6 +68,23 @@ class RankingService:
     async def deterministic_score(self, lead: dict | str, profile: dict):
         jd = lead if isinstance(lead, str) else self.job_document(lead)
         return await asyncio.to_thread(self.scoring_engine.score, jd, profile)
+
+    async def select_llm_eval_ids(self, leads: list[dict], profile: dict, *, max_llm: int = 25) -> set[str]:
+        """Job_ids worth an LLM evaluation: the top ``max_llm`` by the cheap
+        deterministic score. A scan then spends the model only on the leads the user
+        actually looks at, not the whole backlog; the rest keep the calibrated
+        deterministic score. ``max_llm <= 0`` disables the cap (evaluate all)."""
+        ids = [str(lead.get("job_id") or "") for lead in leads]
+        if max_llm <= 0 or len(leads) <= max_llm:
+            return {jid for jid in ids if jid}
+        scored: list[tuple[int, str]] = []
+        for lead, jid in zip(leads, ids, strict=False):
+            if not jid:
+                continue
+            det = await self.deterministic_score(lead, profile)
+            scored.append((int(getattr(det, "score", 0) or 0), jid))
+        scored.sort(key=lambda item: -item[0])
+        return {jid for _, jid in scored[:max_llm]}
 
     async def semantic_match(self, lead: dict | str, profile: dict) -> dict | None:
         jd = lead if isinstance(lead, str) else self.job_document(lead)

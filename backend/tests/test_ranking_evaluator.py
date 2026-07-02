@@ -12,7 +12,9 @@ def test_evaluator_facade_calls_score_function():
         result = Evaluator().score("Job Title: Role", {"skills": []})
 
     assert result == expected
-    score.assert_called_once_with("Job Title: Role", {"skills": []})
+    # settings default to None and use_llm defaults to True (the token gate is opt-in
+    # per lead by the caller).
+    score.assert_called_once_with("Job Title: Role", {"skills": []}, None, True)
 
 
 def test_semantic_matcher_facade_calls_semantic_fit():

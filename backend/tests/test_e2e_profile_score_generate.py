@@ -151,7 +151,10 @@ class FakeRankingService:
     async def apply_feedback(self, lead: dict, _examples: list[dict]) -> dict:
         return lead
 
-    async def evaluate_lead(self, lead: dict, profile: dict, settings: dict | None = None) -> dict:
+    async def select_llm_eval_ids(self, leads, profile, *, max_llm: int = 25) -> set:
+        return {str(lead.get("job_id") or "") for lead in leads}
+
+    async def evaluate_lead(self, lead: dict, profile: dict, settings: dict | None = None, use_llm: bool = True) -> dict:
         self.evaluated.append(lead["job_id"])
         text = f"{lead.get('title', '')} {lead.get('description', '')}".lower()
         score = 91 if "fastapi" in text and "react" in text else 68

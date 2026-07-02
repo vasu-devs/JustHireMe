@@ -139,12 +139,17 @@ def test_run_scan_continues_when_board_scan_batch_fails():
         plan_board_targets=mock.AsyncMock(return_value=["site:jobs.example", "site:slow.example"]),
         scan_job_boards=mock.AsyncMock(side_effect=RuntimeError("discovery service timed out")),
     )
-    ranking = SimpleNamespace(evaluate_lead=mock.AsyncMock(return_value={
-        "score": 82,
-        "reason": "good match",
-        "match_points": [],
-        "gaps": [],
-    }))
+    ranking = SimpleNamespace(
+        evaluate_lead=mock.AsyncMock(return_value={
+            "score": 82,
+            "reason": "good match",
+            "match_points": [],
+            "gaps": [],
+        }),
+        select_llm_eval_ids=mock.AsyncMock(
+            side_effect=lambda leads, profile, **kw: {str(x.get("job_id") or "") for x in leads}
+        ),
+    )
 
     with mock.patch.object(discovery, "get_job_runner", return_value=JobStore()):
         asyncio.run(discovery.run_scan(
@@ -202,9 +207,14 @@ def test_run_scan_only_scores_unscored_leads():
         plan_board_targets=mock.AsyncMock(return_value=["site:jobs.example"]),
         scan_job_boards=mock.AsyncMock(return_value=SimpleNamespace(leads=[], usage={}, errors=[])),
     )
-    ranking = SimpleNamespace(evaluate_lead=mock.AsyncMock(return_value={
-        "score": 82, "reason": "ok", "match_points": [], "gaps": [],
-    }))
+    ranking = SimpleNamespace(
+        evaluate_lead=mock.AsyncMock(return_value={
+            "score": 82, "reason": "ok", "match_points": [], "gaps": [],
+        }),
+        select_llm_eval_ids=mock.AsyncMock(
+            side_effect=lambda leads, profile, **kw: {str(x.get("job_id") or "") for x in leads}
+        ),
+    )
 
     with mock.patch.object(discovery, "get_job_runner", return_value=JobStore()):
         asyncio.run(discovery.run_scan(
@@ -244,7 +254,12 @@ def test_run_scan_skips_empty_profile_without_explicit_sources():
         plan_board_targets=mock.AsyncMock(),
         scan_job_boards=mock.AsyncMock(),
     )
-    ranking = SimpleNamespace(evaluate_lead=mock.AsyncMock())
+    ranking = SimpleNamespace(
+        evaluate_lead=mock.AsyncMock(),
+        select_llm_eval_ids=mock.AsyncMock(
+            side_effect=lambda leads, profile, **kw: {str(x.get("job_id") or "") for x in leads}
+        ),
+    )
 
     with mock.patch.object(discovery, "get_job_runner", return_value=JobStore()):
         asyncio.run(discovery.run_scan(
@@ -289,7 +304,12 @@ def test_run_scan_uses_target_role_as_profile_signal():
         plan_board_targets=mock.AsyncMock(return_value=[]),
         scan_job_boards=mock.AsyncMock(),
     )
-    ranking = SimpleNamespace(evaluate_lead=mock.AsyncMock())
+    ranking = SimpleNamespace(
+        evaluate_lead=mock.AsyncMock(),
+        select_llm_eval_ids=mock.AsyncMock(
+            side_effect=lambda leads, profile, **kw: {str(x.get("job_id") or "") for x in leads}
+        ),
+    )
 
     with mock.patch.object(discovery, "get_job_runner", return_value=JobStore()):
         asyncio.run(discovery.run_scan(

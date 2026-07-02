@@ -26,8 +26,9 @@ def test_evaluate_lead_uses_provided_settings(monkeypatch):
 
     captured = {}
 
-    def fake_score(jd, profile, settings):
+    def fake_score(jd, profile, settings, use_llm=True):
         captured["settings"] = settings
+        captured["use_llm"] = use_llm
         return {"score": 50}
 
     monkeypatch.setattr(rs, "_load_settings", boom)

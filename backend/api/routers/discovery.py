@@ -339,6 +339,11 @@ async def _run_scan_inner(
     to_score = [lead for lead in discovered if (lead.get("status") or "discovered") == "discovered"]
     await manager.broadcast({"type": "agent", "event": "eval_start", "msg": f"Evaluating {len(to_score)} new leads via {cfg.get('llm_provider', 'ollama')}"})
 
+    # Token gate: LLM-evaluate only the top-K new leads by the cheap deterministic
+    # score; the rest keep the deterministic score. Caps per-scan LLM cost at O(K).
+    max_llm = int_cfg(cfg, "max_llm_evaluations", 25, 0, 500)
+    llm_ids = await ranking_service.select_llm_eval_ids(to_score, profile, max_llm=max_llm)
+
     fallback_count = 0
     prefiltered_count = 0
     for lead in to_score:
@@ -346,7 +351,7 @@ async def _run_scan_inner(
             await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Scan stopped during evaluation."})
             return
         try:
-            result = await ranking_service.evaluate_lead(lead, profile, cfg)
+            result = await ranking_service.evaluate_lead(lead, profile, cfg, use_llm=lead["job_id"] in llm_ids)
             await asyncio.to_thread(
                 repo.leads.update_lead_score,
                 lead["job_id"], result["score"], result["reason"],
@@ -460,6 +465,12 @@ async def _run_reevaluate_jobs_inner(
     failed = 0
     fallback_count = 0
 
+    # Token gate: LLM-evaluate only the top-K leads by the cheap deterministic score;
+    # the rest keep the (calibrated) deterministic score. This caps the dominant
+    # per-lead LLM cost from O(backlog) to O(K).
+    max_llm = int_cfg(cfg, "max_llm_evaluations", 25, 0, 500)
+    llm_ids = await ranking_service.select_llm_eval_ids(jobs, profile, max_llm=max_llm)
+
     await manager.broadcast({
         "type": "agent",
         "event": "reeval_start",
@@ -476,7 +487,9 @@ async def _run_reevaluate_jobs_inner(
             return
 
         try:
-            result = await ranking_service.evaluate_lead(lead, profile, cfg)
+            result = await ranking_service.evaluate_lead(
+                lead, profile, cfg, use_llm=lead["job_id"] in llm_ids
+            )
             preserve_status = should_preserve_job_status(lead.get("status", ""))
             await asyncio.to_thread(
                 repo.leads.update_lead_score,
