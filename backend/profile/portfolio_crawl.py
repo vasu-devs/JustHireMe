@@ -239,15 +239,18 @@ async def _crawl_portfolio_browser(url: str) -> tuple[list[PageSnapshot], str]:
 
 
 async def _block_private_route(route):
-    """Abort browser document navigations to non-public hosts (SSRF/redirect guard)."""
+    """Abort ANY browser request to a non-public host (SSRF/redirect guard).
+
+    Not just document navigations: page-initiated fetch/XHR/WebSocket and
+    <img>/<script> sub-resources on a crawled page could otherwise reach internal
+    hosts (cloud metadata, 127.0.0.1, private LAN) past a document-only gate."""
     try:
         req = route.request
-        if req.resource_type == "document":
-            host = urlparse(req.url).hostname or ""
-            if not await asyncio.to_thread(is_public_host, host):
-                _log.warning("portfolio crawl aborted non-public navigation: %s", req.url)
-                await route.abort()
-                return
+        host = urlparse(req.url).hostname or ""
+        if not await asyncio.to_thread(is_public_host, host):
+            _log.warning("portfolio crawl aborted non-public request: %s", req.url)
+            await route.abort()
+            return
         await route.continue_()
     except Exception:
         # Routing must never crash the crawl; let the request proceed normally.

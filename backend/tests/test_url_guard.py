@@ -1,7 +1,9 @@
 """SSRF guard for portfolio import (Tier-0 security fix 0.2)."""
+import asyncio
+
 import pytest
 
-from core.url_guard import BlockedUrlError, assert_public_url, is_public_host
+from core.url_guard import BlockedUrlError, assert_public_url, block_private_route, is_public_host
 
 
 @pytest.mark.parametrize("ip", [
@@ -90,3 +92,43 @@ def test_assert_public_url_rejects_no_host():
 
 def test_assert_public_url_allows_public():
     assert assert_public_url("https://8.8.8.8/") == "https://8.8.8.8/"
+
+
+class _FakeRoute:
+    """Duck-typed Playwright route for block_private_route (no Playwright dep)."""
+
+    def __init__(self, url: str, resource_type: str):
+        self.request = type("Req", (), {"url": url, "resource_type": resource_type})()
+        self.action: str | None = None
+
+    async def abort(self):
+        self.action = "abort"
+
+    async def continue_(self):
+        self.action = "continue"
+
+
+# Every request type a page can initiate — not just the top-level 'document'. A
+# page-initiated fetch/xhr/websocket/img/script to an internal host must be aborted,
+# which was the round-6 SSRF regression: the guard only inspected 'document'.
+_SUBRESOURCE_TYPES = ["document", "xhr", "fetch", "websocket", "image", "script", "stylesheet"]
+
+
+@pytest.mark.parametrize("resource_type", _SUBRESOURCE_TYPES)
+@pytest.mark.parametrize("url", [
+    "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    "http://127.0.0.1:8000/admin",
+    "http://10.0.0.5/internal",
+    "http://192.168.0.1/admin/reboot",
+])
+def test_block_private_route_aborts_internal_for_every_request_type(resource_type, url):
+    route = _FakeRoute(url, resource_type)
+    asyncio.run(block_private_route(route))
+    assert route.action == "abort", (resource_type, url)
+
+
+@pytest.mark.parametrize("resource_type", _SUBRESOURCE_TYPES)
+def test_block_private_route_allows_public_for_every_request_type(resource_type):
+    route = _FakeRoute("https://8.8.8.8/some.js", resource_type)
+    asyncio.run(block_private_route(route))
+    assert route.action == "continue", resource_type
