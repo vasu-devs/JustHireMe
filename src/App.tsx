@@ -89,18 +89,21 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!scanning) return;
+    // Watchdog for ANY long-running op (scan / re-evaluate / cleanup): if a lost
+    // terminal WS frame leaves a flag stuck while the socket stays connected, clear
+    // it (and the progress bar) after 15 min so the UI isn't wedged.
+    if (!scanning && !reevaluating && !cleaning) return;
     const timer = window.setTimeout(() => {
       setScanning(false);
-      // Also clear the progress bar — otherwise a scan that dies without a
-      // terminal WS event leaves the "Scanning…" bar stuck active forever.
+      setReevaluating(false);
+      setCleaning(false);
       resetProgress();
-      const msg = "Scan indicator cleared after 15 minutes without backend progress.";
+      const msg = "Activity indicator cleared after 15 minutes without backend progress.";
       setScanErr(msg);
       wsAddLog(msg, "system", "scan");
     }, 15 * 60 * 1000);
     return () => window.clearTimeout(timer);
-  }, [scanning, progress.updatedAt, setScanning, setScanErr, wsAddLog, resetProgress]);
+  }, [scanning, reevaluating, cleaning, progress.updatedAt, setScanning, setReevaluating, setCleaning, setScanErr, wsAddLog, resetProgress]);
 
   useEffect(() => {
     if (api) return;
@@ -246,7 +249,10 @@ export default function App() {
 
   const deleteLead = useCallback(async (jobId: string) => {
     if (!port || !api) return;
-    await api(`/api/v1/leads/${jobId}`, { method: "DELETE" });
+    const r = await api(`/api/v1/leads/${jobId}`, { method: "DELETE" });
+    // Only remove it locally on a real success — a swallowed HTTP error left the
+    // lead deleted in the UI (and broke bulkDelete's failure counting).
+    if (!r.ok) throw new Error(`Delete failed (${r.status})`);
     setLeads(prev => prev.filter(l => l.job_id !== jobId));
   }, [port, api, setLeads]);
 

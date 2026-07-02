@@ -55,7 +55,7 @@ export const EMPTY: Cfg = {
   apify_token: "", apify_actor: "", linkedin_cookie: "", x_bearer_token: "", x_search_queries: "", x_watchlist: "",
   hunter_api_key: "", proxycurl_api_key: "", contact_lookup_enabled: "true",
   x_max_requests_per_scan: "5", x_max_results_per_query: "50", x_min_signal_score: "60", x_hot_lead_threshold: "80", x_enable_notifications: "false",
-  free_sources_enabled: "false", free_source_targets: "", company_watchlist: "", free_source_max_requests: "20", free_source_min_signal_score: "60",
+  free_sources_enabled: "", free_source_targets: "", company_watchlist: "", free_source_max_requests: "20", free_source_min_signal_score: "60",
   custom_connectors_enabled: "false", custom_connectors: "", custom_connector_headers: "",
   desired_position: "", onboarding_target_role: "", job_boards: "", job_market_focus: "global",
   ghost_mode: "false", auto_apply: "false", headed_browser: "false",

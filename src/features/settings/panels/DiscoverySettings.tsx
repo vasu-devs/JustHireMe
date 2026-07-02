@@ -134,7 +134,7 @@ export function DiscoverySettings({ cfg, set, onChange }: { cfg: Cfg; set: (k: k
                   icon="search"
                   label="Free scouts"
                   badge={cfg.free_sources_enabled !== "false" ? "on" : "off"}
-                  sub="Off by default; saves job leads and classifies seniority for filtering"
+                  sub="On by default; keyless job leads from ATS / GitHub / HN / Reddit, with seniority classification"
                   tone="green"
                 />
                 <LabelledField label="Company watchlist" hint="provider,slug per line: greenhouse,<company-slug>">
