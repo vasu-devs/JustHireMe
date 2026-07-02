@@ -243,6 +243,11 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
         const detail = await r.json().then(d => d.detail).catch(() => "");
         throw new Error(detail || `Server returned ${r.status}`);
       }
+      // Optimistically reflect the selection locally instead of depending only on
+      // the server's WS LEAD_UPDATED broadcast (which never arrives while the
+      // socket is mid-reconnect), mirroring updateLeadStatus.
+      window.dispatchEvent(new CustomEvent("lead-updated", { detail: { job_id: j.job_id, feedback } }));
+      window.dispatchEvent(new CustomEvent("leads-refresh"));
     } catch (err) {
       setFeedbackErr(err instanceof Error ? err.message : "Feedback failed");
     } finally {
