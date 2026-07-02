@@ -10,10 +10,12 @@ rubric with visible criteria, caps, and evidence.
 from __future__ import annotations
 import logging
 
+import math
 import re
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from collections.abc import Iterable
+from functools import lru_cache
 
 from core.types import CandidateEvidence, CriterionScore, ScoreResult
 from core.logging import get_logger
@@ -497,6 +499,51 @@ def candidate_domain_phrases(candidate_data: dict) -> set[str]:
     return phrases
 
 
+# Below this candidate-vs-JD cosine the posting is a DIFFERENT profession for this
+# candidate. Calibrated against the bundled MiniLM model: same field / synonyms land
+# ~0.6-0.8, adjacent roles ~0.35-0.55, a genuinely different field <0.2 (nurse vs
+# finance ~0.15, nurse vs software ~0). Deliberately conservative so only clearly
+# off-field postings are capped, never merely-adjacent ones.
+_OFF_FIELD_SIM = 0.22
+
+
+@lru_cache(maxsize=512)
+def _field_vector(text: str) -> tuple[float, ...] | None:
+    """Unit-normalized embedding of a field/role text, or None when only the hash
+    embedder is available (its cosine is unreliable for cross-vocabulary field-fit).
+    Memoized so a scan embeds the candidate's profile once, not once per lead."""
+    try:
+        from data.vector.embeddings import active_provider, embed_texts
+        if active_provider() == "hash":
+            return None
+        vecs = embed_texts([text])
+        if not vecs:
+            return None
+        vec = vecs[0]
+        norm = math.sqrt(sum(x * x for x in vec))
+        if norm == 0:
+            return None
+        return tuple(x / norm for x in vec)
+    except Exception as exc:
+        _log.debug("semantic field-vector unavailable; skipping off-field gate: %s", exc)
+        return None
+
+
+def _semantic_field_similarity(candidate_data: dict, jd: str) -> float | None:
+    """Cosine between the candidate's profile and the JD as a candidate-relative,
+    field-agnostic, SYMMETRIC measure of whether they're the same profession. None
+    when real semantics are unavailable or either side is too thin to judge."""
+    cand_text = _profile_text(candidate_data).strip()
+    jd_text = (jd or "").strip()
+    if len(cand_text) < 40 or len(jd_text) < 40:
+        return None
+    a = _field_vector(cand_text[:2000])
+    b = _field_vector(jd_text[:2000])
+    if a is None or b is None:
+        return None
+    return sum(x * y for x, y in zip(a, b, strict=False))
+
+
 def apply_domain_generalization(posting: PostingSignals, candidate: CandidateEvidence, candidate_data: dict, jd: str) -> set[str]:
     """Match the candidate's own domain vocabulary against the posting and fold
     the hits into the keyword rubric, then make the wrong-field judgement
@@ -521,6 +568,14 @@ def apply_domain_generalization(posting: PostingSignals, candidate: CandidateEvi
         same_profession = any(_contains_phrase(cand_text, term) for term in posting.wrong_field_terms)
         if matched or same_profession:
             posting.wrong_field = False
+    elif not matched:
+        # The tech-only blocklist didn't flag it, but a low candidate-vs-JD semantic
+        # similarity means it's a different profession for THIS candidate (e.g. a nurse
+        # vs a Financial-Analyst posting, which no blocklist enumerates). Symmetric and
+        # field-agnostic; only fires when real embeddings are available.
+        similarity = _semantic_field_similarity(candidate_data, jd)
+        if similarity is not None and similarity < _OFF_FIELD_SIM:
+            posting.wrong_field = True
     return matched
 
 
