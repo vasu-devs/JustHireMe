@@ -14,6 +14,11 @@
 </p>
 
 <p align="center">
+  <a href="https://trendshift.io/repositories/30452?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-30452" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/30452/daily?language=Python" alt="vasu-devs%2FJustHireMe | Trendshift" width="250" height="55"/></a>
+  <a href="https://trendshift.io/repositories/30452?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-30452" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/30452/daily" alt="vasu-devs%2FJustHireMe | Trendshift" width="250" height="55"/></a>
+</p>
+
+<p align="center">
   <a href="#what-it-does">What It Does</a>
   &middot;
   <a href="#visual-workflow">Workflow</a>
@@ -32,11 +37,6 @@
 </p>
 
 ---
-
-<p align="center">
-  <a href="https://trendshift.io/repositories/30452?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-30452" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/30452/daily?language=Python" alt="vasu-devs%2FJustHireMe | Trendshift" width="250" height="55"/></a>
-  <a href="https://trendshift.io/repositories/30452?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-30452" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/30452/daily" alt="vasu-devs%2FJustHireMe | Trendshift" width="250" height="55"/></a>
-</p>
 
 ## Star History
 
@@ -75,10 +75,13 @@ JustHireMe's stable core is the local-first desktop workbench, Python sidecar AP
 | Auto-update | Built in; the app updates itself from the latest GitHub release |
 | Thin installer + first-run runtime | Installer is ~100 MB; the heavy runtime (browser + vector libs + embedding model) downloads once on first run, then is cached |
 | Dark mode | Light / Dark / System, system-aware, shipped |
-| Local embeddings | Bundled ONNX model (`all-MiniLM-L6-v2`) — semantic matching runs locally with no API key |
+| Local embeddings | Bundled ONNX model (`all-MiniLM-L6-v2`) with a deterministic hashing fallback — semantic matching works fully offline, no API key |
+| Keyless by default | Discovery, ranking, and generation all run with zero API key — local Ollama or your existing Claude Code / Codex CLI subscription can power every LLM step; keyed providers (OpenAI, Gemini, Groq, and 15+ others) are optional, not required |
 | Field-agnostic | Discovery, ranking, and tailoring work for any field (healthcare, trades, finance, law, education, hospitality, creative, software, ...) — scoring is relative to the candidate's own domain, not a fixed tech vocabulary |
 | Location-agnostic | Targets any city/region worldwide; location is auto-detected from your résumé (or set explicitly), with remote / hybrid / onsite preference |
 | Resume tailoring | Works for any field (engineering, design, finance, healthcare, education, trades, ...) |
+| Résumé/profile ingestion | Tolerates real-world profile shapes (PDF/DOCX/TXT/MD, JSON Resume exports, LinkedIn zips, GitHub, portfolio URLs) and shows a transparent import report — what was pulled in, skipped, or capped |
+| Explainable matching | Fit scores are backed by GraphRAG proof from your own Kùzu skill/project graph, not just a number |
 | Browser automation / auto-apply | Experimental lab, disabled by default |
 | API key storage | Local app settings; `.env` is for development overrides; OS keychain planned |
 
@@ -243,8 +246,9 @@ flowchart TB
 | Local CRM | SQLite |
 | Profile graph | Kuzu |
 | Vector store | LanceDB |
-| Embeddings | Local ONNX model (`all-MiniLM-L6-v2`) - no API key required |
-| Matching | Deterministic scoring, local semantic search, optional LLM evaluation |
+| Embeddings | Local ONNX model (`all-MiniLM-L6-v2`) with a hashing fallback - no API key required |
+| LLM providers | Keyless: Ollama, Claude Code CLI, Codex CLI. Keyed (optional): OpenAI, Anthropic, Gemini, Groq, DeepSeek, and 15+ others via a common provider abstraction |
+| Matching | Deterministic scoring + GraphRAG proof from the profile graph, local semantic search, optional LLM evaluation |
 | Documents | Markdown/PDF rendering |
 | Experimental lab | Playwright browser automation |
 | Packaging | Thin Tauri installer + first-run runtime pack (Windows / macOS / Linux) |
@@ -261,15 +265,20 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 JustHireMe/
 |-- src/                         React frontend workbench
 |   |-- api/                     HTTP/WebSocket API clients and types
-|   |-- features/                Apply, dashboard, graph, pipeline, profile, settings
+|   |-- features/                Activity, apply, dashboard, graph, inbox, pipeline, profile, settings
 |   |-- shared/                  Components, hooks, context, utilities
 |   `-- main.tsx                 Frontend entrypoint
 |-- backend/                     Python FastAPI sidecar
-|   |-- api/                     Main app, routers, auth, scheduler, WebSockets
-|   |-- core/                    Config, logging, version, telemetry, shared types
-|   |-- data/                    SQLite repositories, graph/vector helpers, migrations
-|   |-- discovery/               Lead discovery, quality gate, source adapters
+|   |-- api/                     FastAPI app, routers, auth, scheduler, WebSockets
+|   |-- automation/              Scout scraping orchestration + experimental apply/actuator
+|   |-- core/                    Config, occupation vocab, SSRF guard, telemetry
+|   |-- data/                    SQLite repos, Kùzu graph, LanceDB vectors, migrations
+|   |-- discovery/               Query generation, dedup, quality gate, source adapters
+|   |-- gateway/                 Async job tracking, discovery config
 |   |-- generation/              Resume, cover letter, and outreach generators
+|   |-- graph_service/           Query helpers behind the knowledge-graph view
+|   |-- llm/                     Provider abstraction (keyed + keyless/subscription-CLI), embeddings
+|   |-- profile/                 Resume/LinkedIn/GitHub/portfolio ingestion + normalization
 |   |-- ranking/                 Fit scoring, criteria, semantic/evaluator logic
 |   `-- tests/                   Backend unit, integration, and regression tests
 |-- src-tauri/                   Tauri Rust shell
@@ -382,6 +391,8 @@ cd ..
 | Frontend build | `npm run build` |
 | Backend tests | `cd backend && uv run python -m pytest tests -q` |
 | Backend regression smoke | `cd backend && uv run python -m pytest tests/test_regressions.py tests/test_api.py::TestAuthGate` |
+| Keyless LLM CLI smoke (Ollama/Claude Code/Codex CLI) | `npm run smoke:llm-cli` |
+| Live source connectivity smoke | `npm run smoke:live-sources` |
 | Rust tests | `cd src-tauri && cargo test --lib` |
 | Rust check | `cd src-tauri && cargo check` |
 | Website build | `cd website && npm run build` |
@@ -494,7 +505,7 @@ On Windows, use the venv interpreter at `backend\\.venv\\Scripts\\python.exe`. M
 ### Source Adapters
 
 Source adapters turn external job sources into normalized lead dictionaries.
-Implementations live in `backend/discovery/sources/`.
+Implementations live in `backend/discovery/sources/` (ATS boards, RSS/Atom, Hacker News, GitHub, Reddit, custom JSON, and a Playwright-backed web fallback); `backend/automation/scout.py` fans out across them, dedupes, and hands results to the quality gate.
 
 ```mermaid
 flowchart LR
@@ -630,6 +641,7 @@ Start here:
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design |
 | [docs/source-adapters.md](docs/source-adapters.md) | Scraper adapter contract |
+| [docs/FEATURE_TEST_MATRIX.md](docs/FEATURE_TEST_MATRIX.md) | Which features are verified and how |
 | [docs/MAINTAINER_RELEASE_CHECKLIST.md](docs/MAINTAINER_RELEASE_CHECKLIST.md) | Release and safety checklist |
 | [ROADMAP.md](ROADMAP.md) | Project direction |
 | [SECURITY.md](SECURITY.md) | Privacy and responsible reporting |
@@ -640,7 +652,7 @@ Please do not open public issues with API keys, resumes, cookies, bearer tokens,
 
 ## Experimental Automation
 
-The repository contains browser automation and auto-apply code for experimentation and future plugin work.
+The repository contains browser automation and auto-apply code for experimentation and future plugin work. This is distinct from the scraping scout (`backend/automation/scout.py`), which is core, supported, and always on — "experimental" here refers specifically to the DOM-fill/vision-based apply actuator, not lead discovery.
 
 | Status | Meaning |
 | --- | --- |
