@@ -22,7 +22,7 @@ dependencies = [
     # torch CVE) without ever being imported.
     "onnxruntime~=1.27.0",
     "tokenizers>=0.20.0",
-    "huggingface-hub>=0.27.0",
+    "huggingface-hub>=1.22.0",
     "pypdf>=6.14.2",
     "playwright>=1.60.0",
     "html2text>=2025.4.15",
