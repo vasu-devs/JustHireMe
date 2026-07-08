@@ -15,7 +15,7 @@ dependencies = [
     "kuzu~=0.11.3",
     "lancedb~=0.34.0",
     "langchain-core~=1.4.0",
-    "langgraph~=1.2.0",
+    "langgraph~=1.2.8",
     # Embedding runtime: embeddings.py imports these directly (ONNX MiniLM + tokenizer
     # + model download). Declared explicitly instead of relying on the unused
     # `sentence-transformers`, which only pulled in torch/scikit-learn/scipy (and the
