@@ -43,7 +43,7 @@ jobs:
         with:
           python-version: '3.13'
 
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: astral-sh/setup-uv@v8.3.2
 
       - name: Audit backend dependencies
         run: |
@@ -110,7 +110,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: astral-sh/setup-uv@v8.3.2
       - run: cd backend && uv sync --dev --frozen
       - run: cd backend && uv run ruff check .
       - run: cd backend && uv run mypy . --ignore-missing-imports
@@ -166,7 +166,7 @@ jobs:
         with:
           python-version: '3.13'
 
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: astral-sh/setup-uv@v8.3.2
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -204,7 +204,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: astral-sh/setup-uv@v8.3.2
       - run: cd backend && uv sync --dev --frozen
       - name: Run focused domain tests
         run: |
