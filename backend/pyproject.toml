@@ -7,7 +7,7 @@ requires-python = ">=3.13"
 license = "AGPL-3.0-only"
 dependencies = [
     "fastapi>=0.138.0",
-    "uvicorn[standard]>=0.49.0",
+    "uvicorn[standard]>=0.50.2",
     "websockets>=16.0",
     "anthropic~=0.116.0",
     "openai~=2.44.0",
