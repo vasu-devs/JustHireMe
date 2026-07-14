@@ -17,6 +17,7 @@ import "./polish.css";
 import "./diary.css";
 import "./board.css";
 import "./glass-board.css";
+import "./clarity.css";
 
 export type ProductView = "Overview" | "Pipeline" | "Scout" | "Tailor" | "Profile";
 

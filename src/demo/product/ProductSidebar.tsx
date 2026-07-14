@@ -1,6 +1,6 @@
 import { DemoIcon } from "../DemoIcon";
 import type { ProductView } from "../DemoApp";
-import brandMark from "../../assets/brand/justhireme-mark.png";
+import brandMark from "../../assets/brand/justhireme-mark.svg";
 
 const items: Array<{ label: ProductView; icon: string; hint: string; tone: string; badge?: string }> = [
   { label: "Overview", icon: "overview", hint: "Home board", tone: "peach" },
