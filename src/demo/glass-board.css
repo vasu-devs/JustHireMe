@@ -101,40 +101,5 @@
 .signal-orbit.scanning .board-diagram-links>path{animation:board-marker-flow 1.2s linear infinite}
 @keyframes board-marker-flow{to{stroke-dashoffset:-20}}
 
-/* Curated board themes: each keeps the same semantic color roles. */
-.theme-studio{
-  --wall:#eee9e0;--rail:rgba(229,223,212,.9);--chrome:rgba(250,247,241,.76);
-  --glass:rgba(255,252,246,.62);--glass-strong:rgba(255,253,249,.78);
-  --coral:#ed8f7c;--blue:#95c6dc;--mint:#a8d0b5;--yellow:#efd38e;--pink:#e8b3c0;--lavender:#cdbce0;--peach:#efb79d;
-  --marker-red:#d25f50;--marker-blue:#347f9b;--marker-green:#4d8963;
-  --active-one:rgba(239,183,157,.62);--active-two:rgba(149,198,220,.58);--active-three:rgba(168,208,181,.62);--active-four:rgba(232,179,192,.6);--active-five:rgba(205,188,224,.62)
-}
-.theme-sage{
-  --wall:#e7ece6;--rail:rgba(216,226,216,.92);--chrome:rgba(244,248,243,.76);
-  --glass:rgba(250,253,249,.6);--glass-strong:rgba(252,255,252,.78);
-  --coral:#e39780;--blue:#a9cbd2;--mint:#a7cfb5;--yellow:#ead89a;--pink:#ddb8bd;--lavender:#c9c9dc;--peach:#e7b9a3;
-  --marker-red:#c76654;--marker-blue:#4b7f86;--marker-green:#3f785c;
-  --active-one:rgba(231,185,163,.58);--active-two:rgba(169,203,210,.6);--active-three:rgba(167,207,181,.66);--active-four:rgba(221,184,189,.58);--active-five:rgba(201,201,220,.62)
-}
-.theme-violet{
-  --wall:#ece9f0;--rail:rgba(225,219,233,.92);--chrome:rgba(249,247,252,.76);
-  --glass:rgba(255,253,255,.6);--glass-strong:rgba(255,254,255,.79);
-  --coral:#e99a8a;--blue:#afc5e2;--mint:#b4d5c9;--yellow:#edda9f;--pink:#e1b7cb;--lavender:#c6b3dd;--peach:#eab9aa;
-  --marker-red:#cc6875;--marker-blue:#5669a3;--marker-green:#4d8276;
-  --active-one:rgba(234,185,170,.6);--active-two:rgba(175,197,226,.64);--active-three:rgba(180,213,201,.62);--active-four:rgba(225,183,203,.62);--active-five:rgba(198,179,221,.68)
-}
-.product-app,.product-content,.product-sidebar,.product-topbar,.overview-hero,.product-panel,.overview-stats article,.kanban-lane,.kanban-card{transition:background-color .32s ease,border-color .32s ease,color .32s ease}
-.product-app{background:var(--wall)}.product-content{background:var(--wall)}.product-sidebar{background:var(--rail)}.product-topbar{background:var(--chrome)}
-.product-sidebar nav button:nth-of-type(1).active{background:var(--active-one)}.product-sidebar nav button:nth-of-type(2).active{background:var(--active-two)}.product-sidebar nav button:nth-of-type(3).active{background:var(--active-three)}.product-sidebar nav button:nth-of-type(4).active{background:var(--active-four)}.product-sidebar nav button:nth-of-type(5).active{background:var(--active-five)}
-.overview-stats article:nth-child(1){border-top-color:var(--pink)!important}.overview-stats article:nth-child(2){border-top-color:var(--blue)!important}.overview-stats article:nth-child(3){border-top-color:var(--yellow)!important}.overview-stats article:nth-child(4){border-top-color:var(--mint)!important}
-.kanban-lane:nth-child(1){background:color-mix(in srgb,var(--blue) 48%,transparent)}.kanban-lane:nth-child(2){background:color-mix(in srgb,var(--lavender) 48%,transparent)}.kanban-lane:nth-child(3){background:color-mix(in srgb,var(--mint) 48%,transparent)}.kanban-lane:nth-child(4){background:color-mix(in srgb,var(--peach) 48%,transparent)}
-
-/* Compact interactive marker palette. */
-.product-theme{width:43px;height:43px;display:grid;place-items:center;border:1px solid rgba(47,53,56,.2);border-radius:9px;background:var(--glass);backdrop-filter:blur(12px);cursor:pointer}
-.product-theme>span{display:flex;align-items:center;gap:3px}.product-theme i{display:block;width:7px;height:7px;border-radius:50%;background:var(--marker-red);border:1px solid rgba(255,255,255,.7)}
-.product-theme i:nth-child(2){background:var(--marker-blue)}.product-theme i:nth-child(3){background:var(--marker-green)}
-.product-theme:hover{transform:translateY(-1px)}.product-theme:focus-visible{outline:3px solid var(--coral);outline-offset:3px}
-
 @media(max-width:1180px){.product-content:after{left:82px}}
-@media(max-width:900px){.product-theme{display:none}}
 @media(max-width:680px){.product-content:after{left:0}.overview-hero:before{display:none}.overview-hero:after{width:120px}}
