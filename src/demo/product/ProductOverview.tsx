@@ -13,6 +13,7 @@ export function ProductOverview({ jobs, onSelect, onNavigate, onRun, agentRunnin
   const top = jobs.slice().sort((a, b) => b.score - a.score).slice(0, 4);
   return <div className="overview-view product-enter">
     <section className="overview-hero">
+      <div className="board-session"><span><i />Focus session 04</span><p><b>Today’s decision:</b> choose one role to ship before 4 PM</p><div className="board-presence"><b>VS</b><b>AI</b><b>+2</b><small>Live on board</small></div></div>
       <div className="overview-intro">
         <div className="product-eyebrow"><span className="product-live" />Active opportunity board · July 15</div>
         <h2>Your next job is<br /><em>hiding in plain sight.</em></h2>

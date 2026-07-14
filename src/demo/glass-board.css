@@ -51,5 +51,23 @@
 .kanban-card:hover{background:rgba(255,255,255,.86)}
 .view-toolbar h2 em{color:var(--marker-blue);text-decoration-color:var(--marker-red)}
 
+/* A real working session: goal, presence, and decision context live on the board. */
+.overview-hero{grid-template-rows:auto 1fr;min-height:370px;padding-top:20px}
+.board-session{grid-column:1/-1;display:flex;align-items:center;min-height:34px;margin:0 3px 2px;padding:0 5px 10px;border-bottom:1px solid rgba(79,142,170,.2);color:var(--ink-3)}
+.board-session>span{display:flex;align-items:center;gap:7px;font:600 7px ProductMono;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-2)}
+.board-session>span i{width:7px;height:7px;border-radius:50%;background:var(--marker-green);border:2px solid rgba(255,255,255,.8)}
+.board-session>p{margin-left:26px!important;font:500 9px ProductSans;color:var(--ink-2)}
+.board-session>p b{font-weight:700;color:var(--ink);background:rgba(239,221,165,.5);padding:2px 4px}
+.board-presence{display:flex;align-items:center;margin-left:auto;padding-left:12px}
+.board-presence>b{width:25px;height:25px;margin-left:-5px;display:grid;place-items:center;border-radius:50%;background:rgba(255,255,255,.78);border:1px solid rgba(47,53,56,.25);font:600 6px ProductMono;color:var(--ink)}
+.board-presence>b:nth-child(2){background:rgba(189,219,232,.82)}.board-presence>b:nth-child(3){background:rgba(234,199,208,.82)}
+.board-presence>small{margin-left:8px;font:500 6px ProductMono;text-transform:uppercase;letter-spacing:.07em;white-space:nowrap;color:var(--ink-3)}
+.pipeline-summary .board-presence{margin-left:auto}
+.pipeline-summary .board-presence>b{width:21px;height:21px;font-size:5px}.pipeline-summary .board-presence>small{font-size:5px}
+.pipeline-summary button{margin-left:0}.pipeline-summary button+button{margin-left:-12px}
+
+@media(max-width:900px){.board-session>p{display:none}.board-session{margin-bottom:12px}.overview-hero{grid-template-rows:auto auto;min-height:auto}}
+@media(max-width:680px){.board-session{display:none}.pipeline-summary .board-presence{display:none}}
+
 @media(max-width:1180px){.product-content:after{left:82px}}
 @media(max-width:680px){.product-content:after{left:0}.overview-hero:before{display:none}.overview-hero:after{width:120px}}
