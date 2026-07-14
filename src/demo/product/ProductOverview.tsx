@@ -68,7 +68,7 @@ export function ProductOverview({ jobs, onSelect, onNavigate, onRun, agentRunnin
         <button onClick={() => onNavigate("Scout")}>Tune search direction <DemoIcon name="tune" /></button>
       </div>
 
-      <div className="next-move product-panel"><span className="product-eyebrow">Next best move</span><div><span className="next-number">01</span><p><strong>Send Linear today</strong><small>Your evidence is complete and the role is under 24 hours old.</small></p></div><button onClick={() => onSelect(top[0])}>Prepare application <DemoIcon name="arrow" /></button></div>
+      <div className="next-move product-panel"><span className="product-eyebrow">Next best move</span><div><span className="next-number">01</span><p><strong>Send Linear today</strong><small>Your evidence is complete and the role is under 24 hours old.</small></p></div><div className="next-checklist" aria-label="Application readiness"><span><i>✓</i><b>Evidence pack</b><em>Ready</em></span><span><i>✓</i><b>Tailored resume</b><em>Ready</em></span><span className="current"><i>→</i><b>Application</b><em>Next</em></span></div><button onClick={() => onSelect(top[0])}>Prepare application <DemoIcon name="arrow" /></button></div>
     </section>
   </div>;
 }

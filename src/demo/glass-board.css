@@ -105,5 +105,51 @@
 .signal-orbit.scanning .board-diagram-links>path{animation:board-marker-flow 1.2s linear infinite}
 @keyframes board-marker-flow{to{stroke-dashoffset:-20}}
 
+/* Deliberate overview composition: primary evidence first, decisions second. */
+.overview-grid{
+  grid-template-columns:minmax(0,1.35fr) minmax(230px,1fr) minmax(230px,1fr);
+  grid-template-areas:"shortlist shortlist shortlist" "activity focus next";
+  gap:16px;align-items:stretch;margin-top:20px
+}
+.opportunity-panel{grid-area:shortlist;grid-row:auto;min-height:0}
+.agent-panel{grid-area:activity;min-width:0;display:flex;flex-direction:column}
+.focus-panel{grid-area:focus;min-width:0;display:flex;flex-direction:column}
+.next-move{grid-area:next;min-width:0;display:flex;flex-direction:column}
+.overview-grid>.product-panel{border-radius:14px;overflow:hidden}
+.opportunity-panel>header{min-height:76px;align-items:center;padding:17px 20px}
+.opportunity-panel>header>div{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.opportunity-panel>header h3{margin-top:0}
+.opportunity-head{padding-top:9px;padding-bottom:9px;background:rgba(239,221,165,.18)}
+.opportunity-row{min-height:68px;padding-top:9px;padding-bottom:9px}
+.agent-panel>header{min-height:72px;padding:16px 17px}
+.agent-panel>header h3{display:block;font-size:16px;margin-top:4px;line-height:1.05}
+.agent-timeline{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px;padding:4px 17px}
+.agent-timeline>div{grid-template-columns:29px 7px minmax(0,1fr);min-height:62px;padding:12px 0}
+.agent-timeline>div:nth-last-child(-n+2){border-bottom:0}
+.agent-panel>button{margin:auto 17px 16px;padding-top:8px}
+.focus-panel,.next-move{min-height:246px;padding:18px}
+.focus-panel h3{font-size:19px;line-height:1.05}
+.focus-panel>button,.next-move>button{margin-top:auto;padding-top:10px;color:var(--ink-2)}
+.focus-tags{gap:6px;margin:13px 0 10px}.focus-tags span{background:rgba(255,250,241,.58);border-color:rgba(64,53,47,.14);border-radius:8px;padding:6px 8px}
+.next-move>div{align-items:flex-start;margin:17px 0 10px}.next-number{flex:0 0 auto;color:var(--marker-red);line-height:.9}
+.next-move strong{font-size:14px;line-height:1.15}.next-move small{font-size:8px;line-height:1.55;margin-top:7px;color:var(--ink-2)}
+.next-move>.next-checklist{display:grid;gap:0;margin:3px 0 13px;border-top:1px solid rgba(64,53,47,.12)}
+.next-checklist>span{min-height:31px;display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:5px;border-bottom:1px solid rgba(64,53,47,.1)}
+.next-checklist i{width:16px;height:16px;display:grid;place-items:center;border-radius:50%;background:rgba(190,220,199,.72);font:700 7px ProductMono;color:var(--marker-green);font-style:normal}
+.next-checklist b{font:650 8px ProductSans;color:var(--ink-2)}.next-checklist em{font:600 6px ProductMono;text-transform:uppercase;letter-spacing:.06em;color:var(--marker-green);font-style:normal}
+.next-checklist .current i{background:rgba(238,160,143,.68);color:var(--marker-red)}.next-checklist .current em{color:var(--marker-red)}
+.next-move>button{min-height:34px;justify-content:center;border:1px solid rgba(64,53,47,.18);border-radius:9px;background:rgba(238,160,143,.72);color:var(--ink);padding:0 10px!important}
+.next-move>button:hover{background:rgba(238,160,143,.9)}
+
+@media(max-width:1100px){
+  .overview-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"shortlist shortlist" "activity activity" "focus next"}
+  .agent-timeline{grid-template-columns:repeat(4,minmax(0,1fr));gap:0 12px}
+  .agent-timeline>div{display:block;min-height:88px;border-bottom:0}.agent-timeline>div>i{display:block;margin:7px 0}.agent-timeline time{display:block}.agent-timeline small{line-height:1.35}
+}
+
 @media(max-width:1180px){.product-content:after{left:82px}}
+@media(max-width:900px){
+  .overview-grid{grid-template-columns:1fr;grid-template-areas:"shortlist" "next" "focus" "activity"}
+  .agent-timeline{grid-template-columns:repeat(2,minmax(0,1fr))}.agent-timeline>div{min-height:76px}
+}
 @media(max-width:680px){.product-content:after{left:0}.overview-hero:before{display:none}.overview-hero:after{width:120px}}
