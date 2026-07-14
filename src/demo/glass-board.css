@@ -69,5 +69,37 @@
 @media(max-width:900px){.board-session>p{display:none}.board-session{margin-bottom:12px}.overview-hero{grid-template-rows:auto auto;min-height:auto}}
 @media(max-width:680px){.board-session{display:none}.pipeline-summary .board-presence{display:none}}
 
+/* Clear-glass decision map: marker connectors replace the oversized blue field. */
+.signal-orbit{height:286px;background:transparent;border:0;border-radius:0;backdrop-filter:none;overflow:visible;transform:none}
+.signal-orbit:hover{transform:none}
+.product-app .board-diagram-links{position:absolute;z-index:1;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.board-diagram-links>path{fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:5 5;marker-end:url(#board-arrow-coral)}
+.board-diagram-links defs path{fill:var(--marker-red);stroke:0}
+.board-diagram-links .link-linear{stroke:var(--marker-blue)}
+.board-diagram-links .link-replit{stroke:var(--marker-red)}
+.board-diagram-links .link-mercury{stroke:var(--marker-green)}
+.board-diagram-links .link-proof{stroke:#9a78af}
+.board-diagram-links text{fill:var(--ink-3);font:600 7px ProductMono;text-transform:uppercase;letter-spacing:.05em}
+.orbit-grid{display:none}.orbit-ring{z-index:0;border-color:rgba(79,142,170,.34)}
+.ring-one{width:94px;height:94px;border:2px solid rgba(217,120,105,.52)}
+.ring-two{width:166px;height:166px;border:1px dashed rgba(79,142,170,.36)}
+.ring-three{width:232px;height:232px;border:1px dotted rgba(91,146,112,.3)}
+.orbit-core{z-index:3;width:76px;height:76px;background:rgba(239,221,165,.88);border:2px solid rgba(47,53,56,.52)}
+.orbit-core:after{content:"";position:absolute;inset:-10px;border:2px solid rgba(217,120,105,.28);border-radius:48% 52% 46% 54%;transform:rotate(6deg)}
+.orbit-node{z-index:4;gap:8px;padding:4px 7px 4px 4px;background:rgba(255,255,255,.68);border:1px solid rgba(255,255,255,.86);border-radius:22px;backdrop-filter:blur(8px)}
+.orbit-node b{width:31px;height:31px;border:1px solid rgba(47,53,56,.38);background:rgba(189,219,232,.84)}
+.orbit-node>span{display:flex;flex-direction:column}.orbit-node small{font:700 8px ProductDisplay;color:var(--ink)}
+.orbit-node em{margin-top:1px;font:500 5px ProductMono;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3);font-style:normal;white-space:nowrap}
+.node-one{left:7%;top:14%}.node-one b{background:rgba(189,219,232,.9)}
+.node-two{right:1%;top:25%}.node-two b{background:rgba(234,199,208,.9)}
+.node-three{left:11%;bottom:7%}.node-three b{background:rgba(191,221,203,.9)}
+.node-four{right:5%;bottom:7%}.node-four b{background:rgba(214,203,229,.9)}
+.orbit-caption{right:50%;bottom:-5px;transform:translateX(50%);display:flex;align-items:center;gap:5px;padding:4px 8px;background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.8);border-radius:12px;font-family:ProductMono}
+.orbit-caption i{width:6px;height:6px;border-radius:50%;background:var(--marker-blue)}.orbit-caption i:nth-of-type(2){background:var(--marker-red)}.orbit-caption i:nth-of-type(3){background:var(--marker-green)}
+.orbit-caption b{font:500 5px ProductMono;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3)}
+.orbit-scanline{display:none}
+.signal-orbit.scanning .board-diagram-links>path{animation:board-marker-flow 1.2s linear infinite}
+@keyframes board-marker-flow{to{stroke-dashoffset:-20}}
+
 @media(max-width:1180px){.product-content:after{left:82px}}
 @media(max-width:680px){.product-content:after{left:0}.overview-hero:before{display:none}.overview-hero:after{width:120px}}

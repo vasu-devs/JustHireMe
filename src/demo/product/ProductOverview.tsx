@@ -21,11 +21,20 @@ export function ProductOverview({ jobs, onSelect, onNavigate, onRun, agentRunnin
         <div className="overview-actions"><button onClick={() => onSelect(top[0])}>Review top match <DemoIcon name="arrow" /></button><button onClick={onRun} disabled={agentRunning}><DemoIcon name="radar" />{agentRunning ? "Searching the web…" : "Start a fresh scan"}</button></div>
       </div>
       <div className={`signal-orbit ${agentRunning ? "scanning" : ""}`} aria-label="Opportunity signal visualization">
+        <svg className="board-diagram-links" viewBox="0 0 420 286" aria-hidden="true">
+          <defs><marker id="board-arrow-coral" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker></defs>
+          <path className="link-linear" d="M206 139 C171 102 126 79 82 67" />
+          <path className="link-replit" d="M215 139 C257 112 310 101 350 95" />
+          <path className="link-mercury" d="M205 149 C168 181 137 210 105 230" />
+          <path className="link-proof" d="M209 153 C229 190 260 214 298 228" />
+          <text x="138" y="80">evidence</text><text x="278" y="70">freshness</text><text x="126" y="257">signal</text><text x="270" y="269">decision</text>
+        </svg>
         <div className="orbit-grid" /><div className="orbit-ring ring-one" /><div className="orbit-ring ring-two" /><div className="orbit-ring ring-three" />
         <div className="orbit-core"><span>94</span><small>top match</small></div>
-        <i className="orbit-node node-one"><b>LI</b><small>Linear</small></i><i className="orbit-node node-two"><b>RE</b><small>Replit</small></i><i className="orbit-node node-three"><b>ME</b><small>Mercury</small></i>
+        <i className="orbit-node node-one"><b>LI</b><span><small>Linear</small><em>Evidence ready</em></span></i><i className="orbit-node node-two"><b>RE</b><span><small>Replit</small><em>91% fit</em></span></i><i className="orbit-node node-three"><b>ME</b><span><small>Mercury</small><em>High signal</em></span></i>
+        <i className="orbit-node node-four"><b>→</b><span><small>Next move</small><em>Review Linear</em></span></i>
         <div className="orbit-scanline" />
-        <span className="orbit-caption">Today’s match map · 12 lovely possibilities</span>
+        <span className="orbit-caption"><i /><b>evidence</b><i /><b>freshness</b><i /><b>fit</b></span>
       </div>
     </section>
 
