@@ -1,0 +1,55 @@
+/* Glass-board finish: translucent office whiteboards, marker ink, metal mounts. */
+.product-app{
+  --glass:rgba(255,255,255,.56);--glass-strong:rgba(255,255,255,.74);
+  --glass-edge:rgba(255,255,255,.88);--marker-red:#d97869;--marker-blue:#4f8eaa;
+  --marker-green:#5b9270;background:#ecefe9
+}
+
+/* The wall and control rail sit behind the glass canvas. */
+.product-sidebar{background:rgba(234,233,224,.88);backdrop-filter:blur(18px) saturate(1.08);border-right:1px solid rgba(47,53,56,.16)}
+.product-topbar{background:rgba(246,247,242,.72);backdrop-filter:blur(20px) saturate(1.12);border-bottom:1px solid rgba(255,255,255,.85);outline:1px solid rgba(47,53,56,.06)}
+.product-space,.product-command-trigger{background:rgba(255,255,255,.62);backdrop-filter:blur(12px)}
+.product-notify,.product-run{backdrop-filter:blur(10px)}
+
+/* Dotted glass surface plus a faint physical grain from SVG turbulence. */
+.product-content{background:#ecefe9}
+.product-content:before{opacity:.32;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ccircle cx='2' cy='2' r='1' fill='%236f7a7f' fill-opacity='.28'/%3E%3C/svg%3E")!important}
+.product-content:after{display:block;content:"";position:fixed;z-index:0;inset:76px 0 0 252px;pointer-events:none;opacity:.035;mix-blend-mode:multiply;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E")!important}
+
+/* Main glass vision board with four metal stand-offs and a marker tray. */
+.overview-hero{background:var(--glass);border:1px solid var(--glass-edge);outline:1px solid rgba(47,53,56,.1);backdrop-filter:blur(17px) saturate(1.08);overflow:visible}
+.overview-hero:before{display:block;content:"";position:absolute;z-index:3;inset:0;width:auto;height:auto;border:0;border-radius:inherit;background-color:transparent;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 400' preserveAspectRatio='none'%3E%3Cg fill='%23f7f8f5' stroke='%23858f94' stroke-width='1.4'%3E%3Ccircle cx='15' cy='16' r='7'/%3E%3Ccircle cx='985' cy='16' r='7'/%3E%3Ccircle cx='15' cy='384' r='7'/%3E%3Ccircle cx='985' cy='384' r='7'/%3E%3C/g%3E%3Cg fill='%23858f94'%3E%3Ccircle cx='15' cy='16' r='2'/%3E%3Ccircle cx='985' cy='16' r='2'/%3E%3Ccircle cx='15' cy='384' r='2'/%3E%3Ccircle cx='985' cy='384' r='2'/%3E%3C/g%3E%3C/svg%3E")!important;background-size:100% 100%!important;transform:none;pointer-events:none}
+.overview-hero:after{display:block;content:"";position:absolute;z-index:4;left:50%;right:auto;bottom:-10px;width:170px;height:16px;transform:translateX(-50%);background-color:transparent;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='170' height='16'%3E%3Crect x='0' y='8' width='170' height='7' rx='3' fill='%23c9ceca' stroke='%23858f94' stroke-width='1'/%3E%3Crect x='18' y='2' width='38' height='6' rx='3' fill='%23d97869'/%3E%3Crect x='64' y='2' width='38' height='6' rx='3' fill='%234f8eaa'/%3E%3Crect x='110' y='2' width='38' height='6' rx='3' fill='%235b9270'/%3E%3C/svg%3E")!important;background-size:100% 100%!important}
+.overview-intro:before{background:rgba(234,199,208,.62);border:1px solid rgba(255,255,255,.7)}
+.overview-intro h2 em{color:#323a3d;text-decoration-color:var(--marker-red)}
+.diary-highlight.blue{background:rgba(157,207,228,.6)}.diary-highlight.yellow{background:rgba(239,221,165,.62)}
+.diary-reaction{color:var(--marker-red);text-decoration-color:rgba(217,120,105,.42)}
+.signal-orbit{background:rgba(166,211,231,.62);border:1px solid rgba(79,142,170,.48);backdrop-filter:blur(8px)}
+.orbit-ring{border-color:rgba(47,53,56,.46)}.orbit-core{background:rgba(239,221,165,.86)}
+
+/* Frosted magnetic metric cards. */
+.overview-stats article{background:var(--glass)!important;border:1px solid var(--glass-edge)!important;outline:1px solid rgba(47,53,56,.08);backdrop-filter:blur(14px) saturate(1.1)}
+.overview-stats article:nth-child(1){border-top:5px solid rgba(234,199,208,.92)!important}.overview-stats article:nth-child(2){border-top:5px solid rgba(189,219,232,.94)!important}.overview-stats article:nth-child(3){border-top:5px solid rgba(239,221,165,.94)!important}.overview-stats article:nth-child(4){border-top:5px solid rgba(191,221,203,.94)!important}
+.overview-stats article:after{width:8px;height:8px;top:-7px;background:#f5f7f4;border:2px solid #909a9e}
+.overview-stats article>i{background:var(--marker-blue);opacity:.76}
+.overview-stats article:nth-child(1)>i,.overview-stats article:nth-child(3)>i{background:var(--marker-red)}
+.stat-note{color:var(--marker-red)}
+
+/* Working panels float as etched glass sheets. */
+.product-panel{background:var(--glass);border:1px solid var(--glass-edge);outline:1px solid rgba(47,53,56,.08);backdrop-filter:blur(14px) saturate(1.08)}
+.product-panel header{background:rgba(255,255,255,.18)}
+.agent-panel{background:rgba(214,203,229,.52)}.focus-panel{background:rgba(191,221,203,.5)}.next-move{background:rgba(240,197,174,.5)}
+.opportunity-row:hover{background:rgba(239,221,165,.32)}
+.panel-live i,.product-live{background:var(--marker-green)}
+
+/* Pipeline behaves like movable notes on a glass planning wall. */
+.pipeline-summary{background:rgba(239,221,165,.5);border:1px solid var(--glass-edge);outline:1px solid rgba(47,53,56,.07);backdrop-filter:blur(12px)}
+.kanban-lane{background:rgba(255,255,255,.34);border:1px solid var(--glass-edge);outline:1px solid rgba(47,53,56,.07);backdrop-filter:blur(12px)}
+.kanban-lane:nth-child(1){background:rgba(189,219,232,.54)}.kanban-lane:nth-child(2){background:rgba(214,203,229,.54)}.kanban-lane:nth-child(3){background:rgba(191,221,203,.54)}.kanban-lane:nth-child(4){background:rgba(240,197,174,.54)}
+.kanban-card{background:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.88);outline:1px solid rgba(47,53,56,.07);backdrop-filter:blur(10px)}
+.kanban-card:after{background:#f5f7f4;border:2px solid #909a9e}
+.kanban-card:hover{background:rgba(255,255,255,.86)}
+.view-toolbar h2 em{color:var(--marker-blue);text-decoration-color:var(--marker-red)}
+
+@media(max-width:1180px){.product-content:after{left:82px}}
+@media(max-width:680px){.product-content:after{left:0}.overview-hero:before{display:none}.overview-hero:after{width:120px}}

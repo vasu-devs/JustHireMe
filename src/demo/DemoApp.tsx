@@ -16,6 +16,7 @@ import "./handdrawn.css";
 import "./polish.css";
 import "./diary.css";
 import "./board.css";
+import "./glass-board.css";
 
 export type ProductView = "Overview" | "Pipeline" | "Scout" | "Tailor" | "Profile";
 
