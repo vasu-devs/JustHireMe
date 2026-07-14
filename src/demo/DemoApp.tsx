@@ -19,6 +19,9 @@ import "./board.css";
 import "./glass-board.css";
 
 export type ProductView = "Overview" | "Pipeline" | "Scout" | "Tailor" | "Profile";
+export type BoardTheme = "studio" | "sage" | "violet";
+
+const boardThemes: BoardTheme[] = ["studio", "sage", "violet"];
 
 export default function DemoApp() {
   const [view, setView] = useState<ProductView>("Overview");
@@ -28,6 +31,10 @@ export default function DemoApp() {
   const [menu, setMenu] = useState(false);
   const [agentRunning, setAgentRunning] = useState(false);
   const [toast, setToast] = useState("");
+  const [theme, setTheme] = useState<BoardTheme>(() => {
+    const stored = window.localStorage.getItem("jhm-board-theme");
+    return boardThemes.includes(stored as BoardTheme) ? stored as BoardTheme : "studio";
+  });
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -44,6 +51,8 @@ export default function DemoApp() {
     document.getElementById("product-content")?.scrollTo({ top: 0, behavior: "auto" });
   }, [view]);
 
+  useEffect(() => { window.localStorage.setItem("jhm-board-theme", theme); }, [theme]);
+
   const notify = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 3200);
@@ -58,12 +67,14 @@ export default function DemoApp() {
     notify(`Moved to ${stage}`);
   };
 
-  return <div className="product-app">
+  const cycleTheme = () => setTheme(current => boardThemes[(boardThemes.indexOf(current) + 1) % boardThemes.length]);
+
+  return <div className={`product-app theme-${theme}`}>
     <a className="product-skip" href="#product-content">Skip to workspace</a>
     <ProductSidebar view={view} onChange={setView} open={menu} onClose={() => setMenu(false)} />
     {menu && <button className="product-scrim" onClick={() => setMenu(false)} aria-label="Close navigation" />}
     <div className="product-shell">
-      <ProductTopbar view={view} agentRunning={agentRunning} onRun={runAgent} onCommand={() => setPalette(true)} onMenu={() => setMenu(true)} />
+      <ProductTopbar view={view} theme={theme} agentRunning={agentRunning} onRun={runAgent} onTheme={cycleTheme} onCommand={() => setPalette(true)} onMenu={() => setMenu(true)} />
       <main id="product-content" className="product-content">
         {view === "Overview" && <ProductOverview jobs={jobs} onSelect={setSelected} onNavigate={setView} onRun={runAgent} agentRunning={agentRunning} />}
         {view === "Pipeline" && <ProductPipeline jobs={jobs} onSelect={setSelected} onMove={moveJob} />}
