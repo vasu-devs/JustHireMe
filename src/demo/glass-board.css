@@ -1,19 +1,23 @@
 /* Glass-board finish: translucent office whiteboards, marker ink, metal mounts. */
 .product-app{
-  --glass:rgba(255,255,255,.56);--glass-strong:rgba(255,255,255,.74);
-  --glass-edge:rgba(255,255,255,.88);--marker-red:#d97869;--marker-blue:#4f8eaa;
-  --marker-green:#5b9270;background:#ecefe9
+  --paper:#fbf5e9;--paper-2:#efe6d6;--ink:#40352f;--ink-2:#65574e;--ink-3:#8b7c70;
+  --line:rgba(64,53,47,.18);--line-hi:rgba(64,53,47,.48);
+  --coral:#eea08f;--blue:#b8d9e8;--mint:#bedcc7;--yellow:#f1dda3;--pink:#edc5cf;
+  --lavender:#d8c9e7;--peach:#f2c4a8;--panel:#fbf5e9;--panel-hi:#fffaf1;
+  --glass:rgba(255,250,241,.64);--glass-strong:rgba(255,250,241,.8);
+  --glass-edge:rgba(255,248,237,.94);--marker-red:#c96f61;--marker-blue:#4f879f;
+  --marker-green:#588d69;background:#fbf5e9
 }
 
 /* The wall and control rail sit behind the glass canvas. */
-.product-sidebar{background:rgba(234,233,224,.88);backdrop-filter:blur(18px) saturate(1.08);border-right:1px solid rgba(47,53,56,.16)}
-.product-topbar{background:rgba(246,247,242,.72);backdrop-filter:blur(20px) saturate(1.12);border-bottom:1px solid rgba(255,255,255,.85);outline:1px solid rgba(47,53,56,.06)}
-.product-space,.product-command-trigger{background:rgba(255,255,255,.62);backdrop-filter:blur(12px)}
+.product-sidebar{background:rgba(239,230,214,.92);backdrop-filter:blur(18px) saturate(1.08);border-right:1px solid rgba(64,53,47,.16)}
+.product-topbar{background:rgba(247,237,221,.8);backdrop-filter:blur(20px) saturate(1.08);border-bottom:1px solid rgba(255,248,237,.9);outline:1px solid rgba(64,53,47,.06)}
+.product-space,.product-command-trigger{background:rgba(255,250,241,.7);backdrop-filter:blur(12px)}
 .product-notify,.product-run{backdrop-filter:blur(10px)}
 
 /* Dotted glass surface plus a faint physical grain from SVG turbulence. */
-.product-content{background:#ecefe9}
-.product-content:before{opacity:.32;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ccircle cx='2' cy='2' r='1' fill='%236f7a7f' fill-opacity='.28'/%3E%3C/svg%3E")!important}
+.product-content{background:#fbf5e9}
+.product-content:before{opacity:.3;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ccircle cx='2' cy='2' r='1' fill='%238b7c70' fill-opacity='.25'/%3E%3C/svg%3E")!important}
 .product-content:after{display:block;content:"";position:fixed;z-index:0;inset:76px 0 0 252px;pointer-events:none;opacity:.035;mix-blend-mode:multiply;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E")!important}
 
 /* Main glass vision board with four metal stand-offs and a marker tray. */
