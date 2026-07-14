@@ -14,9 +14,9 @@ export function ProductOverview({ jobs, onSelect, onNavigate, onRun, agentRunnin
   return <div className="overview-view product-enter">
     <section className="overview-hero">
       <div className="overview-intro">
-        <div className="product-eyebrow"><span className="product-live" />Wednesday field notes · July 15</div>
+        <div className="product-eyebrow"><span className="product-live" />Active opportunity board · July 15</div>
         <h2>Your next job is<br /><em>hiding in plain sight.</em></h2>
-        <p>JustHireMe watched <strong>486 new roles</strong> while you were away. It filtered the noise, checked the evidence, and found three worth your time.</p>
+        <p>JustHireMe watched <mark className="diary-highlight blue"><strong>486 new roles</strong></mark> while you were away. It filtered the noise, checked the evidence, and found <mark className="diary-highlight yellow">three worth your time</mark>. <span className="diary-reaction">oh, this is good!</span></p>
         <div className="overview-actions"><button onClick={() => onSelect(top[0])}>Review top match <DemoIcon name="arrow" /></button><button onClick={onRun} disabled={agentRunning}><DemoIcon name="radar" />{agentRunning ? "Searching the web…" : "Start a fresh scan"}</button></div>
       </div>
       <div className={`signal-orbit ${agentRunning ? "scanning" : ""}`} aria-label="Opportunity signal visualization">
@@ -29,15 +29,15 @@ export function ProductOverview({ jobs, onSelect, onNavigate, onRun, agentRunnin
     </section>
 
     <section className="overview-stats" aria-label="Search performance">
-      <article><div><span>Qualified</span><DemoIcon name="inbox" /></div><strong>12</strong><p><b>+3</b> since yesterday</p><i style={{ "--fill": "78%" } as React.CSSProperties} /></article>
-      <article><div><span>Avg. match</span><DemoIcon name="bolt" /></div><strong>84<span>%</span></strong><p><b>+9%</b> above baseline</p><i style={{ "--fill": "84%" } as React.CSSProperties} /></article>
-      <article><div><span>Ready to send</span><DemoIcon name="send" /></div><strong>03</strong><p>Evidence verified</p><i style={{ "--fill": "56%" } as React.CSSProperties} /></article>
-      <article className="stat-accent"><div><span>Response rate</span><DemoIcon name="activity" /></div><strong>28<span>%</span></strong><p><b>2.4×</b> market average</p><i style={{ "--fill": "68%" } as React.CSSProperties} /></article>
+      <article><span className="stat-note">+3! ✦</span><div><span>Qualified</span><DemoIcon name="inbox" /></div><strong>12</strong><p><b>+3</b> since yesterday</p><i style={{ "--fill": "78%" } as React.CSSProperties} /></article>
+      <article><span className="stat-note">looking up ↗</span><div><span>Avg. match</span><DemoIcon name="bolt" /></div><strong>84<span>%</span></strong><p><b>+9%</b> above baseline</p><i style={{ "--fill": "84%" } as React.CSSProperties} /></article>
+      <article><span className="stat-note">ready!!</span><div><span>Ready to send</span><DemoIcon name="send" /></div><strong>03</strong><p>Evidence verified</p><i style={{ "--fill": "56%" } as React.CSSProperties} /></article>
+      <article className="stat-accent"><span className="stat-note">best yet ♡</span><div><span>Response rate</span><DemoIcon name="activity" /></div><strong>28<span>%</span></strong><p><b>2.4×</b> market average</p><i style={{ "--fill": "68%" } as React.CSSProperties} /></article>
     </section>
 
     <section className="overview-grid">
       <div className="opportunity-panel product-panel">
-        <header><div><span className="product-eyebrow">Priority queue</span><h3>High-conviction opportunities</h3></div><button onClick={() => onNavigate("Pipeline")}>Open pipeline <DemoIcon name="arrow" /></button></header>
+        <header><div><span className="product-eyebrow">Pinned shortlist</span><h3><mark className="diary-highlight yellow">High-conviction</mark> opportunities</h3><span className="section-scribble">the good ones ↓</span></div><button onClick={() => onNavigate("Pipeline")}>Open pipeline <DemoIcon name="arrow" /></button></header>
         <div className="opportunity-head"><span>Opportunity</span><span>Momentum</span><span>Match</span><span /></div>
         <div className="opportunity-list">{top.map((job, index) => <button key={job.id} className="opportunity-row" onClick={() => onSelect(job)}>
           <span className={`opportunity-logo ${job.accent}`}>{job.company[0]}</span><span className="opportunity-name"><strong>{job.role}</strong><small>{job.company} · {job.location}</small><em>{job.source} · {job.posted}</em></span>

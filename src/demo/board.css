@@ -1,0 +1,90 @@
+/* Professional opportunity pinboard: flat canvas, pinned cards, calm personality. */
+.product-app{
+  --paper:#f6f5ef;--paper-2:#ebe9df;--ink:#2f3538;--ink-2:#596166;--ink-3:#879095;
+  --line:rgba(47,53,56,.13);--line-hi:rgba(47,53,56,.4);
+  --coral:#efa694;--blue:#bddbe8;--mint:#bfddcb;--yellow:#efdda5;--pink:#eac7d0;
+  --lavender:#d6cbe5;--peach:#f0c5ae;--panel:#fdfcf8;--panel-hi:#fdfcf8;
+  background:#f6f5ef;color:var(--ink)
+}
+
+/* Workspace rail */
+.product-sidebar{background:#ebe9df;border-right:1px solid rgba(47,53,56,.2);padding-left:14px}
+.product-logo{border-bottom:1px solid rgba(47,53,56,.13)}
+.product-logo>span{background:var(--coral);border:1.5px solid rgba(47,53,56,.58);border-radius:7px;transform:none}
+.product-wordmark small{font:600 7px ProductMono;text-transform:uppercase;letter-spacing:.1em;transform:none}
+.product-logo i{background:rgba(191,221,203,.8);border-radius:9px;transform:none}
+.product-space{background:#fdfcf8;border:1px solid rgba(47,53,56,.17);border-radius:12px;outline:0}
+.product-space div small{font-size:6px;letter-spacing:.1em}.product-space div em{font:500 7px ProductMono;color:var(--ink-3)}
+.product-sidebar nav>p span{font:700 9px ProductMono;text-transform:uppercase;letter-spacing:.08em}
+.product-sidebar nav button{border-radius:9px;border-left:3px solid transparent}
+.product-sidebar nav button.active{border-left-color:var(--coral);border-radius:4px 10px 10px 4px;outline:0}
+.product-sidebar nav button:nth-of-type(1).active{background:rgba(240,197,174,.65)}
+.product-sidebar nav button:nth-of-type(2).active{background:rgba(189,219,232,.7)}
+.product-sidebar nav button:nth-of-type(3).active{background:rgba(191,221,203,.72)}
+.product-sidebar nav button:nth-of-type(4).active{background:rgba(234,199,208,.7)}
+.product-sidebar nav button:nth-of-type(5).active{background:rgba(214,203,229,.72)}
+.nav-stamp{background:#fdfcf8;border:1px solid rgba(47,53,56,.3);border-radius:8px}
+.nav-copy strong{font-size:11px}.nav-copy small{font:500 7px ProductSans;color:var(--ink-3)}
+.sidebar-brief{position:relative;background:rgba(189,219,232,.72);border:1px solid rgba(47,53,56,.16);border-radius:10px;padding-top:15px}
+.sidebar-brief:before{display:block;content:"";position:absolute;left:50%;top:-6px;width:11px;height:11px;transform:translateX(-50%);border-radius:50%;background:var(--coral);border:2px solid #f6f5ef}
+.sidebar-brief>span{font:600 7px ProductMono;text-transform:uppercase;letter-spacing:.09em}.sidebar-brief>strong{font-size:11px}
+.product-health{border-color:rgba(47,53,56,.12)}.product-health-ring{background:var(--mint);border:1px solid rgba(47,53,56,.28)}
+
+/* Board toolbar */
+.product-topbar{height:76px;background:#f6f5ef;border-bottom:1px solid rgba(47,53,56,.15)}
+.product-title{grid-template-columns:37px minmax(0,1fr)}
+.product-title-index{width:36px;height:36px;background:var(--pink);border:1px solid rgba(47,53,56,.3);border-radius:9px;transform:none;outline:0;font-family:ProductMono}
+.product-title>div>small{font:600 6px ProductMono;text-transform:uppercase;letter-spacing:.12em}
+.product-title h1{font-size:23px}.product-title p{font:500 7px ProductMono;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3)}
+.product-command-trigger{height:41px;background:#fdfcf8;border:1px solid rgba(47,53,56,.2);border-radius:10px}
+.product-notify,.product-run{border:1px solid rgba(47,53,56,.24);border-radius:9px;outline:0}
+
+/* Dotted whiteboard canvas. SVG dots keep the no-gradient contract. */
+.product-content{padding:26px 28px 44px;background:#f6f5ef}
+.product-content:before{inset:76px 0 0 252px;opacity:.28;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22'%3E%3Ccircle cx='2' cy='2' r='1' fill='%23879095' fill-opacity='.36'/%3E%3C/svg%3E")!important}
+
+/* The hero is the north-star board. */
+.overview-hero{min-height:342px;margin:0;padding:40px 30px 28px;background:rgba(253,252,248,.93);border:1px solid rgba(47,53,56,.16);border-radius:14px}
+.overview-hero:before{display:block;content:"";position:absolute;left:50%;top:-7px;width:13px;height:13px;border-radius:50%;background:var(--coral);border:2px solid #f6f5ef;transform:translateX(-50%)}
+.overview-hero:after{display:block;content:"north star  ↗";right:42%;left:auto;bottom:25px;color:#b56f62;font:700 11px var(--scribble);text-transform:none;letter-spacing:0;transform:rotate(-2deg)}
+.overview-intro{padding-left:0;border-left:0}
+.overview-intro:before{content:"WEEK 29";left:0;top:-24px;padding:3px 7px;border-radius:6px;background:rgba(234,199,208,.72);font:600 6px ProductMono;transform:none}
+.overview-intro h2{font-size:clamp(49px,4.7vw,72px);line-height:.93}
+.overview-intro h2 em{font-size:.68em}
+.overview-intro>p{max-width:565px;font-size:14px}
+.diary-reaction{font-size:11px;color:#b56f62}
+.overview-actions button{border:1px solid rgba(47,53,56,.24);border-radius:9px}
+.signal-orbit{height:286px;background:rgba(189,219,232,.9);border:1px solid rgba(47,53,56,.42);border-radius:50%;transform:none}
+.signal-orbit:hover{transform:scale(1.01)}
+.orbit-ring{border-width:1px}.orbit-core{border:1px solid rgba(47,53,56,.48);background:var(--yellow)}
+
+/* Board pulse cards, pinned with one consistent motif. */
+.overview-stats{gap:13px;padding:46px 0 24px}
+.overview-stats:before{content:"BOARD PULSE  /  THIS WEEK";top:17px;left:2px;font:600 7px ProductMono;letter-spacing:.11em;transform:none;color:var(--ink-3)}
+.overview-stats article{min-height:112px;padding:18px 19px;border:1px solid rgba(47,53,56,.14)!important;border-radius:11px;transform:none!important;position:relative}
+.overview-stats article:after{content:"";position:absolute;left:50%;top:-5px;width:9px;height:9px;border-radius:50%;transform:translateX(-50%);background:var(--coral);border:2px solid #f6f5ef}
+.overview-stats article:nth-child(1){background:rgba(234,199,208,.86)}.overview-stats article:nth-child(2){background:rgba(189,219,232,.88)}.overview-stats article:nth-child(3){background:rgba(239,221,165,.88)}.overview-stats article:nth-child(4){background:rgba(191,221,203,.88)}
+.stat-note{font-size:9px;top:40px}.overview-stats article:nth-child(3) .stat-note{display:block}.overview-stats article>strong{font-size:37px}
+
+/* Pinned working cards */
+.overview-grid{gap:14px}.product-panel{background:rgba(253,252,248,.94);border:1px solid rgba(47,53,56,.15);border-radius:12px}
+.product-panel:before{display:none}.product-panel header h3{font-size:18px}
+.opportunity-panel>header,.agent-panel>header,.source-panel>header,.criteria-panel>header,.document-studio>header,.graph-panel>header,.profile-assets>header{border-bottom:1px solid rgba(47,53,56,.13)}
+.section-scribble{display:none}.opportunity-row,.agent-timeline>div{border-bottom:1px solid rgba(47,53,56,.1)}
+.agent-panel,.focus-panel,.next-move{transform:none}
+.agent-panel{background:rgba(214,203,229,.82)}.focus-panel{background:rgba(191,221,203,.82)}.next-move{background:rgba(240,197,174,.78)}
+
+/* Pipeline is a professional whiteboard workflow. */
+.view-toolbar{padding-top:8px;margin-bottom:25px}.view-toolbar>div:first-child{padding-left:12px}.view-toolbar>div:first-child:before{width:3px;background:var(--coral)}
+.view-toolbar .product-eyebrow{font:600 7px ProductMono;text-transform:uppercase;letter-spacing:.1em}.view-toolbar h2{font-size:42px}
+.view-toolbar h2 em{font:700 .78em var(--scribble);text-decoration:underline wavy var(--coral) 2px}.toolbar-scribble{display:none}
+.view-toolbar-actions>button,.view-toolbar-actions label{border:1px solid rgba(47,53,56,.2);border-radius:9px}
+.pipeline-summary{background:rgba(239,221,165,.76);border:1px solid rgba(47,53,56,.14);border-radius:10px}
+.kanban-board{gap:12px}.kanban-lane{border:1px solid rgba(47,53,56,.13);border-radius:11px;transform:none!important}
+.kanban-lane>header{border-bottom:1px solid rgba(47,53,56,.16)}
+.kanban-card{position:relative;background:#fdfcf8;border:1px solid rgba(47,53,56,.11);border-radius:9px;transform:none!important}
+.kanban-card:after{content:"";position:absolute;left:50%;top:-4px;width:8px;height:8px;border-radius:50%;transform:translateX(-50%);background:var(--coral);border:2px solid #fdfcf8}
+.kanban-foot{border-top:1px solid rgba(47,53,56,.1)}
+
+@media(max-width:1180px){.product-content:before{left:82px}}
+@media(max-width:680px){.product-content:before{left:0}.overview-hero{margin:0;padding-left:22px;padding-right:22px}.overview-hero:after{display:none}}

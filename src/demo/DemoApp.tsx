@@ -13,6 +13,9 @@ import { ProductDrawer } from "./product/ProductDrawer";
 import { DemoIcon } from "./DemoIcon";
 import "./product.css";
 import "./handdrawn.css";
+import "./polish.css";
+import "./diary.css";
+import "./board.css";
 
 export type ProductView = "Overview" | "Pipeline" | "Scout" | "Tailor" | "Profile";
 

@@ -1,0 +1,314 @@
+/* Search diary: soft pastel paper, handwritten notes, and practical product structure. */
+.product-app{
+  --paper:#fbf5e9;--paper-2:#efe6d6;--ink:#40352f;--ink-2:#65574e;--ink-3:#8b7c70;
+  --line:rgba(64,53,47,.20);--line-hi:rgba(64,53,47,.64);--shadow:rgba(64,53,47,.11);
+  --coral:#eea08f;--blue:#b8d9e8;--mint:#bedcc7;--yellow:#f1dda3;--pink:#edc5cf;
+  --lavender:#d8c9e7;--peach:#f2c4a8;--good:#72a77f;--panel:#fbf5e9;--panel-hi:#fffaf1;
+  --sketch-radius:12px 7px 14px 8px;--sketch-shadow:3px 4px 0 var(--ink);
+  color:var(--ink);background:#fbf5e9
+}
+
+/* The notebook cover / table of contents. */
+.product-sidebar{padding-left:17px;background-color:#efe6d6;border-right:2px solid var(--ink);box-shadow:5px 0 0 rgba(64,53,47,.07)}
+.product-sidebar:before{left:8px;top:10px;bottom:10px;border-left:2px dotted rgba(64,53,47,.28)}
+.product-logo{height:66px;border-bottom:1.5px dashed rgba(64,53,47,.46)}
+.product-logo>span{background:var(--coral);border-radius:6px 3px 7px 4px;box-shadow:3px 3px 0 var(--ink);transform:rotate(-4deg)}
+.product-wordmark strong{font:800 19px/.95 ProductDisplay;letter-spacing:-.055em}
+.product-wordmark small{font:700 9px/1 var(--scribble);color:var(--ink-2);transform:rotate(-1deg)}
+.product-logo i{background:var(--mint);font:700 6px ProductMono;text-decoration:none;border-radius:7px 3px;transform:rotate(3deg)}
+.product-space{background:#fffaf1;border-radius:10px 5px 12px 6px;box-shadow:3px 4px 0 var(--ink);transform:rotate(-.4deg)}
+.product-avatar{background:var(--lavender);border-radius:50% 45% 52% 46%;box-shadow:none}
+.product-space div small{font:700 7px ProductMono;letter-spacing:.08em}.product-space div em{font:500 7px var(--scribble)}
+.product-sidebar nav>p span{font:700 11px var(--scribble);text-transform:none;letter-spacing:0}
+.product-sidebar nav>p i{font-size:6px;letter-spacing:.1em}
+.product-sidebar nav button{border-radius:10px 5px 12px 6px;margin-bottom:4px}
+.product-sidebar nav button:hover{background:rgba(255,250,241,.7);transform:translateX(2px) rotate(-.3deg)}
+.product-sidebar nav button.active{background:#fffaf1;border:2px solid var(--ink);border-radius:10px 5px 12px 6px;box-shadow:3px 3px 0 var(--ink);transform:translateX(2px) rotate(-.5deg)}
+.nav-stamp{border-radius:9px 4px 10px 5px;box-shadow:2px 2px 0 var(--ink)}
+.nav-copy strong{font:750 12px ProductDisplay;letter-spacing:-.025em}
+.nav-copy small{font:600 8px var(--scribble);color:var(--ink-2);margin-top:2px}
+.product-sidebar nav button b{background:var(--yellow);border-radius:50%;font-family:var(--scribble)}
+.sidebar-brief{background:var(--blue);border-radius:11px 5px 13px 7px;box-shadow:3px 4px 0 var(--ink);transform:rotate(.5deg)}
+.sidebar-brief:before{width:48px;background:#e8ddc9;border:1px solid rgba(64,53,47,.14)}
+.sidebar-brief>span{font:700 9px var(--scribble);color:var(--ink-2)}
+.sidebar-brief>strong{font:750 11px/1.35 ProductDisplay}
+.sidebar-brief>button{font:700 7px ProductMono}
+.product-health{border-color:rgba(64,53,47,.48)}
+.product-health-ring{background:var(--mint);border:2px solid var(--ink)}
+
+/* A dated diary header, not application chrome. */
+.product-topbar{height:82px;background:#f7eddd;border-bottom:1.5px dashed var(--ink);box-shadow:none;backdrop-filter:none}
+.product-title{grid-template-columns:39px minmax(0,1fr);gap:11px}
+.product-title-index{width:38px;height:38px;background:var(--pink);border:1.5px solid var(--ink);border-radius:50% 45% 53% 47%;box-shadow:2px 2px 0 var(--ink);font:700 8px var(--scribble);transform:rotate(-5deg)}
+.product-title>div{grid-template-columns:auto 1fr;column-gap:9px}
+.product-title>div>small{font:700 7px ProductMono;letter-spacing:.12em;color:var(--ink-3)}
+.product-title h1{font:800 24px/.92 ProductDisplay;letter-spacing:-.055em}
+.product-title p{font:700 9px var(--scribble);color:var(--ink-2);transform:rotate(-.4deg);margin-bottom:0}
+.product-command-trigger{height:43px;background:#fffaf1;border-radius:10px 5px 12px 6px;box-shadow:2px 3px 0 var(--ink)}
+.product-command-trigger kbd{background:var(--lavender);border-radius:5px 2px}
+.product-notify{background:var(--pink);border-radius:9px 4px 11px 5px;box-shadow:2px 3px 0 var(--ink)}
+.product-run{background:var(--mint);border-radius:9px 4px 11px 5px;box-shadow:3px 3px 0 var(--ink);font:750 9px ProductDisplay}
+
+/* Ruled diary paper. This is a repeated SVG line, not a CSS gradient. */
+.product-content{position:relative;background-color:#fbf5e9;padding-top:34px}
+.product-content:before{content:"";position:fixed;z-index:0;inset:82px 0 0 252px;pointer-events:none;opacity:.42;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='30'%3E%3Cpath d='M0 29.5H80' stroke='%239abed1' stroke-opacity='.38' stroke-width='1'/%3E%3C/svg%3E")!important}
+.product-content>*{position:relative;z-index:1}
+
+/* Today's open page. */
+.overview-hero{min-height:360px;margin:-34px -26px 0;padding:46px 26px 30px 34px;border-bottom:2px dashed var(--ink);background:rgba(251,245,233,.78)}
+.overview-hero:before{content:"✦";left:47%;top:35px;font:700 35px var(--scribble);color:var(--coral)}
+.overview-hero:after{left:44%;bottom:34px;font:700 13px var(--scribble);text-transform:none;letter-spacing:0;transform:rotate(-7deg)}
+.overview-intro{padding-left:14px;border-left:2px solid rgba(222,119,119,.48)}
+.overview-intro h2{font-size:clamp(53px,5vw,79px);line-height:.9;letter-spacing:-.065em}
+.overview-intro h2 em{font-family:var(--scribble);font-size:.72em;font-style:normal;background:transparent;padding:0;box-shadow:none;transform:rotate(-2deg);text-decoration:underline wavy var(--coral) 4px;text-underline-offset:9px}
+.overview-intro>p{max-width:600px;font-size:15px;line-height:1.6;color:var(--ink-2)}
+.overview-actions button{border-radius:10px 5px 12px 6px;box-shadow:3px 4px 0 var(--ink);font-weight:750}
+.overview-actions button:first-child{background:var(--coral);transform:rotate(-.6deg)}
+.signal-orbit{height:305px;background:var(--blue);border-radius:50% 46% 49% 44%;box-shadow:7px 7px 0 var(--ink);transform:rotate(2deg)}
+.signal-orbit:before{content:"";position:absolute;left:24px;right:24px;top:22px;height:20px;opacity:.5;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='8'%3E%3Cpath d='M0 6 Q4 1 8 6 T16 6' fill='none' stroke='%2340352f' stroke-width='1.2'/%3E%3C/svg%3E")!important}
+.orbit-grid{background-color:transparent}.orbit-core{background:var(--yellow);border-radius:48% 52% 46% 54%;box-shadow:4px 5px 0 var(--ink)}
+.orbit-node b{border-radius:50% 45% 53% 47%;box-shadow:2px 2px 0 var(--ink)}
+.orbit-caption{font:700 7px var(--scribble);text-transform:none;letter-spacing:0}
+
+/* Loose notes with a consistent visual grammar. */
+.overview-stats{gap:13px;padding:23px 0}
+.overview-stats article{border-radius:10px 5px 12px 6px;box-shadow:4px 5px 0 var(--ink)}
+.overview-stats article:nth-child(1){background:var(--pink);transform:rotate(-.6deg)!important}.overview-stats article:nth-child(2){background:var(--blue);transform:rotate(.5deg)!important}.overview-stats article:nth-child(3){background:var(--yellow);transform:rotate(-.3deg)!important}.overview-stats article:nth-child(4){background:var(--mint);transform:rotate(.7deg)!important}
+.overview-stats article>div span{font:700 8px var(--scribble)}
+.product-panel{border-radius:12px 7px 14px 8px;box-shadow:4px 5px 0 var(--ink)}
+.product-panel header h3{box-shadow:none;background:transparent;padding:0;font-size:20px;text-decoration:underline wavy var(--yellow) 3px;text-underline-offset:5px}
+.focus-panel{background:var(--mint);transform:rotate(-.4deg)}.next-move{background:var(--peach);transform:rotate(.5deg)}.agent-panel{background:var(--lavender);transform:rotate(.3deg)}
+.view-toolbar>div:first-child{padding-left:16px}
+.view-toolbar>div:first-child:before{width:4px;border-radius:4px;background:var(--coral);transform:rotate(2deg)}
+.view-toolbar h2{font:800 44px/.95 ProductDisplay;letter-spacing:-.06em;text-shadow:none}
+.view-toolbar .product-eyebrow{font:700 11px var(--scribble);text-transform:none;letter-spacing:0}
+.view-toolbar-actions>button,.view-toolbar-actions label{border-radius:9px 5px 11px 6px;box-shadow:3px 3px 0 var(--ink)}
+.view-toolbar-actions .toolbar-primary{background:var(--coral)}
+
+/* The other diary sections use tabbed pastel pages. */
+.pipeline-summary{border-radius:10px 5px;background:var(--yellow)}
+.kanban-lane{border-radius:12px 6px 14px 7px;box-shadow:4px 5px 0 var(--ink)}
+.kanban-card{border-radius:9px 4px 11px 5px;box-shadow:3px 3px 0 var(--ink)}
+.kanban-card:hover{transform:translateY(-3px) rotate(-.3deg)!important;box-shadow:5px 6px 0 var(--ink)}
+.scout-radar{background:var(--blue)}.source-panel{background:var(--yellow)}.criteria-panel{background:var(--pink)}.quality-panel{background:var(--mint)}
+.graph-node{border-radius:9px 4px;box-shadow:3px 3px 0 var(--ink)}
+.document-page{transform:rotate(-.35deg);box-shadow:7px 8px 0 var(--ink)}
+
+@media(max-width:1180px){.product-content:before{left:82px}}
+@media(max-width:680px){.product-content:before{left:0}.overview-hero{margin-top:-27px}.product-title h1{font-size:19px}}
+
+/* Shadowless paper play: depth comes from layered stationery, never dark blocks. */
+.product-app *{box-shadow:none!important;text-shadow:none!important}
+.product-logo>span,.product-space,.product-sidebar nav button.active,.nav-stamp,
+.sidebar-brief,.product-command-trigger,.product-notify,.product-run,
+.overview-actions button,.signal-orbit,.orbit-core,.orbit-node b,
+.overview-stats article,.product-panel,.view-toolbar-actions>button,
+.view-toolbar-actions label,.kanban-lane,.kanban-card,.graph-node,.document-page{box-shadow:none!important}
+
+/* Notebook binding and section tabs. */
+.product-sidebar:before{width:7px;border:0;background-color:transparent;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='22'%3E%3Ccircle cx='3.5' cy='5' r='2.2' fill='%23fbf5e9' stroke='%2365574e' stroke-width='1'/%3E%3C/svg%3E")!important}
+.product-logo>span{outline:3px solid rgba(238,160,143,.4);outline-offset:3px}
+.product-space{border-color:rgba(64,53,47,.62);outline:2px dashed rgba(184,217,232,.9);outline-offset:3px}
+.product-sidebar nav button{position:relative;border-color:transparent}
+.product-sidebar nav button:after{content:"";position:absolute;right:-16px;top:12px;width:9px;height:28px;border:1px solid rgba(64,53,47,.45);border-left:0;border-radius:0 7px 7px 0;opacity:0;transition:opacity .16s,transform .16s}
+.product-sidebar nav button:nth-of-type(1):after{background:var(--peach)}
+.product-sidebar nav button:nth-of-type(2):after{background:var(--blue)}
+.product-sidebar nav button:nth-of-type(3):after{background:var(--mint)}
+.product-sidebar nav button:nth-of-type(4):after{background:var(--pink)}
+.product-sidebar nav button:nth-of-type(5):after{background:var(--lavender)}
+.product-sidebar nav button.active:after{opacity:1;transform:translateX(1px)}
+.product-sidebar nav button.active{outline:2px solid var(--coral);outline-offset:2px}
+.nav-stamp{border-style:dashed}.product-sidebar nav button.active .nav-stamp{border-style:solid;background:var(--yellow)}
+
+/* A taped reminder with a folded paper corner. */
+.sidebar-brief{border:1.5px dashed var(--ink);clip-path:polygon(0 0,92% 0,100% 12%,100% 100%,0 100%)}
+.sidebar-brief:after{content:"";position:absolute;right:0;top:0;width:24px;height:20px;background:rgba(255,250,241,.72);border-left:1px solid rgba(64,53,47,.3);border-bottom:1px solid rgba(64,53,47,.3)}
+.product-health-ring{outline:3px dotted var(--coral);outline-offset:3px}
+
+/* Header controls become little stationery pieces. */
+.product-title-index{outline:2px dashed rgba(238,160,143,.72);outline-offset:3px}
+.product-command-trigger{border-style:dashed;background:#fffaf1}
+.product-notify{outline:2px dotted var(--pink);outline-offset:2px}
+.product-run{outline:2px solid rgba(114,167,127,.42);outline-offset:3px}
+.product-command-trigger:hover,.product-run:hover:not(:disabled),.product-notify:hover{transform:translateY(-2px) rotate(-.4deg)}
+
+/* Open-page flourishes. */
+.overview-intro{position:relative}
+.overview-intro:before{content:"Wed\A15";white-space:pre;position:absolute;left:-41px;top:5px;width:28px;padding:5px 2px;border:1px solid rgba(64,53,47,.55);border-radius:50%;background:var(--pink);font:700 7px/1.15 var(--scribble);text-align:center;transform:rotate(-7deg)}
+.overview-actions button{outline:2px dashed rgba(64,53,47,.22);outline-offset:3px}
+.signal-orbit{outline:3px dashed rgba(64,53,47,.52);outline-offset:6px}
+.orbit-core{outline:4px dotted rgba(238,160,143,.8);outline-offset:6px}
+
+/* Sticky notes sit on offset pastel sheets instead of casting shadows. */
+.overview-stats article,.product-panel,.kanban-lane,.kanban-card{isolation:isolate}
+.overview-stats article:before{content:"";position:absolute;z-index:-1;inset:5px -5px -5px 5px;border:1px dashed rgba(64,53,47,.42);background:rgba(255,250,241,.7);border-radius:inherit}
+.overview-stats article:nth-child(1):before{background:#f5dce2}.overview-stats article:nth-child(2):before{background:#d8eaf1}.overview-stats article:nth-child(3):before{background:#f7ecc9}.overview-stats article:nth-child(4):before{background:#dcecdf}
+.product-panel:before{display:block;content:"";position:absolute;z-index:-1;inset:6px -6px -6px 6px;background:rgba(255,250,241,.74);border:1px dashed rgba(64,53,47,.38);border-radius:inherit;pointer-events:none}
+.overview-stats article:hover{transform:translateY(-3px) rotate(.4deg)!important}
+.product-panel header h3{background:rgba(241,221,163,.64);padding:0 4px;text-decoration:none}
+.agent-panel header h3{background:rgba(237,197,207,.7)}
+
+/* Tracker cards feel clipped into a diary spread. */
+.kanban-lane{outline:2px dashed rgba(64,53,47,.24);outline-offset:3px}
+.kanban-card{border-style:dashed;background:#fffaf1}
+.kanban-card:before{content:"";position:absolute;left:50%;top:-7px;width:38px;height:11px;transform:translateX(-50%) rotate(-1deg);background:rgba(242,196,168,.58);border:1px solid rgba(64,53,47,.12)}
+.kanban-card:hover{outline:2px solid var(--coral);outline-offset:2px}
+.view-toolbar-actions>button,.view-toolbar-actions label{outline:2px dashed rgba(64,53,47,.2);outline-offset:2px}
+
+/* Calm diary edit: fewer marks, more air, and smoother product rhythm. */
+.product-app{
+  --paper:#faf6ed;--paper-2:#f0e9dc;--ink:#403832;--ink-2:#6b6058;--ink-3:#968a80;
+  --line:rgba(64,56,50,.13);--line-hi:rgba(64,56,50,.42);
+  --coral:#efa99a;--blue:#c5deea;--mint:#c9e0d0;--yellow:#f2e2b4;--pink:#efd0d7;
+  --lavender:#ddd3e9;--peach:#f2cdb8
+}
+
+/* Simplified notebook shell. */
+.product-sidebar{background:#f0e9dc;padding-left:15px;border-right:1px solid rgba(64,56,50,.23);box-shadow:none}
+.product-sidebar:before{display:none}
+.product-logo{border-bottom:1px solid rgba(64,56,50,.14)}
+.product-logo>span{transform:none;outline:0;border:1.5px solid rgba(64,56,50,.62)}
+.product-logo i{transform:none;border-color:rgba(64,56,50,.3)}
+.product-space{transform:none;outline:0;border:1px solid rgba(64,56,50,.22);border-radius:12px;background:rgba(255,252,245,.72)}
+.product-sidebar nav{margin-top:20px}
+.product-sidebar nav button{min-height:54px;margin-bottom:3px;border:0;border-radius:10px;padding-left:7px}
+.product-sidebar nav button:after{display:none}
+.product-sidebar nav button:hover{background:rgba(255,252,245,.58);transform:translateX(2px)}
+.product-sidebar nav button.active{background:#fffaf1;border:0;border-left:4px solid var(--coral);border-radius:4px 11px 11px 4px;outline:0;transform:none}
+.nav-stamp{width:34px;height:34px;border:1px solid rgba(64,56,50,.42);border-style:solid;border-radius:9px;box-shadow:none}
+.product-sidebar nav button.active .nav-stamp{background:var(--peach);border-style:solid}
+.nav-copy small{font:500 7px ProductSans;color:var(--ink-3);margin-top:3px}
+.product-sidebar nav button b{border-color:rgba(64,56,50,.28);background:rgba(242,226,180,.76)}
+.sidebar-brief{clip-path:none;transform:none;border:1px solid rgba(64,56,50,.18);border-radius:12px;background:rgba(197,222,234,.72);padding:12px 13px}
+.sidebar-brief:before,.sidebar-brief:after{display:none}
+.sidebar-brief>span{font-size:8px}.sidebar-brief>strong{font-size:11px;font-weight:700}
+.product-health{border-top:1px solid rgba(64,56,50,.15);border-bottom:0}
+.product-health-ring{outline:0;border:1px solid rgba(64,56,50,.36)}
+
+/* Quiet page header. */
+.product-topbar{height:78px;background:rgba(250,246,237,.97);border-bottom:1px solid rgba(64,56,50,.15)}
+.product-title-index{width:36px;height:36px;outline:0;border:1px solid rgba(64,56,50,.32);transform:none;box-shadow:none}
+.product-title h1{font-size:23px}.product-title p{font-size:8px;transform:none;color:var(--ink-3)}
+.product-command-trigger{height:42px;border:1px solid rgba(64,56,50,.24);border-style:solid;border-radius:10px;background:#fffaf1}
+.product-notify,.product-run{outline:0;border:1px solid rgba(64,56,50,.3);border-radius:10px}
+.product-command-trigger:hover,.product-run:hover:not(:disabled),.product-notify:hover{transform:translateY(-1px)}
+
+/* Reduce the notebook ruling to a quiet background cue. */
+.product-content:before{opacity:.2}
+.product-content{padding-top:38px}
+.overview-hero{margin-top:-38px;min-height:350px;padding-top:48px;background:rgba(250,246,237,.86);border-bottom:1px solid rgba(64,56,50,.18)}
+.overview-hero:before,.overview-hero:after{display:none}
+.overview-intro{padding-left:20px;border-left:2px solid rgba(239,169,154,.5)}
+.overview-intro:before{left:-15px;top:-28px;width:auto;padding:3px 7px;border:0;border-radius:8px;background:var(--pink);font:700 7px ProductMono;transform:none;white-space:normal}
+.overview-intro h2{font-size:clamp(51px,4.8vw,75px);line-height:.93}
+.overview-intro h2 em{font-size:.7em;text-decoration-thickness:3px;text-underline-offset:8px}
+.overview-intro>p{font-size:14px;line-height:1.6;max-width:570px}
+.overview-actions button{outline:0;border:1px solid rgba(64,56,50,.34);border-radius:10px}
+.overview-actions button:first-child{transform:none}
+.signal-orbit{outline:0;border:1.5px solid rgba(64,56,50,.55);box-shadow:none;transform:none}
+.signal-orbit:before{display:none}.orbit-core{outline:0;border-width:1.5px}.orbit-node b{border-width:1px}
+
+/* Calm cards: flat paper, subtle lines, no fake depth. */
+.overview-stats{gap:12px;padding:20px 0 24px}
+.overview-stats article{min-height:122px;border:1px solid rgba(64,56,50,.2)!important;border-radius:12px;transform:none!important}
+.overview-stats article:before{display:none}
+.overview-stats article:hover{transform:translateY(-2px)!important}
+.overview-stats article>div span{font:600 7px ProductMono;text-transform:uppercase;letter-spacing:.05em}
+.product-panel{border:1px solid rgba(64,56,50,.2);border-radius:13px;transform:none}
+.product-panel:before{display:none}
+.product-panel header h3{background:transparent;padding:0;text-decoration:none}
+.agent-panel,.focus-panel,.next-move{transform:none}
+.view-toolbar{margin-bottom:25px}.view-toolbar>div:first-child{padding-left:14px}.view-toolbar>div:first-child:before{width:3px;border:0;transform:none}
+.view-toolbar h2{font-size:42px}.view-toolbar .product-eyebrow{font-size:10px}
+.view-toolbar-actions>button,.view-toolbar-actions label{outline:0;border:1px solid rgba(64,56,50,.24);border-radius:10px}
+
+/* Tracker pages become smooth pastel columns. */
+.pipeline-summary{border:1px solid rgba(64,56,50,.22);border-radius:11px}
+.kanban-lane{outline:0;border:1px solid rgba(64,56,50,.22);border-radius:12px;transform:none!important}
+.kanban-card{border:1px solid rgba(64,56,50,.2);border-style:solid;border-radius:10px;background:rgba(255,252,245,.92);transform:none!important}
+.kanban-card:before{display:none}.kanban-card:hover{outline:0;transform:translateY(-2px)!important}
+.graph-node{border-radius:9px}.document-page{transform:none}
+
+@media(max-width:680px){.overview-hero{margin-top:-27px}.product-sidebar{padding-left:14px}}
+
+/* The soul of the diary: selective marker, reactions, and celebratory handwriting. */
+.diary-highlight{display:inline;padding:.02em .16em;color:inherit;background:var(--yellow);border-radius:4px 2px;box-decoration-break:clone;-webkit-box-decoration-break:clone;font-weight:inherit}
+.diary-highlight.blue{background:rgba(197,222,234,.88)}
+.diary-highlight.yellow{background:rgba(242,226,180,.94)}
+.diary-highlight.pink{background:rgba(239,208,215,.94)}
+.diary-reaction{display:inline-block;margin-left:7px;color:#c97768;font:700 13px var(--scribble);white-space:nowrap;transform:rotate(-2deg);text-decoration:underline wavy rgba(201,119,104,.48) 2px;text-underline-offset:3px}
+.stat-note{position:absolute;right:14px;top:43px;z-index:2;color:var(--ink-2);font:700 11px var(--scribble);transform:rotate(3deg)}
+.overview-stats article:nth-child(even) .stat-note{transform:rotate(-3deg)}
+.opportunity-panel>header>div{position:relative}
+.section-scribble{display:block;width:max-content;margin:7px 0 -4px 48px;color:#c97768;font:700 10px var(--scribble);transform:rotate(-2deg)}
+.view-toolbar>div:first-child{position:relative}
+.view-toolbar h2 em{display:inline-block;color:var(--ink);font:700 .82em var(--scribble);transform:rotate(-2deg);text-decoration:underline wavy var(--coral) 3px;text-underline-offset:7px}
+.toolbar-scribble{position:absolute;left:250px;bottom:3px;color:#c97768;font:700 11px var(--scribble);white-space:nowrap;transform:rotate(-3deg)}
+.pipeline-summary mark{font:700 9px var(--scribble)}
+
+@media(max-width:900px){.toolbar-scribble{display:none}.diary-reaction{display:block;width:max-content;margin:5px 0 0}}
+
+/* Whimsical coherence: one visual idea per section, like a diary someone actually keeps. */
+.product-app{--scribble:"Segoe Print","Comic Sans MS",cursive}
+
+/* A quieter index with color-coded page tabs. */
+.product-sidebar{padding-right:13px}
+.product-logo{height:61px}.product-wordmark small{font-size:8px}
+.product-space{min-height:58px;margin-top:14px;padding-top:8px;padding-bottom:8px}
+.product-avatar{width:32px;height:32px}.product-space div em{font-size:7px}
+.product-sidebar nav{margin-top:17px}.product-sidebar nav>p{padding-bottom:6px}
+.product-sidebar nav button{min-height:50px}
+.product-sidebar nav button:nth-of-type(1).active{background:rgba(242,205,184,.72)}
+.product-sidebar nav button:nth-of-type(2).active{background:rgba(197,222,234,.72)}
+.product-sidebar nav button:nth-of-type(3).active{background:rgba(201,224,208,.74)}
+.product-sidebar nav button:nth-of-type(4).active{background:rgba(239,208,215,.72)}
+.product-sidebar nav button:nth-of-type(5).active{background:rgba(221,211,233,.76)}
+.sidebar-brief{margin-top:12px;margin-bottom:8px;padding:11px 12px;background:rgba(197,222,234,.58)}
+.sidebar-brief>strong{max-width:165px}.sidebar-brief>button{margin-top:7px}
+.product-health{padding-top:7px;padding-bottom:7px}.product-health-ring{width:30px;height:30px}
+.product-settings{min-height:32px}
+
+/* The page has one soft rule and one handwritten voice. */
+.product-content:before{opacity:.13}
+.product-eyebrow,.view-toolbar .product-eyebrow{font-family:var(--scribble);font-weight:700;text-transform:none;letter-spacing:0}
+.overview-hero{min-height:352px;padding-left:37px;padding-right:32px}
+.overview-hero:after{display:block;content:"good things are happening  ↗";left:auto;right:41%;bottom:26px;color:#b86f63;font:700 11px var(--scribble);text-transform:none;letter-spacing:0;transform:rotate(-3deg)}
+.overview-intro:before{content:"Wed 15";top:-31px;left:-13px;color:var(--ink-2);background:rgba(239,208,215,.78)}
+.overview-intro h2{max-width:650px}
+.diary-reaction{display:block;width:max-content;margin:4px 0 0 5px;font-size:12px}
+.signal-orbit{background:rgba(197,222,234,.9);border-radius:49% 46% 51% 47%;transition:transform .3s ease}
+.signal-orbit:hover{transform:rotate(1deg) scale(1.01)}
+
+/* A single little-wins entry replaces four competing annotations. */
+.overview-stats{position:relative;padding-top:42px}
+.overview-stats:before{content:"little wins, scribbled down  ✦";position:absolute;left:4px;top:14px;color:var(--ink-2);font:700 11px var(--scribble);transform:rotate(-1deg)}
+.overview-stats article{min-height:116px;padding:18px 20px;border-color:rgba(64,56,50,.14)!important}
+.overview-stats article:nth-child(1){transform:rotate(-.35deg)!important}.overview-stats article:nth-child(2){transform:rotate(.25deg)!important}.overview-stats article:nth-child(3){transform:rotate(-.2deg)!important}.overview-stats article:nth-child(4){transform:rotate(.3deg)!important}
+.overview-stats article:nth-child(2) .stat-note,.overview-stats article:nth-child(4) .stat-note{display:none}
+.stat-note{right:13px;top:42px;font-size:10px;color:#b86f63}
+.overview-stats article>strong{font-size:38px}
+
+/* Content cards read as diary entries, with highlights used only where they matter. */
+.overview-grid{gap:16px}
+.product-panel{background:rgba(255,252,245,.78);border-color:rgba(64,56,50,.15)}
+.opportunity-panel>header,.agent-panel>header,.source-panel>header,.criteria-panel>header,.document-studio>header,.graph-panel>header,.profile-assets>header{border-bottom:1px solid rgba(64,56,50,.15)}
+.section-scribble{display:none}
+.product-panel header h3{font-size:19px}
+.diary-highlight{padding:.01em .12em;border-radius:3px}
+.opportunity-row{border-bottom:1px dotted rgba(64,56,50,.3)}
+.agent-timeline>div{border-bottom:1px dotted rgba(64,56,50,.28)}
+.focus-tags span{background:rgba(255,252,245,.6);border-color:rgba(64,56,50,.24)}
+
+/* Pipeline becomes a neat collection of tabbed diary pages. */
+.view-toolbar{padding-top:3px}.view-toolbar h2{font-size:43px}
+.view-toolbar h2 em{font-size:.78em}.toolbar-scribble{left:245px;bottom:1px;font-size:10px}
+.pipeline-summary{background:rgba(242,226,180,.72);border-color:rgba(64,56,50,.14)}
+.kanban-board{gap:13px}.kanban-lane{border-color:rgba(64,56,50,.13)}
+.kanban-lane>header{border-bottom:1px solid rgba(64,56,50,.2)}
+.kanban-card{background:rgba(255,252,245,.86);border-color:rgba(64,56,50,.12)}
+.kanban-foot{border-top:1px dotted rgba(64,56,50,.3)}
+.pipeline-summary .diary-highlight{font-size:8px}
+
+@media(max-height:760px) and (min-width:1181px){
+  .product-sidebar nav{margin-top:13px}.product-sidebar nav button{min-height:46px}.sidebar-brief{margin-top:8px;padding-top:8px;padding-bottom:8px}
+}
