@@ -15,7 +15,7 @@ export function ProductSidebar({ view, onChange, open, onClose }: { view: Produc
     <div className="product-space"><span className="product-avatar">VS</span><div><small>Active vision board</small><strong>Vasudev’s search</strong><em>July sprint · Week 29</em></div><DemoIcon name="chevron" /></div>
     <nav aria-label="Product navigation">
       <p><span>Workspace</span><i>5 rooms</i></p>
-      {items.map(item => <button key={item.label} className={view === item.label ? "active" : ""} onClick={() => { onChange(item.label); onClose(); }}><span className={`nav-stamp ${item.tone}`}><DemoIcon name={item.icon} /></span><span className="nav-copy"><strong>{item.label}</strong><small>{item.hint}</small></span>{item.badge && <b>{item.badge}</b>}</button>)}
+      {items.map(item => <button key={item.label} className={view === item.label ? "active" : ""} aria-current={view === item.label ? "page" : undefined} onClick={() => { onChange(item.label); onClose(); }}><span className={`nav-stamp ${item.tone}`}><DemoIcon name={item.icon} /></span><span className="nav-copy"><strong>{item.label}</strong><small>{item.hint}</small></span>{item.badge && <b>{item.badge}</b>}</button>)}
     </nav>
     <div className="product-sidebar-spacer" />
     <div className="sidebar-brief"><span>Pinned insight</span><strong>Three roles cleared your evidence bar.</strong><button onClick={() => { onChange("Overview"); onClose(); }}>Open shortlist <DemoIcon name="arrow" /></button></div>
