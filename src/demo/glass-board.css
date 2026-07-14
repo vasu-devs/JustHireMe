@@ -227,6 +227,41 @@
 @keyframes check-pop{from{opacity:0;transform:scale(.45) rotate(-12deg)}to{opacity:1;transform:none}}
 @keyframes nav-marker-in{from{transform:scaleY(.15);opacity:0}to{transform:none;opacity:1}}
 
+/* Final warmth and rhythm pass. */
+.product-app{
+  --paper:#fcf3e3;--paper-2:#f1e3cc;--ink:#43352d;--ink-2:#6b574b;--ink-3:#927d6e;
+  --coral:#ef9b84;--blue:#b6d5e3;--mint:#bdd9c2;--yellow:#f2d995;--pink:#edbfca;
+  --lavender:#d7c4e3;--peach:#f3bea0;--panel:#fcf3e3;--panel-hi:#fff9ee;
+  --glass:rgba(255,249,237,.68);--glass-strong:rgba(255,250,240,.84);--glass-edge:rgba(255,246,229,.95);
+  --marker-red:#ca6758;--marker-blue:#4d8298;--marker-green:#568663;
+  background:#fcf3e3;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased
+}
+.product-content{background:#fcf3e3;scroll-behavior:smooth}
+.product-sidebar{background:rgba(241,227,204,.94)}
+.product-topbar{background:rgba(249,235,213,.9)}
+.product-space,.product-command-trigger{background:rgba(255,249,237,.76)}
+.product-sidebar nav button.active,.product-sidebar nav button:nth-of-type(1).active,.product-sidebar nav button:nth-of-type(2).active,.product-sidebar nav button:nth-of-type(3).active,.product-sidebar nav button:nth-of-type(4).active,.product-sidebar nav button:nth-of-type(5).active{background:rgba(255,249,237,.86)}
+.sidebar-brief{background:rgba(182,213,227,.59)}
+.product-health,.product-settings,.product-local{background:rgba(255,249,237,.57)}
+.overview-hero{background:rgba(255,249,237,.61);border-color:rgba(67,53,45,.1)}
+.overview-stats{background:rgba(255,249,237,.5);border-color:rgba(67,53,45,.09)}
+.opportunity-panel{background:rgba(255,249,237,.4);border-color:rgba(67,53,45,.09)}
+.agent-panel{background:rgba(215,196,227,.56)}.focus-panel{background:rgba(189,217,194,.57)}.next-move{background:rgba(243,190,160,.55)}
+.overview-intro h2{letter-spacing:-.052em}.overview-intro h2 em{letter-spacing:-.035em}.overview-intro>p{line-height:1.68;color:var(--ink-2)}
+.overview-actions{margin-top:21px}.overview-actions button{min-height:43px}
+.overview-stats article>div>span{font-size:7px;letter-spacing:.08em}.overview-stats article>strong{letter-spacing:-.045em}.overview-stats article>p{line-height:1.45}
+.product-panel header h3,.focus-panel h3,.next-move strong{letter-spacing:-.032em}.opportunity-name small{line-height:1.35}.agent-timeline strong{font-size:9px}.agent-timeline small{font-size:7px;line-height:1.4}
+.board-session{border-bottom-color:rgba(202,103,88,.16)}.board-session>p b{background:rgba(242,217,149,.55)}
+.orbit-core{background:rgba(242,217,149,.9)}.orbit-node{background:rgba(255,249,237,.76)}
+.product-sidebar nav button,.product-command-trigger,.product-notify,.product-run,.overview-actions button,.next-move>button,.opportunity-row,.orbit-node,.next-checklist>span{transition-duration:.3s;transition-timing-function:cubic-bezier(.22,1,.36,1)}
+.overview-hero,.overview-stats,.overview-grid>.product-panel{animation-duration:.78s;animation-timing-function:cubic-bezier(.22,1,.36,1)}
+.signal-orbit:not(.scanning) .orbit-core{animation-duration:4.6s}.opportunity-wave i{animation-duration:2.4s}
+.orbit-node:hover{transform:translateY(-2px);background:rgba(255,249,237,.94)}
+.opportunity-row:hover{transform:translateX(2px)}.overview-stats article:hover{transform:translateY(-2px)!important}
+.product-run:hover:not(:disabled),.product-notify:hover{transform:translateY(-1px)}
+
+@keyframes board-enter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
 @media(prefers-reduced-motion:reduce){
   .product-app *,.product-app *:before,.product-app *:after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}
 }
