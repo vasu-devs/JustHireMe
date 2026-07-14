@@ -180,6 +180,57 @@
 .product-notify{width:40px;height:40px;border:1px solid rgba(64,53,47,.16);border-radius:10px;background:rgba(237,197,207,.52);box-shadow:none}.product-notify:hover{transform:translateY(-1px)}
 .product-run{height:40px;min-width:118px;border:1px solid rgba(64,53,47,.18);border-radius:10px;background:rgba(190,220,199,.72);box-shadow:none}.product-run:hover:not(:disabled){transform:translateY(-1px);box-shadow:none}
 
+/* Softer composition: connected surfaces, asymmetric paper, fewer boxes. */
+.overview-hero{border-color:rgba(64,53,47,.11);outline:0;border-radius:28px 12px 30px 16px;background:rgba(255,250,241,.54)}
+.overview-hero:before{opacity:.72}.overview-actions button{border-radius:999px;padding-left:17px;padding-right:17px}
+.overview-stats{grid-template-columns:repeat(4,1fr);gap:0;margin-top:18px;padding:43px 9px 9px;border:1px solid rgba(64,53,47,.1);border-radius:22px 9px 24px 13px;background:rgba(255,250,241,.42)}
+.overview-stats:before{left:18px;top:16px}
+.overview-stats article{min-height:104px!important;padding:16px 18px!important;border:0!important;border-right:1px dashed rgba(64,53,47,.15)!important;border-radius:0!important;background:transparent!important;outline:0!important;backdrop-filter:none!important}
+.overview-stats article:last-child{border-right:0!important}.overview-stats article:after{display:none}
+.overview-stats article:nth-child(n){border-top:0!important}.overview-stats article>i{bottom:9px;left:18px;right:18px;width:var(--fill);max-width:calc(100% - 36px);border-radius:999px}
+.overview-grid>.product-panel{border-color:rgba(64,53,47,.1);outline:0;backdrop-filter:blur(10px) saturate(1.03)}
+.opportunity-panel{border:0;border-top:1px solid rgba(64,53,47,.1);border-bottom:1px solid rgba(64,53,47,.1);border-radius:0!important;background:rgba(255,250,241,.32)}
+.opportunity-panel>header{background:transparent}.opportunity-head{border-top:1px solid rgba(64,53,47,.08)}
+.opportunity-row{position:relative;border-bottom-style:dashed}.opportunity-row:after{content:"";position:absolute;left:0;top:13px;bottom:13px;width:3px;border-radius:4px;background:transparent;transition:background-color .2s,transform .2s}
+.opportunity-row:hover:after{background:var(--coral);transform:translateX(2px)}
+.agent-panel{border-radius:38px 12px 30px 18px/20px 34px 16px 30px!important}.focus-panel{border-radius:14px 42px 18px 34px/32px 18px 38px 16px!important}.next-move{border-radius:34px 16px 44px 12px/18px 38px 20px 34px!important}
+.focus-tags span{border-radius:999px}.next-move>button{border-radius:999px}
+.product-panel,.kanban-lane,.kanban-card,.overview-stats,.overview-hero{box-shadow:none!important}
+.kanban-lane{border-radius:20px 9px 22px 12px}.kanban-card{border-radius:15px 7px 17px 10px}
+.view-toolbar-actions>button,.view-toolbar-actions label{border-radius:999px}
+
+/* Marker-and-paper motion system. */
+.overview-hero{animation:board-enter .65s cubic-bezier(.2,.8,.2,1) both}
+.overview-stats{animation:board-enter .65s .1s cubic-bezier(.2,.8,.2,1) both}
+.overview-grid>.product-panel{animation:board-enter .62s cubic-bezier(.2,.8,.2,1) both}
+.overview-grid>.product-panel:nth-child(1){animation-delay:.17s}.overview-grid>.product-panel:nth-child(2){animation-delay:.24s}.overview-grid>.product-panel:nth-child(3){animation-delay:.31s}.overview-grid>.product-panel:nth-child(4){animation-delay:.38s}
+.board-diagram-links>path{stroke-dasharray:7 6;animation:marker-draw 1.15s cubic-bezier(.4,0,.2,1) both}
+.board-diagram-links>path:nth-of-type(2){animation-delay:.12s}.board-diagram-links>path:nth-of-type(3){animation-delay:.22s}.board-diagram-links>path:nth-of-type(4){animation-delay:.32s}
+.signal-orbit:not(.scanning) .orbit-core{animation:match-breathe 3.4s ease-in-out infinite}
+.orbit-node{transition:transform .25s cubic-bezier(.2,.8,.2,1),background-color .2s,border-color .2s}.orbit-node:hover{transform:translateY(-4px) rotate(-1deg);background:rgba(255,250,241,.92);border-color:rgba(64,53,47,.16)}
+.overview-stats article>i{transform-origin:left center;animation:metric-grow .9s .32s cubic-bezier(.2,.8,.2,1) both}
+.overview-stats article{transition:background-color .22s,transform .22s}.overview-stats article:hover{background:rgba(255,250,241,.52)!important;transform:translateY(-2px)}
+.opportunity-wave i{transform-origin:center bottom;animation:signal-bars 1.8s ease-in-out infinite}.opportunity-wave i:nth-child(2n){animation-delay:-.7s}.opportunity-wave i:nth-child(3n){animation-delay:-1.2s}
+.opportunity-row>svg,.overview-actions button svg,.next-move>button svg,.sidebar-brief button svg{transition:transform .2s cubic-bezier(.2,.8,.2,1)}
+.opportunity-row:hover>svg,.overview-actions button:hover svg,.next-move>button:hover svg,.sidebar-brief button:hover svg{transform:translateX(4px)}
+.next-checklist>span{transition:padding .2s,background-color .2s}.next-checklist>span:hover{padding-left:5px;padding-right:5px;background:rgba(255,250,241,.38)}
+.next-checklist i{animation:check-pop .45s cubic-bezier(.2,.9,.3,1.4) both}.next-checklist>span:nth-child(2) i{animation-delay:.12s}.next-checklist>span:nth-child(3) i{animation-delay:.24s}
+.product-sidebar nav button.active:before{animation:nav-marker-in .32s cubic-bezier(.2,.9,.3,1.2) both}
+.product-sidebar nav button,.product-command-trigger,.product-notify,.product-run,.overview-actions button,.next-move>button{transition:transform .2s cubic-bezier(.2,.8,.2,1),background-color .2s,border-color .2s}
+.product-sidebar nav button:active,.product-command-trigger:active,.product-notify:active,.product-run:active,.overview-actions button:active,.next-move>button:active{transform:scale(.97)}
+
+@keyframes board-enter{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes marker-draw{from{stroke-dashoffset:80;opacity:.15}to{stroke-dashoffset:0;opacity:1}}
+@keyframes match-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
+@keyframes metric-grow{from{transform:scaleX(0);opacity:.3}to{transform:scaleX(1);opacity:.76}}
+@keyframes signal-bars{0%,100%{transform:scaleY(.72);opacity:.42}50%{transform:scaleY(1.08);opacity:.78}}
+@keyframes check-pop{from{opacity:0;transform:scale(.45) rotate(-12deg)}to{opacity:1;transform:none}}
+@keyframes nav-marker-in{from{transform:scaleY(.15);opacity:0}to{transform:none;opacity:1}}
+
+@media(prefers-reduced-motion:reduce){
+  .product-app *,.product-app *:before,.product-app *:after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}
+}
+
 @media(max-width:1100px){
   .overview-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"shortlist shortlist" "activity activity" "focus next"}
   .agent-timeline{grid-template-columns:repeat(4,minmax(0,1fr));gap:0 12px}
