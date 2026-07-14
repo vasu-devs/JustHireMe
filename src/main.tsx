@@ -4,6 +4,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import DemoApp from "./demo/DemoApp";
 import ErrorBoundary from "./shared/components/ErrorBoundary";
 import { initTheme } from "./shared/lib/theme";
 import "./index.css";
@@ -31,12 +32,13 @@ try {
   const root = document.getElementById("root");
   if (!root) throw new Error("Missing #root mount node");
 
+  const demoMode = new URLSearchParams(window.location.search).get("demo") === "1";
   ReactDOM.createRoot(root).render(
     <React.StrictMode>
       {/* Last-resort boundary: the try/catch below only covers the synchronous
           initial render, not crashes on later re-renders. */}
       <ErrorBoundary label="JustHireMe">
-        <App />
+        {demoMode ? <DemoApp /> : <App />}
       </ErrorBoundary>
     </React.StrictMode>,
   );
