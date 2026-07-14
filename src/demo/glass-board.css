@@ -145,6 +145,9 @@
 .product-sidebar{padding:13px 12px 12px;overflow:hidden}
 .product-logo{height:57px;padding:0 7px 10px 9px;gap:9px;border-bottom:1px solid rgba(64,53,47,.13)}
 .product-logo>span{width:32px;height:34px;border-radius:9px;background:var(--coral);box-shadow:none}
+.product-logo>.product-brand-mark{display:grid;place-items:center;overflow:hidden;border:1px solid rgba(67,53,45,.18);border-radius:13px 8px 14px 9px;background:rgba(255,249,237,.84)}
+.product-brand-mark img{display:block;width:31px;height:31px;object-fit:contain;transform:rotate(-2deg);transition:transform .35s cubic-bezier(.22,1,.36,1)}
+.product-logo:hover .product-brand-mark img{transform:rotate(2deg) scale(1.06)}
 .product-wordmark strong{font-size:17px}.product-wordmark small{font:600 6px ProductMono;text-transform:uppercase;letter-spacing:.11em;color:var(--ink-3)}
 .product-logo i{margin-left:auto;margin-top:0;align-self:center;padding:3px 6px;border:1px solid rgba(64,53,47,.2);border-radius:10px;background:rgba(190,220,199,.56);font-size:5px;color:var(--ink-2)}
 .product-space{min-height:62px;margin:12px 2px 0;padding:9px 10px;gap:9px;border:1px solid rgba(64,53,47,.16);border-radius:12px;background:rgba(255,250,241,.58);box-shadow:none}

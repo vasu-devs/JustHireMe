@@ -1,5 +1,6 @@
 import { DemoIcon } from "../DemoIcon";
 import type { ProductView } from "../DemoApp";
+import brandMark from "../../assets/brand/justhireme-mark.png";
 
 const items: Array<{ label: ProductView; icon: string; hint: string; tone: string; badge?: string }> = [
   { label: "Overview", icon: "overview", hint: "Home board", tone: "peach" },
@@ -11,7 +12,7 @@ const items: Array<{ label: ProductView; icon: string; hint: string; tone: strin
 
 export function ProductSidebar({ view, onChange, open, onClose }: { view: ProductView; onChange: (value: ProductView) => void; open: boolean; onClose: () => void }) {
   return <aside className={`product-sidebar ${open ? "open" : ""}`}>
-    <div className="product-logo"><span>J</span><div className="product-wordmark"><strong>JustHireMe</strong><small>search workspace</small></div><i>private</i><button onClick={onClose} aria-label="Close navigation"><DemoIcon name="close" /></button></div>
+    <div className="product-logo"><span className="product-brand-mark"><img src={brandMark} alt="" /></span><div className="product-wordmark"><strong>JustHireMe</strong><small>opportunity studio</small></div><i>private</i><button onClick={onClose} aria-label="Close navigation"><DemoIcon name="close" /></button></div>
     <div className="product-space"><span className="product-avatar">VS</span><div><small>Active vision board</small><strong>Vasudev’s search</strong><em>July sprint · Week 29</em></div><DemoIcon name="chevron" /></div>
     <nav aria-label="Product navigation">
       <p><span>Workspace</span><i>5 rooms</i></p>
