@@ -18,8 +18,8 @@ class BoardScanResult:
 
 @retry(
     retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
-    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    stop=stop_after_attempt(2),
     reraise=True,
 )
 async def run_actor(actor: str, inp: dict, token: str) -> list:

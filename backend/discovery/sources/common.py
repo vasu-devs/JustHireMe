@@ -97,8 +97,8 @@ def text_lead(item: dict, default_kind: str = "job") -> dict:
 
 @retry(
     retry=retry_if_exception(_is_retryable_source_error),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
-    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    stop=stop_after_attempt(2),
     reraise=True,
 )
 async def json_get(url: str, params: dict | None = None) -> dict | list:
@@ -118,8 +118,8 @@ async def json_get(url: str, params: dict | None = None) -> dict | list:
 
 @retry(
     retry=retry_if_exception(_is_retryable_source_error),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
-    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    stop=stop_after_attempt(2),
     reraise=True,
 )
 async def xml_get(url: str, params: dict | None = None) -> str:

@@ -299,20 +299,34 @@ async def _run_scan_inner(
     scout_errors: list[str] = []
     batch_size = int_cfg(cfg, "board_scan_batch_size", 4, 1, 12)
     batches = _target_batches(urls, batch_size)
-    for batch_index, batch in enumerate(batches, start=1):
-        if stop_event.is_set():
-            break
-        try:
-            scout_result = await discovery_service.scan_job_boards(batch, cfg)
-            leads.extend(scout_result.leads)
-            _merge_scan_usage(scout_usage, scout_result.usage or {}, len(batch))
-            scout_errors.extend(scout_result.errors or [])
-        except Exception as exc:
+    # Batches are independent (per-thread SQLite connections, per-call result
+    # sinks in the scout), so run a few at once. Bounded because each in-flight
+    # batch can hold a live Chromium.
+    board_semaphore = asyncio.Semaphore(int_cfg(cfg, "board_scan_concurrency", 3, 1, 8))
+
+    async def _scan_batch(batch_index: int, batch: list[str]):
+        async with board_semaphore:
+            if stop_event.is_set():
+                return None
+            try:
+                return ("ok", batch, await discovery_service.scan_job_boards(batch, cfg))
+            except Exception as exc:
+                detail = str(exc).strip() or type(exc).__name__
+                record_error("source_fetch_failed", detail, "api.discovery")
+                return ("err", batch, f"board batch {batch_index}/{len(batches)} skipped ({len(batch)} targets): {detail}")
+
+    for outcome in await asyncio.gather(*(_scan_batch(i, b) for i, b in enumerate(batches, start=1))):
+        if outcome is None:
+            continue
+        kind, batch, payload = outcome
+        if kind == "ok":
+            leads.extend(payload.leads)
+            _merge_scan_usage(scout_usage, payload.usage or {}, len(batch))
+            scout_errors.extend(payload.errors or [])
+        else:
             scout_usage["configured"] += len(batch)
             scout_usage["errors"] += len(batch)
-            detail = str(exc).strip() or type(exc).__name__
-            scout_errors.append(f"board batch {batch_index}/{len(batches)} skipped ({len(batch)} targets): {detail}")
-            record_error("source_fetch_failed", detail, "api.discovery")
+            scout_errors.append(payload)
 
     await manager.broadcast({
         "type": "agent",

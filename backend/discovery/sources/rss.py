@@ -172,8 +172,8 @@ def rss_company_and_role(title: str, platform: str) -> tuple[str, str]:
 
 @retry(
     retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
-    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    stop=stop_after_attempt(2),
     reraise=True,
 )
 async def scrape_rss(u: str) -> list:
@@ -216,8 +216,8 @@ async def scrape_rss(u: str) -> list:
 
 @retry(
     retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
-    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    stop=stop_after_attempt(2),
     reraise=True,
 )
 async def scrape_remoteok() -> list:
@@ -269,8 +269,8 @@ async def scrape_remoteok() -> list:
 
 @retry(
     retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
-    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    stop=stop_after_attempt(2),
     reraise=True,
 )
 async def scrape_remotive(u: str) -> list:
@@ -322,8 +322,8 @@ async def scrape_remotive(u: str) -> list:
 
 @retry(
     retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
-    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    stop=stop_after_attempt(2),
     reraise=True,
 )
 async def scrape_jobicy_api(u: str) -> list:
