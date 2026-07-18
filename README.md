@@ -70,7 +70,7 @@ JustHireMe's stable core is the local-first desktop workbench, Python sidecar AP
 | Python sidecar API | Stable |
 | Scraper, ranking, vector matching, and customizer core | Supported open-source scope |
 | Windows installer (`.exe`) | Released every version |
-| macOS installer (`.dmg` + `.app`) | Released every version (ad-hoc signed, **not yet notarized** — Gatekeeper may need "Open Anyway") |
+| macOS installer (`.dmg` + `.app`) | Released every version (ad-hoc signed, **not yet notarized** — Gatekeeper may need "Open Anyway"; see [docs/INSTALL_MACOS.md](docs/INSTALL_MACOS.md)) |
 | Linux packages (`.deb` + AppImage) | Released every version |
 | Auto-update | Built in; the app updates itself from the latest GitHub release |
 | Thin installer + first-run runtime | Installer is ~100 MB; the heavy runtime (browser + vector libs + embedding model) downloads once on first run, then is cached |
