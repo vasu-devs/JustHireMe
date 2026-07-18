@@ -934,6 +934,22 @@ fn spawn_sidecar(handle: AppHandle, restart_count: u8) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Linux/WebKitGTK: the DMA-BUF renderer aborts webview rendering on a
+    // range of Arch-family setups (CachyOS reports in #162/#177 show
+    // "Could not create default EGL display: EGL_BAD_PARAMETER. Aborting...",
+    // leaving a blank window while the sidecar runs fine). Disabling the
+    // DMA-BUF renderer falls back to the stable software/GL path. Users can
+    // opt back in with JHM_KEEP_DMABUF=1, and an explicit user-set value for
+    // the WebKit variable is always respected.
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
+            && std::env::var_os("JHM_KEEP_DMABUF").is_none()
+        {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
+    }
+
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
