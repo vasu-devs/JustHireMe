@@ -1,242 +1,161 @@
-import { useEffect, useMemo, useState } from "react";
-import Icon from "../../shared/components/Icon";
-import { LeadFilterBar } from "./components/LeadFilterBar";
-import { PipelineJobCard, PipelineSkeleton } from "./components/JobCard";
-import type { ApiFetch, Lead, LeadSort, PipelineTab, SeniorityFilter } from "../../types";
-import { PAGE_SIZE, leadSearchText, sortLeads, seniorityMatches, uniqueLeadValues } from "../../shared/lib/leadUtils";
+import { useMemo, useState } from "react";
+import { DemoIcon } from "../../demo/DemoIcon";
+import type { ApiFetch, Lead, PipelineTab, View } from "../../types";
+import { leadDisplayHeading, leadSearchText, leadSignal } from "../../shared/lib/leadUtils";
 
-export function PipelineView({ leads, openDrawer, deleteLead, port, api, scanning, reevaluating, cleaning, onReevaluate, onStopReevaluate, onCleanup, loading, error, tab }: {
-  leads: Lead[]; openDrawer: (l: Lead) => void;
-  deleteLead: (id: string) => void; port: number | null; api: ApiFetch | null;
-  scanning: boolean; reevaluating: boolean; cleaning: boolean; onReevaluate: () => void; onStopReevaluate: () => void; onCleanup: () => void;
-  loading: boolean; error: string | null;
+type BoardLane = "Discovered" | "Tailoring" | "Ready" | "Applied" | "Discarded";
+
+const LANES: Array<{ id: BoardLane; hint: string; next?: string }> = [
+  { id: "Discovered", hint: "Needs review", next: "tailoring" },
+  { id: "Tailoring", hint: "Assets in progress", next: "approved" },
+  { id: "Ready", hint: "Waiting for you", next: "applied" },
+  { id: "Applied", hint: "Follow-up tracked" },
+];
+
+const PIPELINE_FILTERS: Array<{ label: string; view: View }> = [
+  { label: "All", view: "pipeline" },
+  { label: "Hot", view: "pipeline-hot" },
+  { label: "New", view: "pipeline-found" },
+  { label: "Rated", view: "pipeline-evaluated" },
+  { label: "Ready", view: "pipeline-generated" },
+  { label: "Applied", view: "pipeline-applied" },
+  { label: "Discarded", view: "pipeline-discarded" },
+];
+
+function laneFor(lead: Lead): BoardLane {
+  if (lead.status === "discarded" || lead.status === "rejected") return "Discarded";
+  if (["applied", "interviewing", "accepted"].includes(lead.status)) return "Applied";
+  if (lead.status === "approved") return "Ready";
+  if (lead.status === "tailoring" || lead.score > 0 || (lead.signal_score || 0) > 0) return "Tailoring";
+  return "Discovered";
+}
+
+export function PipelineView({
+  leads,
+  openDrawer,
+  deleteLead,
+  api,
+  scanning,
+  reevaluating,
+  cleaning,
+  onReevaluate,
+  onStopReevaluate,
+  loading,
+  error,
+  tab,
+  setView,
+}: {
+  leads: Lead[];
+  openDrawer: (lead: Lead) => void;
+  deleteLead: (id: string) => void;
+  port: number | null;
+  api: ApiFetch | null;
+  scanning: boolean;
+  reevaluating: boolean;
+  cleaning: boolean;
+  onReevaluate: () => void;
+  onStopReevaluate: () => void;
+  onCleanup: () => void;
+  loading: boolean;
+  error: string | null;
   tab: PipelineTab;
+  setView: (view: View) => void;
 }) {
-  const [search, setSearch] = useState("");
-  const [platform, setPlatform] = useState("");
-  const [sort, setSort] = useState<LeadSort>("recommended");
-  const [seniority, setSeniority] = useState<SeniorityFilter>("all");
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const [bulkSelecting, setBulkSelecting] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [exporting, setExporting] = useState(false);
-  const [exportErr, setExportErr] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [moving, setMoving] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => setVisibleCount(PAGE_SIZE), [tab, search, platform, sort, seniority]);
-  useEffect(() => {
-    setBulkSelecting(false);
-    setSelected(new Set());
-  }, [tab]);
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    let rows = needle ? leads.filter(lead => leadSearchText(lead).includes(needle)) : leads;
+    if (tab === "hot") rows = rows.filter(lead => leadSignal(lead) >= 80);
+    if (tab === "found") rows = rows.filter(lead => laneFor(lead) === "Discovered");
+    if (tab === "evaluated") rows = rows.filter(lead => lead.score > 0 || (lead.signal_score || 0) > 0);
+    if (tab === "generated") rows = rows.filter(lead => ["Tailoring", "Ready"].includes(laneFor(lead)));
+    if (tab === "applied") rows = rows.filter(lead => laneFor(lead) === "Applied");
+    if (tab === "discarded") rows = rows.filter(lead => laneFor(lead) === "Discarded");
+    return [...rows].sort((a, b) => leadSignal(b) - leadSignal(a));
+  }, [leads, query, tab]);
 
-  const platforms = useMemo(() => uniqueLeadValues(leads, "platform"), [leads]);
-
-  const tabs = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const keep = (lead: Lead) => {
-      if (q && !leadSearchText(lead).includes(q)) return false;
-      if (platform && lead.platform !== platform) return false;
-      if (!seniorityMatches(lead, seniority)) return false;
-      return true;
-    };
-    const apply = (arr: Lead[]) => sortLeads(arr.filter(keep), sort);
-    const tabItems: { id: PipelineTab; label: string; tone: string; leads: Lead[] }[] = [
-      { id: "all",       label: "All",       tone: "teal",   leads: apply(leads) },
-      { id: "hot",       label: "Hot",       tone: "orange", leads: apply(leads.filter(l => (l.signal_score || 0) >= 80 || (l.score || 0) >= 85)) },
-      { id: "found",     label: "New",       tone: "blue",   leads: apply(leads.filter(l => l.status === "discovered")) },
-      { id: "evaluated", label: "Rated",     tone: "yellow", leads: apply(leads.filter(l => l.score > 0 || (l.signal_score || 0) > 0)) },
-      { id: "generated", label: "Ready",     tone: "purple", leads: apply(leads.filter(l => l.status === "tailoring" || l.status === "approved")) },
-      { id: "applied",   label: "Applied",   tone: "orange", leads: apply(leads.filter(l => l.status === "applied")) },
-      { id: "discarded", label: "Discarded", tone: "bad",    leads: apply(leads.filter(l => l.status === "discarded")) },
-    ];
-    return tabItems;
-  }, [leads, search, platform, sort, seniority]);
-
-  const activeTab = tabs.find(t => t.id === tab) || tabs[0];
-  const visibleLeads = activeTab.leads.slice(0, visibleCount);
-  const hasFilters = Boolean(search || platform || seniority !== "all" || sort !== "recommended");
-  const busyLabel = scanning ? "Scanning for new leads" : reevaluating ? "Re-evaluating fit scores" : cleaning ? "Cleaning bad data" : "";
-
-  const toggleSelect = (id: string) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const bulkDelete = async () => {
-    if (!window.confirm(`Delete ${selected.size} leads?`)) return;
-    const count = selected.size;
-    const results = await Promise.allSettled([...selected].map(id => Promise.resolve(deleteLead(id))));
-    const failed = results.filter(r => r.status === "rejected").length;
-    if (failed > 0) alert(`${failed} of ${count} deletions failed. Refreshing list.`);
-    setSelected(new Set());
-    setBulkSelecting(false);
-    window.dispatchEvent(new CustomEvent("leads-refresh"));
-  };
-
-  const bulkMarkApplied = async () => {
-    if (!api || selected.size === 0) return;
-    const ids = [...selected];
-    const results = await Promise.allSettled(ids.map(id => api(`/api/v1/leads/${id}/status`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "applied" }),
-    })));
-    const failed = results.filter(r => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok)).length;
-    if (failed > 0) alert(`${failed} of ${ids.length} jobs could not be marked as applied.`);
-    ids.forEach(job_id => window.dispatchEvent(new CustomEvent("lead-updated", { detail: { job_id, status: "applied" } })));
-    setSelected(new Set());
-    setBulkSelecting(false);
-    window.dispatchEvent(new CustomEvent("leads-refresh"));
-  };
-
-  const exportCsv = async () => {
-    if (!api || exporting) return;
-    setExporting(true);
-    setExportErr(null);
+  const moveLead = async (lead: Lead, nextStatus: string) => {
+    if (!api || moving) return;
+    setMoving(lead.job_id);
+    setActionError(null);
     try {
-      const res = await api("/api/v1/leads/export.csv");
-      if (!res.ok) throw new Error(`Export failed (${res.status})`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "jhm_pipeline.csv";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      setExportErr(e instanceof Error ? e.message : "Export failed");
+      const response = await api(`/api/v1/leads/${lead.job_id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (!response.ok) throw new Error(`Move failed (${response.status})`);
+      window.dispatchEvent(new CustomEvent("lead-updated", { detail: { ...lead, status: nextStatus } }));
+      window.dispatchEvent(new CustomEvent("leads-refresh"));
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Could not move this role");
     } finally {
-      setExporting(false);
+      setMoving(null);
     }
   };
 
-  return (
-    <div className="pipeline-page">
-      <div className="pipeline-top">
-        {(busyLabel || error || exportErr) && (
-          <div className={`pipeline-notice ${error || exportErr ? "error" : ""}`}>
-            {error || exportErr ? <Icon name="x" size={13} /> : <span className="dot pulse-soft" />}
-            <span>{error || exportErr || busyLabel}</span>
-          </div>
-        )}
+  const active = filtered.filter(lead => laneFor(lead) !== "Discarded");
+  const boardRows = tab === "discarded" ? filtered : active;
+  const boardLanes: Array<{ id: BoardLane; hint: string; next?: string }> = tab === "discarded"
+    ? [{ id: "Discarded", hint: "Set aside for a reason" }]
+    : LANES;
+  const readyCount = active.filter(lead => laneFor(lead) === "Ready").length;
+  const discardedCount = filtered.filter(lead => laneFor(lead) === "Discarded").length;
+  const busy = scanning || reevaluating || cleaning;
 
-        <LeadFilterBar
-          search={search}
-          setSearch={setSearch}
-          platform={platform}
-          setPlatform={setPlatform}
-          sort={sort}
-          setSort={setSort}
-          seniority={seniority}
-          setSeniority={setSeniority}
-          platforms={platforms}
-          total={activeTab.leads.length}
-          shown={Math.min(visibleCount, activeTab.leads.length)}
-          label="jobs"
-          actions={(
-            <>
-              <button className="btn" onClick={exportCsv} disabled={!api || exporting || loading}>
-                {exporting ? "Exporting..." : "Export"}
-              </button>
-              {bulkSelecting ? (
-                <>
-                  <button className="btn" onClick={bulkMarkApplied} disabled={!api || selected.size === 0 || loading}>
-                    <Icon name="check" size={13} /> Mark applied {selected.size}
-                  </button>
-                  <button className="btn" onClick={() => { setBulkSelecting(false); setSelected(new Set()); }}>Cancel</button>
-                </>
-              ) : (
-                <button className="btn" onClick={() => setBulkSelecting(true)} disabled={activeTab.leads.length === 0 || loading}>
-                  <Icon name="check" size={13} /> Select
-                </button>
-              )}
-              {reevaluating ? (
-                <button className="btn danger" onClick={onStopReevaluate}>
-                  <Icon name="x" size={13} /> Stop re-eval
-                </button>
-              ) : (
-                <button className="btn" onClick={onReevaluate} disabled={leads.length === 0 || scanning || cleaning || loading}>
-                  <Icon name="pulse" size={13} /> Re-eval
-                </button>
-              )}
-              <button className="btn danger-soft" onClick={onCleanup} disabled={leads.length === 0 || scanning || reevaluating || cleaning || loading}>
-                <Icon name="trash" size={13} /> {cleaning ? "Cleaning" : "Clean"}
-              </button>
-              {tab === "discarded" && (
-                bulkSelecting ? (
-                  <button className="btn danger" onClick={bulkDelete} disabled={selected.size === 0}>Delete {selected.size}</button>
-                ) : (
-                  <button className="btn" onClick={() => setBulkSelecting(true)} disabled={activeTab.leads.length === 0}>Bulk delete</button>
-                )
-              )}
-            </>
-          )}
-        />
-      </div>
-
-      <div className="pipeline-content scroll">
-        <div className="pipeline-results-head">
-          <div>
-            <h3>{activeTab.label}</h3>
-            <p>{hasFilters ? "Filtered results" : "All matching leads"} - showing {Math.min(visibleCount, activeTab.leads.length)} of {activeTab.leads.length}</p>
-          </div>
-          {bulkSelecting && (
-            <span className={`pipeline-selected mono ${tab === "discarded" ? "danger" : "applied"}`}>
-              {selected.size} selected
-            </span>
-          )}
-        </div>
-        {loading ? (
-          <PipelineSkeleton />
-        ) : activeTab.leads.length === 0 ? (
-          <div className="pipeline-empty">
-            <Icon name={hasFilters ? "filter" : "search"} size={18} />
-            <h3>{hasFilters ? "No leads match these filters" : `No ${activeTab.label.toLowerCase()} jobs yet`}</h3>
-            <p>{hasFilters ? "Clear filters or lower the score thresholds." : "Run a scan from the dashboard or customize a pasted job to start filling this lane."}</p>
-          </div>
-        ) : (
-          <div className="pipeline-list">
-            {visibleLeads.map(lead => (
-              <div key={lead.job_id} className="pipeline-list-item">
-                {bulkSelecting && (
-                  <div
-                    className="pipeline-select-box"
-                    onClick={() => toggleSelect(lead.job_id)}
-                    style={{
-                      borderColor: selected.has(lead.job_id) ? (tab === "discarded" ? "var(--bad)" : "var(--orange)") : "var(--line)",
-                      background: selected.has(lead.job_id) ? (tab === "discarded" ? "var(--bad)" : "var(--orange)") : "var(--paper)",
-                    }}
-                  >
-                    {selected.has(lead.job_id) && <Icon name="check" size={11} color="#fff" />}
-                  </div>
-                )}
-                <PipelineJobCard
-                  lead={lead}
-                  onOpen={openDrawer}
-                  onDelete={deleteLead}
-                  showGenerate={tab === "evaluated"}
-                  port={port}
-                  api={api}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-        {activeTab.leads.length > visibleCount && (
-          <div className="row" style={{ justifyContent: "center", marginTop: 18 }}>
-            <button className="btn" onClick={() => setVisibleCount(v => v + PAGE_SIZE)}>
-              Show next {Math.min(PAGE_SIZE, activeTab.leads.length - visibleCount)} of {activeTab.leads.length}
-            </button>
-          </div>
-        )}
+  return <div className="pipeline-view product-enter production-pipeline-exact scroll">
+    <div className="view-toolbar">
+      <div><span className="product-eyebrow">Your application board</span><h2>Roles in <em>motion</em></h2><span className="toolbar-scribble">keep these close ✦</span></div>
+      <div className="view-toolbar-actions">
+        <label><DemoIcon name="search" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Filter roles…" /></label>
+        <button onClick={reevaluating ? onStopReevaluate : onReevaluate} disabled={busy && !reevaluating}><DemoIcon name="tune" />{reevaluating ? "Stop review" : "Re-score"}</button>
+        <button className="toolbar-primary" onClick={() => setView("apply")}><DemoIcon name="plus" />Add role</button>
       </div>
     </div>
-  );
-}
 
-/* ══════════════════════════════════════
-   PENTAGON GRAPH COMPONENT
-══════════════════════════════════════ */
+    <div className="pipeline-summary">
+      <span><i />{active.length} active roles</span>
+      <span><mark className="diary-highlight pink">{readyCount} ready for review</mark></span>
+      <span>{discardedCount} set aside</span>
+      <div className="board-presence"><b>VS</b><b>AI</b><small>Live review session</small></div>
+      <button className="active">Board <kbd>B</kbd></button><button onClick={() => setView(tab === "all" ? "pipeline-hot" : "pipeline")}>Focus <kbd>F</kbd></button>
+    </div>
+
+    <nav className="production-pipeline-lanes" aria-label="Pipeline views">
+      {PIPELINE_FILTERS.map(item => {
+        const selected = item.view === "pipeline" ? tab === "all" : item.view.endsWith(tab);
+        return <button key={item.view} className={selected ? "active" : ""} onClick={() => setView(item.view)}>{item.label}</button>;
+      })}
+    </nav>
+
+    {(error || actionError) && <div className="pipeline-notice error"><DemoIcon name="close" /><span>{error || actionError}</span></div>}
+    {loading ? <div className="kanban-loading">Opening your live application board…</div> : <div className={`kanban-board ${tab === "discarded" ? "is-single" : ""}`}>
+      {boardLanes.map((lane, laneIndex) => {
+        const laneLeads = boardRows.filter(lead => laneFor(lead) === lane.id);
+        return <section className={`kanban-lane lane-${lane.id.toLowerCase()}`} key={lane.id}>
+          <header><div><span>{lane.id}</span><b>{laneLeads.length}</b></div><small>{lane.hint}</small><button aria-label={`Add to ${lane.id}`} onClick={() => setView("apply")}><DemoIcon name="plus" /></button></header>
+          <div className="kanban-cards">
+            {laneLeads.map(lead => {
+              const { role, company } = leadDisplayHeading(lead);
+              return <article className="kanban-card" key={lead.job_id}>
+                <button className="kanban-open" onClick={() => openDrawer(lead)}>
+                  <span className={`opportunity-logo ${["coral", "blue", "violet", "green"][laneIndex]}`}>{company.slice(0, 1).toUpperCase()}</span>
+                  <DemoIcon name="more" /><strong>{role}</strong><small>{company} · {lead.location || lead.platform || "Remote"}</small>
+                </button>
+                <div className="kanban-tags"><span>{leadSignal(lead)}% match</span><span>{lead.platform || "direct"}</span></div>
+                <div className="kanban-foot"><span><i />{lead.status}</span><div>
+                  <button onClick={() => { if (window.confirm(`Remove ${role}?`)) Promise.resolve(deleteLead(lead.job_id)).catch(cause => setActionError(String(cause))); }} title="Remove role"><DemoIcon name="close" /></button>
+                  {lane.next && <button onClick={() => moveLead(lead, lane.next!)} disabled={moving === lead.job_id} title={`Move to ${LANES[laneIndex + 1]?.id}`}><DemoIcon name="arrow" /></button>}
+                </div></div>
+              </article>;
+            })}
+            {laneLeads.length === 0 && <div className="kanban-empty"><span>Drop roles here</span><small>No opportunities in this stage</small></div>}
+          </div>
+        </section>;
+      })}
+    </div>}
+  </div>;
+}

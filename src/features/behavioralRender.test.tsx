@@ -64,7 +64,8 @@ describe("high-risk component behavioral render coverage", () => {
       />,
     );
 
-    expect(html).toContain("Agent Online");
+    expect(html).toContain("Find work");
+    expect(html).toContain("One thing before 4 PM");
     expect(html).toContain("Acme AI");
     expect(html).toContain("Backend Engineer");
   });

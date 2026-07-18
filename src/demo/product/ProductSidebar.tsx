@@ -10,7 +10,7 @@ const items: Array<{ label: ProductView; icon: string; hint: string; tone: strin
   { label: "Profile", icon: "profile", hint: "Evidence map", tone: "lilac" },
 ];
 
-export function ProductSidebar({ view, onChange, open, onClose }: { view: ProductView; onChange: (value: ProductView) => void; open: boolean; onClose: () => void }) {
+export function ProductSidebar({ view, onChange, open, onClose, onSettings }: { view: ProductView; onChange: (value: ProductView) => void; open: boolean; onClose: () => void; onSettings: () => void }) {
   return <aside className={`product-sidebar ${open ? "open" : ""}`}>
     <div className="product-logo"><span className="product-brand-mark"><img src={brandMark} alt="" /></span><div className="product-wordmark"><strong>JustHireMe</strong><small>opportunity studio</small></div><i>private</i><button onClick={onClose} aria-label="Close navigation"><DemoIcon name="close" /></button></div>
     <div className="product-space"><span className="product-avatar">VS</span><div><small>Active vision board</small><strong>Vasudev’s search</strong><em>July sprint · Week 29</em></div><DemoIcon name="chevron" /></div>
@@ -21,7 +21,7 @@ export function ProductSidebar({ view, onChange, open, onClose }: { view: Produc
     <div className="product-sidebar-spacer" />
     <div className="sidebar-brief"><span>Pinned insight</span><strong>Three roles cleared your evidence bar.</strong><button onClick={() => { onChange("Overview"); onClose(); }}>Open shortlist <DemoIcon name="arrow" /></button></div>
     <div className="product-health"><div className="product-health-ring"><i /><i /><span>96</span></div><div><strong>Profile signal</strong><small>Excellent coverage</small></div></div>
-    <button className="product-settings"><DemoIcon name="settings" /><span>Settings</span><kbd>⌘,</kbd></button>
+    <button className="product-settings" onClick={onSettings} aria-label="Settings"><DemoIcon name="settings" /><span>Settings</span><kbd>⌘,</kbd></button>
     <div className="product-local"><span /><p><strong>Local engine</strong><small>All systems nominal</small></p></div>
   </aside>;
 }

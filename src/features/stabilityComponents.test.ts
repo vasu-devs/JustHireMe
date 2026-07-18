@@ -25,7 +25,9 @@ describe("FIX.md frontend stability contracts", () => {
     expect(dashboard).toContain("onScan");
     expect(dashboard).toContain("onReevaluate");
     expect(dashboard).toContain("onCleanup");
-    expect(dashboard).toContain("Agent Online");
+    // Journal redesign: the live agent-status surface is the "Scout kept
+    // watch" line (was "Agent Online" in the pre-journal dashboard).
+    expect(dashboard).toContain("Scout kept watch");
   });
 
   it("keeps job cards actionable from the pipeline", () => {
@@ -34,20 +36,21 @@ describe("FIX.md frontend stability contracts", () => {
     expect(jobCard).toContain("/generate");
   });
 
-  it("locks profile deletes to one confirmed backend deletion at a time", () => {
-    // Rapid delete clicks must not fire concurrent backend DELETEs. Keep the
-    // active row visible with a loader, disable other delete buttons, then
-    // refresh the profile before another delete can start.
-    expect(profile).toContain("deleteInFlightRef");
-    expect(profile).toContain("setDeletingItem");
-    expect(profile).toContain("Deleting...");
-    expect(profile).toContain("disabled={isDeleting}");
+  it("keeps the profile dossier read surface wired", () => {
+    // REDESIGN NOTE (2026-07): the dossier redesign removed per-item profile
+    // deletion from this view entirely, so the old single-flight delete
+    // contract (deleteInFlightRef / "Deleting...") has no subject anymore.
+    // If item management returns (e.g. via "Edit skills"), restore the
+    // rapid-click guard contract with it — concurrent backend DELETEs from
+    // double clicks were a real bug class. Until then, pin the surfaces the
+    // dossier must keep.
+    expect(profile).toContain("/api/v1/profile");
+    expect(profile).toContain("Recheck profile");
     expect(profile).not.toContain("deleteQueueRef");
   });
 
   it("keeps profile and ingestion flows connected to their API contracts", () => {
     expect(profile).toContain("/api/v1/profile");
-    expect(profile).toContain("profileDeletePath");
     expect(ingestion).toContain("/api/v1/ingest");
     expect(ingestion).toContain("/api/v1/template");
   });

@@ -1,35 +1,31 @@
-import { useState } from "react";
-import Icon from "./Icon";
+import { DemoIcon } from "../../demo/DemoIcon";
+import brandMark from "../../assets/brand/justhireme-mark.svg";
 import type { LeadCounts, View } from "../../types";
-import { useAppVersion } from "../hooks/useAppVersion";
 
-const NAV = [
-  { id: "dashboard", label: "Dashboard", icon: "home", tone: "blue" },
-  { id: "apply", label: "Customize Job", icon: "spark", tone: "green" },
-  { id: "graph", label: "Knowledge", icon: "graph", tone: "green" },
-  { id: "activity", label: "Activity", icon: "pulse", tone: "orange" },
-  { id: "profile", label: "Profile", icon: "user", tone: "pink" },
-  { id: "ingestion", label: "Add Context", icon: "plus", tone: "teal" },
+type RailItem = {
+  label: string;
+  hint: string;
+  icon: string;
+  tone: string;
+  view: View;
+  badge?: keyof LeadCounts;
+  active: (view: View) => boolean;
+};
+
+const ITEMS: RailItem[] = [
+  { label: "Overview", hint: "Home board", icon: "overview", tone: "peach", view: "dashboard", active: view => view === "dashboard" },
+  { label: "Pipeline", hint: "Application flow", icon: "inbox", tone: "blue", view: "pipeline", badge: "total", active: view => view === "pipeline" || view.startsWith("pipeline-") },
+  { label: "Scout", hint: "Agent journal", icon: "radar", tone: "mint", view: "activity", badge: "hot", active: view => view === "activity" },
+  { label: "Tailor", hint: "Asset workshop", icon: "tailor", tone: "pink", view: "apply", active: view => view === "apply" },
+  { label: "Knowledge", hint: "Evidence atlas", icon: "graph", tone: "blue", view: "graph", active: view => view === "graph" },
+  { label: "Profile", hint: "Evidence garden", icon: "profile", tone: "lilac", view: "profile", active: view => view === "profile" },
+  { label: "Context", hint: "Add evidence", icon: "context", tone: "peach", view: "ingestion", active: view => view === "ingestion" },
 ];
-
-const PIPELINE_NAV = [
-  { id: "pipeline", label: "All", countKey: "total", tone: "teal" },
-  { id: "pipeline-hot", label: "Hot", countKey: "hot", tone: "orange" },
-  { id: "pipeline-found", label: "New", countKey: "discovered", tone: "blue" },
-  { id: "pipeline-evaluated", label: "Rated", countKey: "evaluated", tone: "yellow" },
-  { id: "pipeline-generated", label: "Ready", countKey: "ready", tone: "purple" },
-  { id: "pipeline-applied", label: "Applied", countKey: "applied", tone: "orange" },
-  { id: "pipeline-discarded", label: "Discarded", countKey: "discarded", tone: "bad" },
-];
-
-const isPipelineView = (view: View) => view === "pipeline" || view.startsWith("pipeline-");
 
 export function Sidebar({
   view,
   setView,
   leadCounts,
-  collapsed,
-  onToggleCollapsed,
   onSettings,
 }: {
   view: View;
@@ -39,164 +35,35 @@ export function Sidebar({
   onToggleCollapsed: () => void;
   onSettings: () => void;
 }) {
-  const [pipelineOpen, setPipelineOpen] = useState(true);
-  const pipelineActive = isPipelineView(view);
-  const appVersion = useAppVersion();
+  return <aside className="product-sidebar production-product-sidebar">
+    <div className="product-logo">
+      <span className="product-brand-mark"><img src={brandMark} alt="JustHireMe" /></span>
+      <div className="product-wordmark"><strong>JustHireMe</strong><small>opportunity studio</small></div>
+    </div>
 
-  return (
-    <aside className={"sidebar " + (collapsed ? "collapsed" : "")}>
-      <div className="sidebar-brand">
-        <div className="row gap-3 sidebar-brand-main">
-          <Icon name="logo" size={32} />
-          <div className="col sidebar-label" style={{ lineHeight: 1.1 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.02em" }}>JustHireMe</div>
-            <div className="mono app-version-label">v{appVersion}</div>
-          </div>
-        </div>
-        <button
-          className="btn btn-icon sidebar-collapse-btn"
-          onClick={onToggleCollapsed}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-expanded={!collapsed}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+    <nav aria-label="Product navigation">
+      <p><span>Workspace</span><i>7 rooms</i></p>
+      {ITEMS.map(item => {
+        const selected = item.active(view);
+        const badge = item.badge ? Number(leadCounts[item.badge] || 0) : 0;
+        return <button
+          key={item.label}
+          className={selected ? "active" : ""}
+          aria-current={selected ? "page" : undefined}
+          aria-label={badge ? `${item.label} ${badge}` : item.label}
+          title={item.hint}
+          onClick={() => setView(item.view)}
         >
-          <Icon name="arrow-right" size={14} style={{ transform: collapsed ? "none" : "rotate(180deg)" }} />
-        </button>
-      </div>
+          <span className={`nav-stamp ${item.tone}`}><DemoIcon name={item.icon} /></span>
+          <span className="nav-copy"><strong>{item.label}</strong><small>{item.hint}</small></span>
+          {badge > 0 && <b>{badge}</b>}
+        </button>;
+      })}
+    </nav>
 
-      <div className="eyebrow sidebar-section-label">Workspace</div>
-      <div className="col gap-1">
-        {NAV.slice(0, 2).map(n => {
-          const active = view === n.id;
-          return (
-            <button
-              key={n.id}
-              className={"nav-item " + (active ? "active" : "")}
-              onClick={() => setView(n.id as View)}
-              title={collapsed ? n.label : undefined}
-              aria-label={n.label}
-            >
-              <div
-                className="nav-icon"
-                style={{
-                  background: active ? `var(--${n.tone})` : "var(--paper-3)",
-                  color: active ? `var(--${n.tone}-ink)` : "var(--ink-2)",
-                }}
-              >
-                <Icon name={n.icon} size={14} stroke={1.8} />
-              </div>
-              <span className="nav-label">{n.label}</span>
-            </button>
-          );
-        })}
-
-        <div className={"nav-group " + (pipelineActive ? "active" : "")}>
-          <button
-            className={"nav-item nav-group-trigger " + (pipelineActive ? "active" : "")}
-            onClick={() => {
-              if (collapsed) {
-                setView("pipeline");
-                return;
-              }
-              setPipelineOpen(value => !value);
-              if (!pipelineActive) setView("pipeline");
-            }}
-            title={collapsed ? "Job Pipeline" : undefined}
-            aria-label="Job Pipeline"
-            aria-expanded={pipelineOpen && !collapsed}
-          >
-            <div
-              className="nav-icon"
-              style={{
-                background: pipelineActive ? "var(--purple)" : "var(--paper-3)",
-                color: pipelineActive ? "var(--purple-ink)" : "var(--ink-2)",
-              }}
-            >
-              <Icon name="layers" size={14} stroke={1.8} />
-            </div>
-            <span className="nav-label">Job Pipeline</span>
-            <span
-              className="mono tabular nav-count"
-              style={{
-                color: pipelineActive ? "var(--purple-ink)" : "var(--ink-3)",
-                background: pipelineActive ? "var(--purple)" : "var(--paper-3)",
-              }}
-            >
-              {leadCounts.total || 0}
-            </span>
-            <Icon name="arrow-right" size={12} style={{ transform: pipelineOpen ? "rotate(90deg)" : "none" }} />
-          </button>
-
-          {pipelineOpen && !collapsed && (
-            <div className="pipeline-subnav" aria-label="Pipeline lanes">
-              {PIPELINE_NAV.map(item => {
-                const active = view === item.id;
-                const count = leadCounts[item.countKey] || 0;
-                const soft = item.tone === "bad" ? "var(--bad-soft)" : `var(--${item.tone}-soft)`;
-                const ink = item.tone === "bad" ? "var(--bad)" : `var(--${item.tone}-ink)`;
-                return (
-                  <button
-                    key={item.id}
-                    className={"pipeline-subnav-item " + (active ? "active" : "")}
-                    onClick={() => setView(item.id as View)}
-                    style={active ? { background: soft, color: ink, borderColor: item.tone === "bad" ? "var(--bad)" : `var(--${item.tone})` } : undefined}
-                  >
-                    <span>{item.label}</span>
-                    <b className="mono tabular">{count}</b>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {NAV.slice(2).map(n => {
-          const active = view === n.id;
-          return (
-            <button
-              key={n.id}
-              className={"nav-item " + (active ? "active" : "")}
-              onClick={() => setView(n.id as View)}
-              title={collapsed ? n.label : undefined}
-              aria-label={n.label}
-            >
-              <div
-                className="nav-icon"
-                style={{
-                  background: active ? `var(--${n.tone})` : "var(--paper-3)",
-                  color: active ? `var(--${n.tone}-ink)` : "var(--ink-2)",
-                }}
-              >
-                <Icon name={n.icon} size={14} stroke={1.8} />
-              </div>
-              <span className="nav-label">{n.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="eyebrow sidebar-section-label snapshot-label">Snapshot</div>
-      <div className="sidebar-snapshot">
-        {[
-          ["Ready", "green", leadCounts.approved],
-          ["Applied", "orange", leadCounts.applied],
-          ["Interview", "pink", leadCounts.interviewing],
-        ].map(([label, tone, n]) => (
-          <div key={label as string} className="sidebar-snapshot-item" title={`${label}: ${n || 0}`}>
-            <div className="mono tabular" style={{ fontSize: 15, fontWeight: 800, color: `var(--${tone}-ink)`, lineHeight: 1 }}>{n || 0}</div>
-            <div className="sidebar-snapshot-label">{label}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grow" />
-
-      <div className="sidebar-utility">
-        <button className="btn sidebar-settings-btn" onClick={onSettings} aria-label="Settings" title="Settings">
-          <Icon name="settings" size={15} />
-          <span className="sidebar-label">Settings</span>
-        </button>
-      </div>
-    </aside>
-  );
+    <div className="product-sidebar-spacer" />
+    <button className="product-settings" onClick={onSettings} aria-label="Settings" title="Settings">
+      <DemoIcon name="settings" /><span>Settings</span><kbd>⌘,</kbd>
+    </button>
+  </aside>;
 }

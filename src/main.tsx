@@ -5,9 +5,16 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import DemoApp from "./demo/DemoApp";
+
+// DEV-ONLY visual preview harness (?preview=1). The conditional keeps the
+// dynamic import unreachable in production builds, so it is tree-shaken away.
+const PreviewHarness = import.meta.env.DEV
+  ? React.lazy(() => import("./preview/PreviewHarness"))
+  : null;
 import ErrorBoundary from "./shared/components/ErrorBoundary";
 import { initTheme } from "./shared/lib/theme";
 import "./index.css";
+import "./production-journal.css";
 
 initTheme();
 
@@ -17,7 +24,7 @@ function renderFatalStartupError(error: unknown) {
 
   const message = error instanceof Error ? error.message : String(error);
   root.innerHTML = `
-    <div style="min-height:100vh;display:grid;place-items:center;background:#f6f3ec;color:#201b16;padding:24px;font-family:Inter,Segoe UI,Arial,sans-serif">
+    <div style="min-height:100vh;display:grid;place-items:center;background:#f6f3ec;color:#201b16;padding:24px;font-family:Instrument Sans,Segoe UI,Arial,sans-serif">
       <section style="width:min(720px,100%);background:#fffdf8;border:1px solid #ded8cc;border-radius:12px;padding:28px;box-shadow:0 18px 48px rgba(32,27,22,.08)">
         <div style="font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#7b7165">JustHireMe startup error</div>
         <h1 style="font-size:28px;line-height:1.15;margin:10px 0 12px">The app shell could not finish loading</h1>
@@ -32,13 +39,17 @@ try {
   const root = document.getElementById("root");
   if (!root) throw new Error("Missing #root mount node");
 
-  const demoMode = new URLSearchParams(window.location.search).get("demo") === "1";
+  const search = new URLSearchParams(window.location.search);
+  const demoMode = search.get("demo") === "1";
+  const previewMode = Boolean(PreviewHarness) && search.get("preview") === "1";
   ReactDOM.createRoot(root).render(
     <React.StrictMode>
       {/* Last-resort boundary: the try/catch below only covers the synchronous
           initial render, not crashes on later re-renders. */}
       <ErrorBoundary label="JustHireMe">
-        {demoMode ? <DemoApp /> : <App />}
+        {previewMode && PreviewHarness
+          ? <React.Suspense fallback={null}><PreviewHarness /></React.Suspense>
+          : demoMode ? <DemoApp /> : <App />}
       </ErrorBoundary>
     </React.StrictMode>,
   );

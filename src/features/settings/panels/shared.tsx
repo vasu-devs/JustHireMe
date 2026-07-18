@@ -17,7 +17,7 @@ export interface Cfg {
   azure_openai_api_key: string; azure_model: string; azure_openai_endpoint: string;
   custom_api_key: string; custom_model: string; custom_base_url: string;
   ollama_url: string;
-  claude_cli_model: string; codex_cli_model: string; gemini_cli_model: string; copilot_cli_model: string;
+  claude_cli_model: string; codex_cli_model: string; gemini_cli_model: string; antigravity_cli_model: string; copilot_cli_model: string;
   scout_provider: string;     scout_api_key: string;     scout_model: string;
   evaluator_provider: string; evaluator_api_key: string; evaluator_model: string;
   generator_provider: string; generator_api_key: string; generator_model: string;
@@ -46,7 +46,7 @@ export const EMPTY: Cfg = {
   azure_openai_api_key: "", azure_model: "gpt-4o-mini", azure_openai_endpoint: "",
   custom_api_key: "", custom_model: "model-id", custom_base_url: "https://api.openai.com/v1",
   ollama_url: "http://localhost:11434/v1",
-  claude_cli_model: "claude-sonnet-4-6", codex_cli_model: "", gemini_cli_model: "", copilot_cli_model: "",
+  claude_cli_model: "claude-sonnet-4-6", codex_cli_model: "", gemini_cli_model: "", antigravity_cli_model: "", copilot_cli_model: "",
   scout_provider: "", scout_api_key: "", scout_model: "",
   evaluator_provider: "", evaluator_api_key: "", evaluator_model: "",
   generator_provider: "", generator_api_key: "", generator_model: "",
@@ -65,6 +65,7 @@ export const PROVIDERS = [
   { id: "claude_cli", label: "Claude · sub", tone: "purple", sub: "Your plan" },
   { id: "codex_cli",  label: "Codex · sub",  tone: "blue",   sub: "Your plan" },
   { id: "gemini_cli", label: "Gemini · sub", tone: "orange", sub: "Your plan" },
+  { id: "antigravity_cli", label: "Antigravity · sub", tone: "orange", sub: "Your plan" },
   { id: "copilot_cli", label: "Copilot · sub", tone: "green", sub: "Your plan" },
   { id: "gemini",    label: "Gemini",    tone: "green",  sub: "2.5 Flash" },
   { id: "deepseek",  label: "DeepSeek",  tone: "teal",   sub: "V3 / R1"   },
@@ -90,7 +91,7 @@ export const PROVIDERS = [
 ];
 
 // Providers that use the user's own logged-in CLI subscription (no API key).
-export const SUBSCRIPTION_PROVIDERS = new Set(["claude_cli", "codex_cli", "gemini_cli", "copilot_cli"]);
+export const SUBSCRIPTION_PROVIDERS = new Set(["claude_cli", "codex_cli", "gemini_cli", "antigravity_cli", "copilot_cli"]);
 export const isSubscriptionProvider = (id: string) => SUBSCRIPTION_PROVIDERS.has(id);
 
 export const MODEL_HINTS: Record<string, string[]> = {
@@ -123,7 +124,8 @@ export const MODEL_HINTS: Record<string, string[]> = {
   // override is rejected.
   codex_cli:  ["", "gpt-5.5"],
   // "" = let the CLI use your plan's default model.
-  gemini_cli: ["", "gemini-2.5-pro", "gemini-2.5-flash"],
+  gemini_cli: ["", "gemini-3.5-pro", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.5-flash"],
+  antigravity_cli: ["", "gemini-3.5-pro", "gemini-3.5-flash"],
   copilot_cli: ["", "claude-sonnet-4.5", "gpt-5.3-codex", "claude-haiku-4.5"],
 };
 
@@ -212,6 +214,7 @@ export const GLOBAL_MODEL_FIELD: Record<string, keyof Cfg> = {
   claude_cli: "claude_cli_model",
   codex_cli: "codex_cli_model",
   gemini_cli: "gemini_cli_model",
+  antigravity_cli: "antigravity_cli_model",
   copilot_cli: "copilot_cli_model",
 };
 
@@ -251,21 +254,21 @@ export function SectionLabel({ label, sub }: { label: string; sub?: string }) {
 
 export function ProviderPills({ value, onChange, small }: { value: string; onChange: (v: string) => void; small?: boolean }) {
   return (
-    <div style={{ display: "flex", gap: small ? 5 : 7, flexWrap: "wrap" }}>
+    <div className={`provider-pills ${small ? "is-small" : ""}`} style={{ display: "flex", gap: small ? 5 : 7, flexWrap: "wrap" }}>
       {PROVIDERS.map(p => {
         const active = value === p.id;
         return (
-          <button key={p.id} onClick={() => onChange(p.id)} style={{
+          <button className={active ? "active" : ""} key={p.id} onClick={() => onChange(p.id)} style={{
             padding: small ? "5px 10px" : "10px 12px", borderRadius: small ? 8 : 11, cursor: "pointer",
             background: active ? `var(--${p.tone}-soft)` : "var(--card)",
             border: `1.5px solid ${active ? `var(--${p.tone})` : "var(--line)"}`,
             display: "flex", flexDirection: "column", alignItems: "center",
             gap: small ? 2 : 5, transition: "all .15s ease", minWidth: small ? 0 : 78,
           }}>
-            <div style={{ fontSize: small ? 12 : 13, fontWeight: 600, color: active ? `var(--${p.tone}-ink)` : "var(--ink-2)" }}>
+            <div className="provider-pill-label" style={{ fontSize: small ? 12 : 13, fontWeight: 600, color: active ? `var(--${p.tone}-ink)` : "var(--ink-2)" }}>
               {p.label}
             </div>
-            {!small && <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--ink-3)" }}>{p.sub}</div>}
+            {!small && <div className="provider-pill-sub" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--ink-3)" }}>{p.sub}</div>}
           </button>
         );
       })}

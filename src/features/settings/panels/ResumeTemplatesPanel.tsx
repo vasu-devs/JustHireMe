@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { SectionLabel } from "./shared";
+import { settingsApi } from "../../../api/settings";
 import type { ApiFetch } from "../../../types";
+
+/** Visual looks for the generated resume PDF (backend STYLE_PRESETS, #90). */
+const STYLE_PRESETS = [
+  { id: "classic", label: "Classic", sub: "navy · centered" },
+  { id: "harvard", label: "Harvard", sub: "serif · traditional" },
+  { id: "modern", label: "Modern", sub: "warm · left-aligned" },
+] as const;
 
 export interface ResumeTemplate {
   id: string;
@@ -17,7 +25,33 @@ export function ResumeTemplatesPanel({ api }: { api: ApiFetch }) {
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [stylePreset, setStylePreset] = useState("classic");
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    settingsApi.get(api)
+      .then(res => res.json())
+      .then(body => {
+        if (!cancelled && typeof body?.resume_style_preset === "string" && body.resume_style_preset) {
+          setStylePreset(body.resume_style_preset);
+        }
+      })
+      .catch(() => { /* keep the classic default when settings can't load */ });
+    return () => { cancelled = true; };
+  }, [api]);
+
+  const chooseStyle = async (id: string) => {
+    const previous = stylePreset;
+    setStylePreset(id);
+    try {
+      const res = await settingsApi.save(api, { resume_style_preset: id });
+      if (!res.ok) throw new Error(`Save failed (${res.status})`);
+    } catch (err) {
+      setStylePreset(previous);
+      setError(err instanceof Error ? err.message : "Could not save style");
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -77,6 +111,25 @@ export function ResumeTemplatesPanel({ api }: { api: ApiFetch }) {
 
   return (
     <div>
+      <SectionLabel label="Visual style" sub="how the generated resume PDF looks — colors, typeface, and alignment" />
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+        {STYLE_PRESETS.map(p => (
+          <button
+            key={p.id}
+            onClick={() => void chooseStyle(p.id)}
+            aria-pressed={stylePreset === p.id}
+            style={{
+              padding: "10px 16px", borderRadius: 12, cursor: "pointer", textAlign: "left",
+              border: stylePreset === p.id ? "1.5px solid var(--accent)" : "1px solid var(--line)",
+              background: stylePreset === p.id ? "var(--accent-soft)" : "var(--paper)",
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 13 }}>{p.label}</div>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{p.sub}</div>
+          </button>
+        ))}
+      </div>
+
       <SectionLabel label="Resume Templates" sub="upload your own resumes (PDF/DOCX) as reusable style guides — the generator mimics the one you pick per job" />
 
       <input

@@ -334,14 +334,14 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
   ) : null;
 
   return (
-    <div className="drawer-backdrop" onClick={onClose} style={{ zIndex: 100, display: "grid", placeItems: "center", padding: 12, overflow: "hidden" }}>
-      <motion.div className="card"
-        initial={{ opacity: 0, y: 24, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 18, scale: 0.985 }}
-        transition={{ type: "spring", damping: 28, stiffness: 260 }}
+    <div className="drawer-backdrop production-drawer-backdrop" onClick={onClose} style={{ zIndex: 100, display: "grid", placeItems: "center", padding: 12, overflow: "hidden" }}>
+      <motion.div className="card production-approval-modal"
+        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+        transition={{ duration: .18, ease: [.22, 1, .36, 1] }}
         onClick={e => e.stopPropagation()}
         style={{ width: "min(1480px, calc(100vw - 24px))", height: "calc(100dvh - 24px)", maxHeight: "calc(100dvh - 24px)", display: "flex", flexDirection: "column", background: "var(--paper)", zIndex: 101, overflow: "hidden", borderRadius: 18 }}>
 
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "18px 22px 16px", borderBottom: "1px solid var(--line)", flexShrink: 0, gap: 16, background: "var(--paper)", flexWrap: "wrap" }}>
+        <div className="production-approval-head" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "18px 22px 16px", borderBottom: "1px solid var(--line)", flexShrink: 0, gap: 16, background: "var(--paper)", flexWrap: "wrap" }}>
           <div style={{ minWidth: 0 }}>
             <div className="row gap-2" style={{ marginBottom: 7, flexWrap: "wrap" }}>
               <span className="pill" style={{ background: `var(--${getTone(j.status)})`, color: `var(--${getTone(j.status)}-ink)` }}>{j.status}</span>

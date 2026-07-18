@@ -11,6 +11,8 @@ import { ProductProfile } from "./product/ProductProfile";
 import { ProductCommand } from "./product/ProductCommand";
 import { ProductDrawer } from "./product/ProductDrawer";
 import { DemoIcon } from "./DemoIcon";
+import SettingsModal from "../features/settings/SettingsModal";
+import type { ApiFetch } from "../types";
 import "./product.css";
 import "./handdrawn.css";
 import "./polish.css";
@@ -18,8 +20,26 @@ import "./diary.css";
 import "./board.css";
 import "./glass-board.css";
 import "./clarity.css";
+import "./theme.css";
+import "./atelier.css";
 
 export type ProductView = "Overview" | "Pipeline" | "Scout" | "Tailor" | "Profile";
+export type ThemeMode = "light" | "dark";
+
+const demoApi: ApiFetch = async () => new Response(JSON.stringify({}), {
+  status: 200,
+  headers: { "Content-Type": "application/json" },
+});
+
+const getInitialTheme = (): ThemeMode => {
+  try {
+    const saved = window.localStorage.getItem("justhireme-demo-theme");
+    if (saved === "light" || saved === "dark") return saved;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  } catch {
+    return "light";
+  }
+};
 
 export default function DemoApp() {
   const [view, setView] = useState<ProductView>("Overview");
@@ -29,13 +49,21 @@ export default function DemoApp() {
   const [menu, setMenu] = useState(false);
   const [agentRunning, setAgentRunning] = useState(false);
   const [toast, setToast] = useState("");
+  const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
+  const [settings, setSettings] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.dataset.demoTheme = theme;
+    try { window.localStorage.setItem("justhireme-demo-theme", theme); } catch { /* local persistence is optional */ }
+    return () => { delete document.documentElement.dataset.demoTheme; };
+  }, [theme]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault(); setPalette(value => !value);
       }
-      if (event.key === "Escape") { setPalette(false); setSelected(null); setMenu(false); }
+      if (event.key === "Escape") { setPalette(false); setSelected(null); setMenu(false); setSettings(false); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -59,12 +87,12 @@ export default function DemoApp() {
     notify(`Moved to ${stage}`);
   };
 
-  return <div className="product-app">
+  return <div className="product-app" data-theme={theme}>
     <a className="product-skip" href="#product-content">Skip to workspace</a>
-    <ProductSidebar view={view} onChange={setView} open={menu} onClose={() => setMenu(false)} />
+    <ProductSidebar view={view} onChange={setView} open={menu} onClose={() => setMenu(false)} onSettings={() => setSettings(true)} />
     {menu && <button className="product-scrim" onClick={() => setMenu(false)} aria-label="Close navigation" />}
     <div className="product-shell">
-      <ProductTopbar view={view} agentRunning={agentRunning} onRun={runAgent} onCommand={() => setPalette(true)} onMenu={() => setMenu(true)} />
+      <ProductTopbar view={view} theme={theme} onThemeToggle={() => setTheme(current => current === "light" ? "dark" : "light")} agentRunning={agentRunning} onRun={runAgent} onCommand={() => setPalette(true)} onMenu={() => setMenu(true)} />
       <main id="product-content" className="product-content">
         {view === "Overview" && <ProductOverview jobs={jobs} onSelect={setSelected} onNavigate={setView} onRun={runAgent} agentRunning={agentRunning} />}
         {view === "Pipeline" && <ProductPipeline jobs={jobs} onSelect={setSelected} onMove={moveJob} />}
@@ -75,6 +103,7 @@ export default function DemoApp() {
     </div>
     {palette && <ProductCommand jobs={jobs} onClose={() => setPalette(false)} onNavigate={value => { setView(value); setPalette(false); }} onSelect={job => { setSelected(job); setPalette(false); }} />}
     {selected && <ProductDrawer job={selected} onClose={() => setSelected(null)} onMove={stage => { moveJob(selected.id, stage); setSelected({ ...selected, stage }); }} notify={notify} />}
+    {settings && <SettingsModal api={demoApi} onClose={() => setSettings(false)} />}
     <div className={`product-toast ${toast ? "show" : ""}`} role="status"><span><DemoIcon name="check" />{toast}</span><button onClick={() => setToast("")} aria-label="Dismiss"><DemoIcon name="close" /></button></div>
   </div>;
 }

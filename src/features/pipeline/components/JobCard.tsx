@@ -48,7 +48,7 @@ export function JobCard({ lead, onOpen, onDelete, showScore = false, showGenerat
   useEffect(() => () => requestRef.current?.abort(), []);
 
   return (
-    <div className="card lift" style={{
+    <div className="card lift production-pipeline-card" style={{
       padding: 16, cursor: "pointer", border: "1px solid var(--line)",
       background: "var(--card)", display: "flex", flexDirection: "column", gap: 10,
     }} onClick={() => onOpen(lead)}>

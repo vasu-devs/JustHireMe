@@ -28,12 +28,19 @@ export function resolveTheme(pref: ThemePref): ResolvedTheme {
   return pref === "system" ? systemTheme() : pref;
 }
 
+/** Cross-instance sync: every useTheme() call site keeps its own React state,
+    so a toggle in one component (Topbar) must notify the others (App, which
+    stamps data-theme on the .product-app shell). Without this, the root tokens
+    flip while the shell attribute goes stale — a half-themed, unreadable UI. */
+export const THEME_EVENT = "jhm-theme";
+
 /** Apply the resolved theme to <html> so the CSS token overrides take effect. */
 export function applyTheme(pref: ThemePref): ResolvedTheme {
   const resolved = resolveTheme(pref);
   const root = document.documentElement;
   root.dataset.theme = resolved;
   root.style.colorScheme = resolved;
+  window.dispatchEvent(new CustomEvent<ResolvedTheme>(THEME_EVENT, { detail: resolved }));
   return resolved;
 }
 
@@ -74,6 +81,16 @@ export function useTheme() {
     mql.addEventListener("change", onChange);
     return () => mql.removeEventListener("change", onChange);
   }, [pref]);
+
+  // Follow theme changes made by OTHER useTheme() instances (see THEME_EVENT).
+  useEffect(() => {
+    const onTheme = (event: Event) => {
+      setResolved((event as CustomEvent<ResolvedTheme>).detail);
+      setPrefState(getStoredPref());
+    };
+    window.addEventListener(THEME_EVENT, onTheme);
+    return () => window.removeEventListener(THEME_EVENT, onTheme);
+  }, []);
 
   return { pref, resolved, setPref };
 }

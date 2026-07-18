@@ -1,14 +1,50 @@
 @import "tailwindcss";
 
 /* ══════════════════════════════════════════════════
+   BRAND FACES — self-hosted (local-first: the app must
+   render its identity with zero network, so no CDN fonts).
+   Instrument Serif ships a single 400 master; declaring
+   100–900 maps every requested weight onto it and prevents
+   faux-bold synthesis.
+══════════════════════════════════════════════════ */
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("/fonts/InstrumentSerif-Regular.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("/fonts/InstrumentSerif-Italic.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("/fonts/InstrumentSans-Variable.ttf") format("truetype-variations");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/GeistMono-Variable.ttf") format("truetype-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ══════════════════════════════════════════════════
    DESIGN TOKENS
 ══════════════════════════════════════════════════ */
 @theme {
-  --paper:    #F4F3EE;
-  --paper-2:  #EDEBE3;
-  --paper-3:  #E4E1D7;
-  --paper-4:  #D8D4C7;
-  --card:     #FFFFFF;
+  --paper:    #F6F2E9;
+  --paper-2:  #EFE9DC;
+  --paper-3:  #E6DFD0;
+  --paper-4:  #DAD2C0;
+  --card:     #FDFBF5;
 
   --ink:      #1F1A14;
   --ink-2:    #4A463E;
@@ -64,10 +100,10 @@
   --shadow-md:  0 6px 18px rgba(31,26,20,0.08);
   --shadow-lg:  0 18px 60px rgba(31,26,20,0.12), 0 4px 16px rgba(31,26,20,0.06);
 
-  --font-sans:    "Inter", system-ui, -apple-system, sans-serif;
-  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
-  --font-display: "Fraunces", "Instrument Serif", ui-serif, Georgia, serif;
-  --font-serif:   "Instrument Serif", "Fraunces", ui-serif, Georgia, serif;
+  --font-sans:    "Instrument Sans", system-ui, -apple-system, sans-serif;
+  --font-mono:    "Geist Mono", ui-monospace, monospace;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-serif:   "Instrument Serif", ui-serif, Georgia, serif;
 
   /* ── RGB channel tokens ──
      Used as rgba(var(--X-rgb), <alpha>) throughout the stylesheet so the many
@@ -78,7 +114,7 @@
   --white-rgb:      255,255,255;
   --black-rgb:      0,0,0;
   --accent-rgb:     201,100,66;
-  --cream-rgb:      244,239,230;
+  --cream-rgb:      246,242,233;
   --coral-rgb:      252,224,200;
   --orange-rgb:     209,120,71;
   --accentred-rgb:  198,61,42;

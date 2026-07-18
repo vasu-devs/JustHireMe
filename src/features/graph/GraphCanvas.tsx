@@ -109,7 +109,16 @@ export function GraphCanvas({ nodes, edges }: { nodes: RawNode[]; edges: RawEdge
   // ── live force simulation, rendered imperatively for smoothness ─────────────
   useEffect(() => {
     setReady(false);
-    if (!simNodes.length) return;
+    if (!simNodes.length) {
+      simRef.current?.stop();
+      simRef.current = null;
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
+      // An empty result is still a completed layout. Leaving `ready` false
+      // suppressed both the loading and empty states and produced a blank board.
+      setReady(true);
+      return;
+    }
     // Resolve the DOM elements React just rendered (stable keys → cached by id).
     const view = viewRef.current;
     nodeElCache.current = new Map();
@@ -267,7 +276,13 @@ export function GraphCanvas({ nodes, edges }: { nodes: RawNode[]; edges: RawEdge
   }, [nodes]);
 
   const showLabel = (type: string, id: string, label: string) =>
-    type !== "Skill" || hoverId === id || selectedId === id || (!!nq && label.toLowerCase().includes(nq)) || (neighbourhood?.has(id) ?? false);
+    type !== "Skill"
+    || simNodes.length <= 30
+    || (degree.get(id) || 0) >= 2
+    || hoverId === id
+    || selectedId === id
+    || (!!nq && label.toLowerCase().includes(nq))
+    || (neighbourhood?.has(id) ?? false);
 
   return (
     <section className="card kg-card" aria-label="Knowledge graph">

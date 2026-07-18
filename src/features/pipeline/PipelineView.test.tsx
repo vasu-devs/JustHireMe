@@ -5,7 +5,8 @@ const source = readFileSync(new URL("./PipelineView.tsx", import.meta.url), "utf
 
 describe("PipelineView critical UI contracts", () => {
   it("renders an empty state for no leads", () => {
-    expect(source).toContain("No leads");
+    // Kanban redesign: per-lane empty state replaced the old flat "No leads".
+    expect(source).toContain("No opportunities in this stage");
   });
 
   it("keeps reevaluation controls wired", () => {

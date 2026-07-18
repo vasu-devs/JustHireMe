@@ -3,6 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import Icon from "../../shared/components/Icon";
 import type { ApiFetch, ContactLookup, KeywordCoverage, Lead } from "../../types";
 import { roleFromLead } from "../../shared/lib/leadUtils";
+import { ProductionViewIntro } from "../../shared/components/ProductionViewIntro";
 
 const CUSTOMIZE_START_TIMEOUT_MS = 10000;
 const CUSTOMIZE_WATCHDOG_MS = 12000;
@@ -220,9 +221,17 @@ export function ApplyJobView({ port, api, leads, openDrawer, initialInput, autoF
   };
 
   return (
-    <div style={{ height: "100%", overflow: "auto", padding: 24 }}>
-      <div style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gridTemplateColumns: liveLead ? "420px minmax(0, 1fr)" : "minmax(0, 880px)", gap: 18, alignItems: "start", justifyContent: "center" }}>
-        <section className="card" style={{ padding: 22, display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="production-apply-page scroll">
+      <ProductionViewIntro
+        index="03"
+        eyebrow="Application workshop"
+        title="Make one application"
+        accent="sound like you."
+        description={<>Bring the real job description. JustHireMe connects it to your evidence and builds a grounded package without inventing a story.</>}
+        note={liveLead ? <><strong>{coveragePct ?? "—"}{coveragePct !== null ? "%" : ""}</strong><span>evidence coverage</span><small>{resumeReady && coverReady ? "package ready" : generating ? "work in progress" : "captured"}</small></> : <><strong>01</strong><span>role at a time</span><small>Paste the complete posting below.</small></>}
+      />
+      <div className="production-apply-workspace" style={{ gridTemplateColumns: liveLead ? "420px minmax(0, 1fr)" : "minmax(0, 880px)" }}>
+        <section className="card production-apply-source" style={{ padding: 22, display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
             <div className="eyebrow">Customize for this job</div>
             <h2 style={{ fontSize: 24, fontWeight: 700, marginTop: 5, marginBottom: 6 }}>Paste the job description.</h2>
@@ -257,7 +266,7 @@ export function ApplyJobView({ port, api, leads, openDrawer, initialInput, autoF
         </section>
 
         {liveLead && (
-          <section style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+          <section className="production-apply-output" style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
             <div className="card" style={{ padding: 18, display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
               <div style={{ minWidth: 0 }}>
               <div className="eyebrow">Customization Package</div>

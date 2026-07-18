@@ -83,7 +83,9 @@ export function HelpChat({ api }: { api: ApiFetch }) {
         </section>
       )}
       <button className="help-chat-fab" onClick={() => setOpen(v => !v)} aria-label="Open help chat">
-        <Icon name="spark" size={18} color="#fff" />
+        {/* currentColor so the theme CSS controls icon contrast (a hardcoded
+            #fff was invisible on the cream fab in dark mode) */}
+        <Icon name="spark" size={18} color="currentColor" />
       </button>
     </div>
   );

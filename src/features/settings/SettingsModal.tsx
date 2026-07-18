@@ -186,36 +186,49 @@ export default function SettingsModal({ api, onClose }: Props) {
 
   return (
     <>
-      <div className="drawer-backdrop" onClick={onClose} style={{ zIndex: 100 }} />
-      <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: "min(720px, 94vw)", maxHeight: "90vh", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 22, boxShadow: "var(--shadow-lg)", zIndex: 101, overflow: "hidden", display: "flex", flexDirection: "column", animation: "slide-up .3s ease" }}>
-        <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--line)", background: "var(--blue-soft)", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+      <div className="drawer-backdrop production-settings-backdrop" onClick={onClose} />
+      <div className="production-settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <header className="production-settings-head">
+          <div className="settings-title-mark"><Icon name="settings" size={19} /></div>
           <div>
-            <div className="eyebrow">Configuration</div>
-            <h2 style={{ fontSize: 26, marginTop: 2 }}>Settings</h2>
-            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 3 }}>Configure local keys, scraper thresholds, ranker behavior, and customization models</div>
+            <div className="eyebrow">Workspace control room</div>
+            <h2 id="settings-title">Settings</h2>
+            <p>Configure the agents, sources, models, and privacy controls behind your search.</p>
           </div>
-          <button className="btn btn-icon" onClick={onClose}><Icon name="x" size={15} /></button>
+          <button className="settings-close" onClick={onClose} aria-label="Close settings"><Icon name="x" size={17} /></button>
+        </header>
+
+        <div className="settings-layout">
+          <aside className="settings-index" aria-label="Settings sections">
+            <span>Configuration map</span>
+            <a href="#settings-appearance"><i>01</i><b>Appearance</b><small>Theme and comfort</small></a>
+            <a href="#settings-intelligence"><i>02</i><b>Intelligence</b><small>Provider and models</small></a>
+            <a href="#settings-workflow"><i>03</i><b>Workflow</b><small>Steps and templates</small></a>
+            <a href="#settings-discovery"><i>04</i><b>Discovery</b><small>Sources and automation</small></a>
+            <a href="#settings-privacy"><i>05</i><b>Privacy</b><small>Local data controls</small></a>
+            <div><Icon name="lock" size={14} /><p><strong>Local-first</strong><small>Keys and evidence stay on this device.</small></p></div>
+          </aside>
+
+          <div className="scroll production-settings-body">
+            <section id="settings-appearance"><AppearanceSettings /></section>
+            <section id="settings-intelligence"><GlobalSettings cfg={cfg} set={set} onChange={onChange} prov={prov} api={api} /></section>
+            <section id="settings-workflow"><ResumeTemplatesPanel api={api} /></section>
+            <section><StepSettings cfg={cfg} onChange={onChange} api={api} /></section>
+            <section id="settings-discovery"><DiscoverySettings cfg={cfg} set={set} onChange={onChange} /></section>
+            <section><AutomationSettings cfg={cfg} onChange={onChange} /></section>
+            <section id="settings-privacy"><LegalSettings /></section>
+            <section><DangerZone api={api} /></section>
+          </div>
         </div>
 
-        <div className="scroll" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 22 }}>
-          <AppearanceSettings />
-          <GlobalSettings cfg={cfg} set={set} onChange={onChange} prov={prov} api={api} />
-          <ResumeTemplatesPanel api={api} />
-          <StepSettings cfg={cfg} onChange={onChange} api={api} />
-          <DiscoverySettings cfg={cfg} set={set} onChange={onChange} />
-          <AutomationSettings cfg={cfg} onChange={onChange} />
-          <LegalSettings />
-          <DangerZone api={api} />
-          <div style={{ height: 6 }} />
-        </div>
-
-        <div style={{ padding: "14px 24px", borderTop: "1px solid var(--line)", background: "var(--paper-2)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+        <footer className="production-settings-footer">
           {saveError && <div style={{ marginRight: "auto", alignSelf: "center", color: "var(--bad)", fontSize: 12, fontWeight: 700 }}>{saveError}</div>}
-          <button className="btn" onClick={onClose} style={{ padding: "9px 20px", fontSize: 13, borderRadius: 10 }}>Cancel</button>
-          <button className="btn btn-accent" onClick={save} disabled={saving} style={{ padding: "9px 26px", fontSize: 13, borderRadius: 10, minWidth: 110 }}>
+          <span className="settings-save-note">Changes only affect this workspace.</span>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-accent" onClick={save} disabled={saving}>
             {saved ? "Saved" : saving ? "Saving..." : "Save settings"}
           </button>
-        </div>
+        </footer>
       </div>
     </>
   );

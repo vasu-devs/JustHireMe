@@ -11,7 +11,10 @@ export function useGraphStats(api: ApiFetch | null) {
     }
     const controller = new AbortController();
     let alive = true;
+    let requestSequence = 0;
+    let repairInFlight = false;
     const load = async (repair = false) => {
+      const requestId = ++requestSequence;
       setStats(prev => ({ ...prev, loading: true, request_error: "" }));
       try {
         const response = await api(`/api/v1/graph${repair ? "?repair=true" : ""}`, { signal: controller.signal, timeoutMs: repair ? 45000 : undefined });
@@ -20,26 +23,37 @@ export function useGraphStats(api: ApiFetch | null) {
           throw new Error(`Graph request failed (${response.status})${detail ? `: ${detail.slice(0, 240)}` : ""}`);
         }
         const data = await response.json();
-        if (!alive) return;
+        if (!alive || requestId !== requestSequence) return;
         setStats({ ...data, loaded: true, loading: false, request_error: "" });
       } catch (error) {
-        if (!alive || controller.signal.aborted || isAbortLikeError(error)) return;
+        if (!alive || requestId !== requestSequence || controller.signal.aborted || isAbortLikeError(error)) return;
         const message = error instanceof Error ? error.message : "Graph request failed";
         setStats(prev => ({ ...prev, loaded: true, loading: false, request_error: message }));
       }
     };
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const refresh = () => {
+      if (repairInFlight) return;
       // Coalesce bursts — a scan broadcasts one lead-updated per scored lead, and
       // each refetch hits the expensive /api/v1/graph snapshot. Debounce so the
       // graph is fetched once after the burst settles instead of N times.
       if (debounceTimer !== null) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => { debounceTimer = null; load(false); }, 800);
     };
+    const repair = () => {
+      if (repairInFlight) return;
+      if (debounceTimer !== null) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      repairInFlight = true;
+      load(true).finally(() => { repairInFlight = false; });
+    };
     load();
     window.addEventListener("lead-updated", refresh);
     window.addEventListener("leads-refresh", refresh);
     window.addEventListener("graph-refresh", refresh);
+    window.addEventListener("graph-repair", repair);
     window.addEventListener("profile-refresh", refresh);
     window.addEventListener("scan-done", refresh);
     window.addEventListener("reevaluate-done", refresh);
@@ -51,6 +65,7 @@ export function useGraphStats(api: ApiFetch | null) {
       window.removeEventListener("lead-updated", refresh);
       window.removeEventListener("leads-refresh", refresh);
       window.removeEventListener("graph-refresh", refresh);
+      window.removeEventListener("graph-repair", repair);
       window.removeEventListener("profile-refresh", refresh);
       window.removeEventListener("scan-done", refresh);
       window.removeEventListener("reevaluate-done", refresh);

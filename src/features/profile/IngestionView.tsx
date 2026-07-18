@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Icon from "../../shared/components/Icon";
 import type { ApiFetch } from "../../types";
+import { ProductionViewIntro } from "../../shared/components/ProductionViewIntro";
 
 async function responseErrorMessage(response: Response, fallback: string) {
   // M3: surface rate-limit cooldown using the standard Retry-After header so
@@ -372,12 +373,20 @@ export function IngestionView({ api }: { api: ApiFetch }) {
 
   return (
     <div className="ingestion-page scroll">
+      <ProductionViewIntro
+        index="07"
+        eyebrow="Evidence intake desk"
+        title="Give Scout"
+        accent="better context."
+        description={<>Add resumes, repositories, portfolio pages, structured exports, and firsthand notes to one append-only evidence record.</>}
+        note={<><strong>{activeTabMeta.label}</strong><span>current source</span><small>Nothing overwrites your existing evidence.</small></>}
+      />
       <div className="ingestion-shell">
         <div className="ingestion-hero">
           <div className="ingestion-hero-copy">
-            <span className="eyebrow">Append-only Pipeline</span>
-            <h2>Add Context</h2>
-            <p>Merge resumes, repos, portfolio pages, exports, and hand-written notes into one clean Identity Graph.</p>
+            <span className="eyebrow">Selected source</span>
+            <h2>{activeTabMeta.label} intake</h2>
+            <p>Add this source to the evidence file, then review the extracted records before using them in applications.</p>
           </div>
           <div className={`ingestion-active-card ingestion-accent-${activeTabMeta.accent}`}>
             <div className="ingestion-active-icon"><Icon name={activeTabMeta.icon} size={18} /></div>
@@ -404,19 +413,19 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         </div>
 
         {status === "done" && (
-          <motion.div initial={{opacity:0,y:-10}} animate={{opacity:1,y:0}} className="ingestion-alert success">
+          <motion.div initial={{opacity:0,y:-6}} animate={{opacity:1,y:0}} transition={{duration:.14, ease:[.22,1,.36,1]}} className="ingestion-alert success">
             <Icon name="check" size={18} /><div style={{fontWeight:600}}>Saved successfully!</div>
           </motion.div>
         )}
         {status === "error" && (
-          <motion.div initial={{opacity:0,y:-10}} animate={{opacity:1,y:0}} className="ingestion-alert error">
+          <motion.div initial={{opacity:0,y:-6}} animate={{opacity:1,y:0}} transition={{duration:.14, ease:[.22,1,.36,1]}} className="ingestion-alert error">
             {errorMessage || "An error occurred."}
           </motion.div>
         )}
 
         {activeTab === "resume" && (
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} className="card col gap-4" style={{ padding: "64px 32px", alignItems: "center", textAlign: "center", border: "2px dashed var(--line)", background: "var(--paper-2)" }}>
-            <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--teal-soft)", color: "var(--teal)", display: "grid", placeItems: "center" }}><Icon name="upload" size={28} /></div>
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{duration:.14}} className="card col gap-4" style={{ padding: "64px 32px", alignItems: "center", textAlign: "center", border: "2px dashed var(--line)", background: "var(--paper-2)" }}>
+            <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--blue-soft)", color: "var(--blue-ink)", display: "grid", placeItems: "center" }}><Icon name="upload" size={28} /></div>
             <div style={{ fontWeight: 600, fontSize: 18 }}>Drop a fresh resume</div>
             <div style={{ fontSize: 14, color: "var(--ink-3)", maxWidth: 360, lineHeight: 1.5 }}>PDF, DOCX, TXT, or Markdown. The ingestion agent discovers skills, roles, and projects and maps them into your graph.</div>
             <input type="file" accept=".pdf,.docx,.txt,.md" onChange={e => e.target.files?.[0] && ingestResume(e.target.files[0])} style={{ display: "none" }} id="resume-in" />
@@ -426,7 +435,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         )}
 
         {activeTab === "manual" && (
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} className="col gap-8">
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{duration:.14}} className="col gap-8">
             <div className="card col gap-4" style={{ padding: 24 }}>
               <h3 style={{ fontSize: 16, fontWeight: 600, display: "flex", gap: 8, alignItems: "center" }}><Icon name="spark" size={16}/> Add Skill</h3>
               <input className="field-input" placeholder="Skill name" value={skillForm.n} onChange={v => setSkillForm({...skillForm, n: v.target.value})} />
@@ -488,7 +497,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         )}
 
         {activeTab === "raw" && (
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} className="card col gap-4" style={{ padding: 24 }}>
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{duration:.14}} className="card col gap-4" style={{ padding: 24 }}>
             <div className="eyebrow">Raw Text Aggregator</div>
             <textarea className="field-input" placeholder="Paste unstructured text from LinkedIn, personal websites, or notes..." rows={16} value={rawText} onChange={v => setRawText(v.target.value)} style={{ fontSize: 14, lineHeight: 1.6 }} />
             <button className="btn btn-primary" style={{ padding: 16, fontSize: 15 }} onClick={ingestRaw} disabled={status==="loading"}>
@@ -498,7 +507,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         )}
 
         {activeTab === "linkedin" && (
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} className="col gap-4">
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{duration:.14}} className="col gap-4">
             <div
               className="card col gap-4"
               style={{ padding: "48px 32px", alignItems: "center", textAlign: "center", border: "2px dashed var(--line)", background: "var(--paper-2)", cursor: "pointer" }}
@@ -511,7 +520,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
               }}
               onClick={() => document.getElementById("linkedin-zip-in")?.click()}
             >
-              <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--teal-soft)", color: "var(--teal)", display: "grid", placeItems: "center" }}><Icon name="upload" size={28} /></div>
+              <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--blue-soft)", color: "var(--blue-ink)", display: "grid", placeItems: "center" }}><Icon name="upload" size={28} /></div>
               <div style={{ fontWeight: 600, fontSize: 18 }}>
                 {linkedinFile ? linkedinFile.name : "Drop your LinkedIn export (.zip) or profile PDF here"}
               </div>
@@ -557,7 +566,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         )}
 
         {activeTab === "github" && (
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} className="col gap-4">
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{duration:.14}} className="col gap-4">
             <div className="card col gap-4" style={{ padding: 24 }}>
               <h3 style={{ fontSize: 16, fontWeight: 600 }}>GitHub username</h3>
               <input className="field-input" placeholder="e.g. torvalds" value={githubUsername}
@@ -640,7 +649,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         )}
 
         {activeTab === "portfolio" && (
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} className="col gap-4">
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{duration:.14}} className="col gap-4">
             <div className="card col gap-4" style={{ padding: 24 }}>
               <h3 style={{ fontSize: 16, fontWeight: 600 }}>Your portfolio / personal site URL</h3>
               <input className="field-input" placeholder="https://yoursite.com" value={portfolioUrl}
@@ -729,7 +738,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         )}
 
         {activeTab === "json-import" && (
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} className="col gap-4">
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{duration:.14}} className="col gap-4">
             <div className="card col gap-4" style={{ padding: 24 }}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 600 }}>Paste your profile JSON here</h3>
@@ -781,7 +790,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
         )}
 
         {activeTab === "template" && (
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} className="col gap-4">
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{duration:.14}} className="col gap-4">
             <div className="card" style={{ padding: 24, background: "var(--purple-soft)", border: "1px solid var(--purple)" }}>
               <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Resume Template</h3>
               <p style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.6 }}>

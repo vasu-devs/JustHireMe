@@ -26,6 +26,7 @@ import { OnboardingWizard } from "./shared/components/OnboardingWizard";
 import { HelpChat } from "./shared/components/HelpChat";
 import { UpdatePrompt } from "./shared/components/UpdatePrompt";
 import { SemanticRuntimePrompt } from "./shared/components/SemanticRuntimePrompt";
+import { useTheme } from "./shared/lib/theme";
 
 const PIPELINE_VIEW_TO_TAB: Partial<Record<View, PipelineTab>> = {
   pipeline: "all",
@@ -48,6 +49,7 @@ function isActionableSubsystemIssue(name: string, value: SubsystemHealth[string]
 }
 
 export default function App() {
+  const { resolved } = useTheme();
   const { conn, port, apiToken, sidecarError, logs, addLog: wsAddLog, progress, resetProgress } = useWS();
   const api = useMemo<ApiFetch | null>(() => {
     if (!port || !apiToken) return null;
@@ -286,7 +288,7 @@ export default function App() {
 
   return (
     <>
-      <div style={{ display: "flex", height: "100vh", width: "100vw", overflow: "hidden", alignItems: "stretch" }}>
+      <div className="product-app app-production" data-theme={resolved}>
         <Sidebar
           view={view}
           setView={setView}
@@ -295,19 +297,19 @@ export default function App() {
           onToggleCollapsed={() => setSidebarCollapsed(value => !value)}
           onSettings={() => setShowSettings(true)}
         />
-        <div className="app-main">
-          <Topbar view={view} progress={progress} />
+        <div className="product-shell app-main">
+          <Topbar view={view} progress={progress} onRun={onScan} onCommand={focusApplyView} onNavigate={setView} />
           <SubsystemBanner items={degradedSubsystems} />
           <NoticeBanner />
-          <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "var(--paper)" }}>
+          <main id="product-content" className="product-content production-live-content">
             {view === "apply"     && <ErrorBoundary label="Apply" api={api ?? undefined}><ApplyJobView port={port} api={api} leads={leads} openDrawer={setSel} initialInput={applyDraft} autoFocus={applyAutoFocus} /></ErrorBoundary>}
             {view === "dashboard" && <ErrorBoundary label="Dashboard" api={api ?? undefined}><DashboardView leads={leads} dueFollowups={dueFollowups} logs={logs} setView={setView} openDrawer={setSel} scanning={scanning} reevaluating={reevaluating} cleaning={cleaning} progress={progress} onScan={onScan} onStopScan={onStopScan} onReevaluate={onReevaluateJobs} onStopReevaluate={onStopReevaluate} onCleanup={onCleanupLeads} scanErr={scanErr} api={api} /></ErrorBoundary>}
-            {isPipelineView  && <ErrorBoundary label="Pipeline" api={api ?? undefined}><PipelineView leads={leads} openDrawer={setSel} deleteLead={deleteLead} port={port} api={api} scanning={scanning} reevaluating={reevaluating} cleaning={cleaning} onReevaluate={onReevaluateJobs} onStopReevaluate={onStopReevaluate} onCleanup={onCleanupLeads} loading={leadsLoading || !port || !api} error={leadsError} tab={pipelineTab} /></ErrorBoundary>}
+            {isPipelineView  && <ErrorBoundary label="Pipeline" api={api ?? undefined}><PipelineView leads={leads} openDrawer={setSel} deleteLead={deleteLead} port={port} api={api} scanning={scanning} reevaluating={reevaluating} cleaning={cleaning} onReevaluate={onReevaluateJobs} onStopReevaluate={onStopReevaluate} onCleanup={onCleanupLeads} loading={leadsLoading || !port || !api} error={leadsError} tab={pipelineTab} setView={setView} /></ErrorBoundary>}
             {view === "graph"     && <ErrorBoundary label="Graph" api={api ?? undefined}><GraphView stats={stats} /></ErrorBoundary>}
             {view === "activity"  && <ErrorBoundary label="Activity" api={api ?? undefined}><ActivityView logs={logs} /></ErrorBoundary>}
             {view === "profile"   && (api ? <ErrorBoundary label="Profile" api={api ?? undefined}><ProfileView api={api} setView={setView} stats={stats} /></ErrorBoundary> : <BackendUnavailable title="Profile" conn={conn} port={port} />)}
             {view === "ingestion" && (api ? <ErrorBoundary label="Ingestion" api={api ?? undefined}><IngestionView api={api} /></ErrorBoundary> : <BackendUnavailable title="Add Context" conn={conn} port={port} />)}
-          </div>
+          </main>
         </div>
 
         {/* The drawer/modal layer renders the richest untyped lead data; a
