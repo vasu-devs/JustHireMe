@@ -24,6 +24,12 @@ class Leads(BaseModel):
     leads: list[Lead] = Field(default_factory=list)
 
 
+# Job listings sit at the top of board pages; past this point it's footers,
+# related-content noise, and repeated nav. Caps the extract prompt's largest
+# token sink (the full page markdown), which is also resent on every retry.
+EXTRACT_MARKDOWN_CAP = 15_000
+
+
 SCOUT_EXTRACT_SYSTEM = (
     "<role>\n"
     "You are JustHireMe's production job-lead extraction agent. You read the markdown of "
@@ -230,7 +236,7 @@ def parse(md: str, src: str) -> list:
         "\n"
         "Never invent a job, company, title, url, date, or skill that is not on the page; leave "
         "any unseen field empty. If the page advertises no jobs, return an empty list."
-        f"\n\nSource URL: {src}\n\n{md}"
+        f"\n\nSource URL: {src}\n\n{md[:EXTRACT_MARKDOWN_CAP]}"
     )
     o = call_llm(
         SCOUT_EXTRACT_SYSTEM + " ",
@@ -271,7 +277,7 @@ def parse_wellfound(md: str, src: str) -> list:
         "\n"
         "Never invent a job, company, title, url, or any field absent from the page; leave any "
         "unseen field empty. If the page advertises no jobs, return an empty list."
-        f"\n\nSource URL: {src}\n\n{md}"
+        f"\n\nSource URL: {src}\n\n{md[:EXTRACT_MARKDOWN_CAP]}"
     )
     o = call_llm(
         WELLFOUND_EXTRACT_SYSTEM + " ",

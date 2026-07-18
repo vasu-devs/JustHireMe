@@ -346,26 +346,37 @@ async def _run_scan_inner(
 
     fallback_count = 0
     prefiltered_count = 0
-    for lead in to_score:
-        if stop_event.is_set():
-            await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Scan stopped during evaluation."})
-            return
-        try:
-            result = await ranking_service.evaluate_lead(lead, profile, cfg, use_llm=lead["job_id"] in llm_ids)
-            await asyncio.to_thread(
-                repo.leads.update_lead_score,
-                lead["job_id"], result["score"], result["reason"],
-                result.get("match_points", []), result.get("gaps", []),
-                False, result.get("scored_by", ""),
-            )
-            if result.get("scored_by") == "deterministic_fallback":
-                fallback_count += 1
-            if result.get("scored_by") == "prefiltered_off_field":
-                prefiltered_count += 1
-            await manager.broadcast({"type": "LEAD_UPDATED", "data": {**lead, **result}})
-            await manager.broadcast({"type": "agent", "event": "eval_scored", "msg": f"Scored {lead.get('title','')} = {result['score']}/100"})
-        except Exception as exc:
-            await manager.broadcast({"type": "agent", "event": "eval_error", "msg": f"Eval failed for {lead.get('title','')}: {exc}"})
+    # Evaluations are independent per lead; run them concurrently, bounded to
+    # the LLM pool size so provider rate limits still hold.
+    eval_semaphore = asyncio.Semaphore(4)
+
+    async def _score_one(lead: dict) -> bool:
+        nonlocal fallback_count, prefiltered_count
+        async with eval_semaphore:
+            if stop_event.is_set():
+                return False
+            try:
+                result = await ranking_service.evaluate_lead(lead, profile, cfg, use_llm=lead["job_id"] in llm_ids)
+                await asyncio.to_thread(
+                    repo.leads.update_lead_score,
+                    lead["job_id"], result["score"], result["reason"],
+                    result.get("match_points", []), result.get("gaps", []),
+                    False, result.get("scored_by", ""),
+                )
+                if result.get("scored_by") == "deterministic_fallback":
+                    fallback_count += 1
+                if result.get("scored_by") == "prefiltered_off_field":
+                    prefiltered_count += 1
+                await manager.broadcast({"type": "LEAD_UPDATED", "data": {**lead, **result}})
+                await manager.broadcast({"type": "agent", "event": "eval_scored", "msg": f"Scored {lead.get('title','')} = {result['score']}/100"})
+            except Exception as exc:
+                await manager.broadcast({"type": "agent", "event": "eval_error", "msg": f"Eval failed for {lead.get('title','')}: {exc}"})
+            return True
+
+    scored_flags = await asyncio.gather(*(_score_one(lead) for lead in to_score))
+    if not all(scored_flags):
+        await manager.broadcast({"type": "agent", "event": "eval_done", "msg": "Scan stopped during evaluation."})
+        return
 
     if prefiltered_count > 0:
         await manager.broadcast({
