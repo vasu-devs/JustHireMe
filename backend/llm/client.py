@@ -203,7 +203,7 @@ _ENV_NAMES: dict[str, str] = {
 # Default model per provider (used when no step/global model is set)
 _DEFAULT_MODELS: dict[str, str] = {
     "anthropic": "claude-sonnet-4-6",
-    "gemini":    "gemini-2.5-flash",
+    "gemini":    "gemini-3.5-flash",  # bumped from 2.5 per #147
     "groq":      "llama-3.3-70b-versatile",
     "nvidia":    "z-ai/glm-5.1",
     "openai":    "gpt-4o-mini",
@@ -226,6 +226,7 @@ _DEFAULT_MODELS: dict[str, str] = {
     "claude_cli": "claude-sonnet-4-6",  # uses the user's Claude subscription via the claude CLI (no API key)
     "codex_cli":  "gpt-5.5",             # ChatGPT-account Codex only allows its own default model (gpt-5.5 as of 2026-06); codex falls back to the account default if this is unavailable
     "gemini_cli": "",                    # uses the user's Google account / Gemini plan via the gemini CLI; "" = the CLI's own default model
+    "antigravity_cli": "",               # Google's gemini-cli successor (#147); "" = the CLI's own default model (Gemini 3.5 family)
     "copilot_cli": "",                   # uses the user's GitHub Copilot subscription via the copilot CLI; "" = the CLI's own default model
 }
 
@@ -253,7 +254,7 @@ _BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
 # Subscription-CLI providers: shell out to a coding-assistant CLI the user has
 # already signed into with their OWN plan (no API key). Add new ones here AND in
 # llm/subscription_cli.py (_EXE + complete_text branch + status/login).
-SUBSCRIPTION_CLI_PROVIDERS = frozenset({"claude_cli", "codex_cli", "gemini_cli", "copilot_cli"})
+SUBSCRIPTION_CLI_PROVIDERS = frozenset({"claude_cli", "codex_cli", "gemini_cli", "antigravity_cli", "copilot_cli"})
 KEYLESS_PROVIDERS = frozenset({"ollama"}) | SUBSCRIPTION_CLI_PROVIDERS
 
 

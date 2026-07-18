@@ -493,6 +493,7 @@ def normalize_experiences(raw_items: list[Any]) -> list[dict[str, Any]]:
         if not role and not co:
             continue
         period = str(item.get("period") or "").strip() or _period_from_dates(item)
+        location = _clean_inline_text(str(item.get("location") or item.get("city") or item.get("loc") or "")).strip()
         description = str(item.get("description") or item.get("d") or item.get("summary") or "").strip()
         if not description:
             highlights = item.get("highlights") or item.get("bullets")
@@ -504,21 +505,39 @@ def normalize_experiences(raw_items: list[Any]) -> list[dict[str, Any]]:
             continue
         existing = index.get(key)
         if existing is not None:
-            if len(description) > len(existing.get("description", "")):
-                existing["description"] = description
-            if not existing.get("period") and period:
-                existing["period"] = period
+            # #111: UNION the two sources' descriptions instead of keeping only
+            # the longer one — the LLM and deterministic parsers routinely see
+            # different bullets, and picking a winner silently drops content.
+            prev = existing.get("description", "")
+            if description and description not in prev and prev not in description:
+                existing["description"] = _cap(f"{prev}\n{description}".strip(), 5000)
+            elif len(description) > len(prev):
+                existing["description"] = _cap(description, 5000)
+            # Prefer the more COMPLETE period (both endpoints beat one/none),
+            # not merely the first non-empty writer (#111 date truncation).
+            if period and (not existing.get("period") or _period_completeness(period) > _period_completeness(existing.get("period", ""))):
+                existing["period"] = _cap(period, 100)
+            if location and not existing.get("location"):
+                existing["location"] = _cap(location, 120)
             if skills:
                 existing["skills"] = _dedupe([*(existing.get("skills") or []), *skills])
             continue
         entry = {
             "role": _cap(role, 200), "company": _cap(co, 200),
-            "period": _cap(period, 100), "description": _cap(description, 5000),
+            "period": _cap(period, 100), "location": _cap(location, 120),
+            "description": _cap(description, 5000),
             "skills": skills,
         }
         index[key] = entry
         out.append(entry)
     return out
+
+
+def _period_completeness(period: str) -> int:
+    """Rank a period string by information content: 2 = both endpoints (a range
+    with two year/Present tokens), 1 = one endpoint, 0 = nothing usable."""
+    tokens = re.findall(r"\b(?:19|20)\d{2}\b|present|current", period, flags=re.I)
+    return min(2, len(tokens))
 
 
 def _period_from_dates(item: dict[str, Any]) -> str:

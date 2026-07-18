@@ -151,3 +151,39 @@ def test_complete_structured_salvages_trailing_junk(monkeypatch):
     monkeypatch.setattr(sc, "complete_text", lambda *a, **k: '{"score":18,"reason":"good fit"}]}')
     out = sc.complete_structured("codex_cli", "sys", "user", _Score)
     assert out.score == 18 and out.reason == "good fit"
+
+
+# ── antigravity_cli (#147): Google's gemini-cli successor, same headless contract ──
+
+def test_antigravity_exe_map_and_install_hint():
+    assert sc._exe("antigravity_cli") == "antigravity"
+    hint = sc.install_hint("antigravity_cli")
+    assert hint["name"] == "Antigravity CLI"
+    assert "antigravity" in hint["cmd"]
+
+
+def test_antigravity_dispatches_through_gemini_contract(fake_run, monkeypatch):
+    calls = fake_run(stdout='{"response": "hello from antigravity"}')
+    monkeypatch.setattr(sc.shutil, "which", lambda exe: f"/x/{exe}")
+    out = sc.complete_text("antigravity_cli", "SYS", "USER", model="gemini-3.5-pro", timeout=30)
+    assert out == "hello from antigravity"
+    assert calls["argv"][0] == "/x/antigravity"
+    assert calls["argv"][1:] == ["--output-format", "json", "-m", "gemini-3.5-pro"]
+    assert calls["input"] == "SYS\n\nUSER"
+
+
+def test_antigravity_timeout_message_names_provider(fake_run, monkeypatch):
+    def _run(argv, *args, **kwargs):
+        raise sc.subprocess.TimeoutExpired(argv, 30)
+    monkeypatch.setattr(sc.subprocess, "run", _run)
+    with pytest.raises(sc.CliTimeout, match="antigravity_cli"):
+        sc._gemini_exec("/x/antigravity", "", "hi", model=None, timeout=30, provider="antigravity_cli")
+
+
+def test_antigravity_logged_in_accepts_antigravity_or_gemini_creds(monkeypatch, tmp_path):
+    monkeypatch.setattr(sc.os.path, "expanduser", lambda _: str(tmp_path))
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    assert sc._antigravity_logged_in() is False
+    (tmp_path / ".antigravity").mkdir()
+    assert sc._antigravity_logged_in() is True

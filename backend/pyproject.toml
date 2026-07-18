@@ -13,7 +13,12 @@ dependencies = [
     "openai~=2.44.0",
     "instructor~=1.15.4",
     "kuzu~=0.11.3",
-    "lancedb~=0.34.0",
+    # lancedb ships no x86_64-macOS wheels, which hard-blocked Intel-Mac source
+    # builds at `uv sync` (#63). The vector runtime already loads lancedb
+    # optionally (data/vector/runtime.py find_spec gate + runtime pack) and
+    # degrades to hashing-based matching when absent, so skipping the wheel on
+    # Intel macs only disables semantic vector search there, not the app.
+    "lancedb~=0.34.0 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "langchain-core~=1.4.0",
     "langgraph~=1.2.0",
     # Embedding runtime: embeddings.py imports these directly (ONNX MiniLM + tokenizer

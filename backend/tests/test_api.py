@@ -150,6 +150,42 @@ class TestAuthGate(unittest.TestCase):
 
 
 class TestGraphEndpoint(unittest.TestCase):
+    def test_graph_endpoint_uses_profile_snapshot_when_native_graph_is_empty(self):
+        from api.routers.misc import graph_stats
+
+        class Graph:
+            def graph_counts(self):
+                return {"candidate": 0, "skill": 0, "project": 0, "experience": 0, "joblead": 0}
+
+            def graph_snapshot(self):
+                return {"nodes": [], "edges": [], "available": True, "error": ""}
+
+            def graph_available(self):
+                return True
+
+            def graph_error(self):
+                return ""
+
+        profile = {
+            "n": "Ada Lovelace",
+            "s": "Computing pioneer",
+            "skills": [{"id": "python", "n": "Python", "cat": "language"}],
+            "projects": [{"id": "engine", "title": "Analytical Engine", "stack": ["Python"]}],
+        }
+        repo = types.SimpleNamespace(
+            leads=types.SimpleNamespace(get_all_leads=lambda: []),
+            graph=Graph(),
+            profile=types.SimpleNamespace(get_profile=lambda: profile, load_profile_snapshot=lambda: {}),
+            vector=types.SimpleNamespace(vec=types.SimpleNamespace(list_tables=lambda: [])),
+        )
+
+        data = __import__("asyncio").run(graph_stats(repo))
+
+        node_types = {node["type"] for node in data["graph"]["nodes"]}
+        self.assertEqual(data["status"], "live")
+        self.assertTrue({"Candidate", "Skill", "Project"}.issubset(node_types))
+        self.assertTrue(any(edge["type"] == "PROJ_UTILIZES" for edge in data["graph"]["edges"]))
+
     def test_graph_endpoint_reads_snapshot_without_blocking_on_repairs(self):
         from api.routers.misc import graph_stats
 

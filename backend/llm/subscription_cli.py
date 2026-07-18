@@ -82,6 +82,7 @@ _EXE = {
     "claude_cli": "claude",
     "codex_cli": "codex",
     "gemini_cli": "gemini",
+    "antigravity_cli": "antigravity",
     "copilot_cli": "copilot",
 }
 
@@ -267,10 +268,12 @@ def _codex_exec(exe_path: str, prompt: str, *, model, timeout: int) -> str:
         raise
 
 
-def _gemini_exec(exe_path: str, system: str, user: str, *, model, timeout: int) -> str:
-    """Gemini CLI in headless mode: `gemini --output-format json [-m M]`, prompt on
-    STDIN (non-TTY stdin = non-interactive), clean text read from the JSON
-    `response` field. Auth is the user's Google account / Gemini plan OAuth."""
+def _gemini_exec(exe_path: str, system: str, user: str, *, model, timeout: int, provider: str = "gemini_cli") -> str:
+    """Gemini-family CLI in headless mode: `<exe> --output-format json [-m M]`,
+    prompt on STDIN (non-TTY stdin = non-interactive), clean text read from the
+    JSON `response` field. Auth is the user's Google account / plan OAuth.
+    Also serves `antigravity_cli` (#147): the Antigravity CLI is Google's
+    successor to gemini-cli and keeps the same headless contract."""
     prompt = (system + "\n\n" + user) if system else user
     argv = [exe_path, "--output-format", "json"]
     if model:
@@ -281,9 +284,9 @@ def _gemini_exec(exe_path: str, system: str, user: str, *, model, timeout: int) 
             encoding="utf-8", errors="replace", env=_child_env(), timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
-        raise CliTimeout(f"gemini_cli timed out after {timeout}s") from exc
+        raise CliTimeout(f"{provider} timed out after {timeout}s") from exc
     except FileNotFoundError as exc:
-        raise CliNotInstalled("gemini CLI vanished from PATH") from exc
+        raise CliNotInstalled(f"{_exe(provider)} CLI vanished from PATH") from exc
     out = (r.stdout or "").strip()
     # Preferred path: structured JSON {"response": "...", "error": {...}}.
     try:
@@ -343,8 +346,8 @@ def complete_text(provider: str, system: str, user: str, *, model=None, timeout:
     if provider == "codex_cli":
         prompt = (system + "\n\n" + user) if system else user
         return _codex_exec(exe_path, prompt, model=model, timeout=timeout)
-    if provider == "gemini_cli":
-        return _gemini_exec(exe_path, system, user, model=model, timeout=timeout)
+    if provider in ("gemini_cli", "antigravity_cli"):
+        return _gemini_exec(exe_path, system, user, model=model, timeout=timeout, provider=provider)
     if provider == "copilot_cli":
         return _copilot_exec(exe_path, system, user, model=model, timeout=timeout)
 
@@ -467,6 +470,17 @@ def _gemini_logged_in() -> bool:
     )
 
 
+def _antigravity_logged_in() -> bool:
+    """Antigravity CLI (Google's gemini-cli successor) stores OAuth under
+    ~/.antigravity; it also honors existing ~/.gemini credentials and the
+    Google API-key env vars, so accept any of those as signed-in."""
+    home = os.path.expanduser("~")
+    return (
+        os.path.isdir(os.path.join(home, ".antigravity"))
+        or _gemini_logged_in()
+    )
+
+
 def _copilot_logged_in() -> bool:
     """Copilot CLI authenticates with the user's GitHub Copilot subscription via a
     GitHub token (env or the gh CLI's stored login)."""
@@ -507,6 +521,8 @@ def status(provider: str) -> dict:
                 or os.path.isdir(os.path.join(home, ".claude"))
     elif provider == "gemini_cli":
         info["logged_in"] = _gemini_logged_in()
+    elif provider == "antigravity_cli":
+        info["logged_in"] = _antigravity_logged_in()
     elif provider == "copilot_cli":
         info["logged_in"] = _copilot_logged_in()
     else:  # codex_cli — show the signed-in ChatGPT account + plan, like Claude
@@ -554,6 +570,10 @@ def install_hint(provider: str) -> dict:
     if provider == "gemini_cli":
         return {"name": "Gemini CLI", "cmd": "npm install -g @google/gemini-cli",
                 "url": "https://github.com/google-gemini/gemini-cli",
+                "after": "then click Sign in and authorize your Google account"}
+    if provider == "antigravity_cli":
+        return {"name": "Antigravity CLI", "cmd": "npm install -g @google/antigravity",
+                "url": "https://antigravity.google",
                 "after": "then click Sign in and authorize your Google account"}
     if provider == "copilot_cli":
         return {"name": "GitHub Copilot CLI", "cmd": "npm install -g @github/copilot",

@@ -11,6 +11,9 @@ class E(BaseModel):
     co:     str
     period: str
     d:      str
+    # Per-role location ("Mountain View, CA"). Resumes routinely carry this on
+    # the experience header; dropping it lost real information on import (#111).
+    location: str = ""
     s:      list[str] = Field(default_factory=list)
 
 

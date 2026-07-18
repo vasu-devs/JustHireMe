@@ -10,7 +10,7 @@ import re
 
 from core.logging import get_logger
 from core.occupations import OCCUPATION_TERMS
-from models.schema import C
+from models.schema import C, E
 from profile.ingest_documents import _strip_md
 
 _log = get_logger(__name__)
@@ -412,27 +412,30 @@ def _parse_resume_heuristic(txt: str) -> C:
     exp_lines = _section_lines(clean_text, ("experience", "work experience", "employment"))
     exp: list[E] = []
     current_exp: dict | None = None
-    for line in exp_lines[:30]:
+    # #111: the old [:30]-line window silently dropped later roles and bullets
+    # on any real multi-page resume, and 900 chars truncated descriptions the
+    # generator downstream happily accepts at 5000.
+    for line in exp_lines[:150]:
         if len(line) < 6:
             continue
         header = _resume_experience_header(line)
         if header:
             if current_exp:
-                exp.append(E(role=current_exp["role"], co=current_exp["co"], period=current_exp.get("period", ""), d=current_exp.get("d", ""), s=_skills_in(current_exp.get("d", ""))))
+                exp.append(E(role=current_exp["role"], co=current_exp["co"], period=current_exp.get("period", ""), location=current_exp.get("location", ""), d=current_exp.get("d", ""), s=_skills_in(current_exp.get("d", ""))))
             current_exp = header
             continue
-        # Date patterns → period
-        if current_exp and re.search(r"\b(?:19|20)\d{2}\b.*(?:present|current|19|20)\d{0,2}", line, flags=re.I):
+        # Date patterns → period (only when the header didn't already carry one)
+        if current_exp and not current_exp.get("period") and re.search(r"\b(?:19|20)\d{2}\b.*(?:present|current|19|20)\d{0,2}", line, flags=re.I):
             current_exp["period"] = line[:100]
             continue
         # Detail lines → description
         if current_exp:
             existing = current_exp.get("d", "")
-            current_exp["d"] = f"{existing}\n{line}".strip()[:900]
-        if len(exp) >= 10:
+            current_exp["d"] = f"{existing}\n{line}".strip()[:5000]
+        if len(exp) >= 30:
             break
     if current_exp:
-        exp.append(E(role=current_exp["role"], co=current_exp["co"], period=current_exp.get("period", ""), d=current_exp.get("d", ""), s=_skills_in(current_exp.get("d", ""))))
+        exp.append(E(role=current_exp["role"], co=current_exp["co"], period=current_exp.get("period", ""), location=current_exp.get("location", ""), d=current_exp.get("d", ""), s=_skills_in(current_exp.get("d", ""))))
 
     project_lines = _section_lines(clean_text, ("projects", "selected projects", "personal projects"))
     projects = _projects_from_resume_lines(project_lines, skills)
@@ -471,23 +474,49 @@ def _resume_experience_header(line: str) -> dict | None:
     if not (has_occupation or has_at or (has_date and has_separator)):
         return None
 
+    # #111: pull the date RANGE out first, verbatim, with a dedicated token
+    # regex. The old approach split the whole header on hyphens, which
+    # shattered "May 2020 - Aug 2022" into fragments (and never matched at all
+    # for the en/em dashes Word likes, leaving dates glued into the role).
+    month = (
+        r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|"
+        r"aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+    )
+    date_point = rf"(?:{month}\.?\s+)?(?:19|20)\d{{2}}"
+    range_match = re.search(
+        rf"({date_point}\s*[–—-]\s*(?:present|current|{date_point}))|({date_point})\s*[–—-]?\s*$",
+        clean, flags=re.I,
+    )
     period = ""
-    role = clean
+    remainder = clean
+    if range_match:
+        period = (range_match.group(1) or range_match.group(2) or "").strip()
+        remainder = (clean[: range_match.start()] + " " + clean[range_match.end():]).strip(" -–—|,")
+
+    role = remainder or clean
     company = ""
-    if " at " in clean.lower():
-        parts = re.split(r"\s+at\s+", clean, maxsplit=1, flags=re.I)
+    location = ""
+    if " at " in remainder.lower():
+        parts = re.split(r"\s+at\s+", remainder, maxsplit=1, flags=re.I)
         role, company = parts[0], parts[1]
+        # "Title at Company — City, ST" → peel a trailing location segment
+        loc_split = re.split(r"\s+\|\s+|\s+[–—-]\s+", company)
+        if len(loc_split) >= 2 and ("," in loc_split[-1] or len(loc_split[-1].split()) <= 3):
+            company, location = loc_split[0], loc_split[-1]
     else:
-        parts = [part.strip(" -|") for part in re.split(r"\s+\|\s+|\s+-\s+", clean) if part.strip(" -|")]
+        # Split on FIELD separators only: " | " or a SPACED dash of any kind.
+        # (Unspaced hyphens inside words/dates are never separators.)
+        parts = [part.strip(" -–—|") for part in re.split(r"\s+\|\s+|\s+[–—-]\s+", remainder) if part.strip(" -–—|")]
+        if parts:
+            role = parts[0]
         if len(parts) >= 2:
-            date_parts = [part for part in parts if re.search(r"\b(?:19|20)\d{2}\b|present|current", part, re.I)]
-            text_parts = [part for part in parts if part not in date_parts]
-            if text_parts:
-                role = text_parts[0]
-            if len(text_parts) >= 2:
-                company = text_parts[1]
-            if date_parts:
-                period = " - ".join(date_parts)
+            company = parts[1]
+        if len(parts) >= 3:
+            # A third segment with a comma (or a short place-like tail) is the
+            # role's location — resumes lose real data when this is dropped.
+            tail = parts[2]
+            if "," in tail or len(tail.split()) <= 3:
+                location = tail
 
     # Reject "headers" that resolved to nothing but a date range (e.g. a bare
     # "Jan 2019 - Present" line passed the structural gate). Strip years, month
@@ -502,7 +531,7 @@ def _resume_experience_header(line: str) -> dict | None:
     if not re.search(r"[A-Za-z]{2,}", role_clean):
         return None
 
-    return {"role": role[:180], "co": company[:180], "period": period[:100], "d": ""}
+    return {"role": role[:180], "co": company[:180], "period": period[:100], "location": location[:120], "d": ""}
 
 
 def _projects_from_resume_lines(lines: list[str], skills: list) -> list:
@@ -705,11 +734,41 @@ def _merge_candidate_data(primary: C, fallback: C) -> C:
             out.append(item)
         return out
 
+    def merge_exp(items: list[E]) -> list[E]:
+        # #111: enrich duplicates instead of dropping them — the LLM and the
+        # deterministic parser see different bullets/dates for the same role,
+        # and first-wins silently discarded the second source's content.
+        def period_tokens(period: str) -> int:
+            return min(2, len(re.findall(r"\b(?:19|20)\d{2}\b|present|current", period, flags=re.I)))
+
+        seen: dict[str, E] = {}
+        out: list[E] = []
+        for item in items:
+            key = re.sub(r"[^a-z0-9]+", "", f"{item.role} {item.co}".lower())
+            if not key:
+                continue
+            kept = seen.get(key)
+            if kept is None:
+                seen[key] = item
+                out.append(item)
+                continue
+            if item.d and item.d not in kept.d and kept.d not in item.d:
+                kept.d = f"{kept.d}\n{item.d}".strip()[:5000]
+            elif len(item.d) > len(kept.d):
+                kept.d = item.d[:5000]
+            if item.period and period_tokens(item.period) > period_tokens(kept.period):
+                kept.period = item.period
+            if not kept.location and item.location:
+                kept.location = item.location
+            if item.s:
+                kept.s = list(dict.fromkeys([*kept.s, *item.s]))
+        return out
+
     return C(
         n=primary.n if primary.n and primary.n.lower() not in {"candidate", "unknown"} else fallback.n,
         s=primary.s or fallback.s,
         skills=merge_by([*primary.skills, *fallback.skills], lambda item: item.n),
-        exp=merge_by([*primary.exp, *fallback.exp], lambda item: f"{item.role} {item.co}"),
+        exp=merge_exp([*primary.exp, *fallback.exp]),
         projects=merge_by([*primary.projects, *fallback.projects], lambda item: item.title),
         certifications=merge_by([*primary.certifications, *fallback.certifications], str),
         education=merge_by([*primary.education, *fallback.education], str),

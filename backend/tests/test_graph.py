@@ -119,7 +119,7 @@ class TestGraphStructure(unittest.TestCase):
         self.assertFalse(is_bad_vector_label("DryRunVisualised"))
 
     def test_profile_graph_filter_removes_stale_deleted_profile_nodes(self):
-        from graph_service.stats import _filter_stale_profile_nodes, _profile_snapshot_graph
+        from graph_service.stats import filter_stale_profile_nodes, profile_snapshot_graph
 
         graph = {
             "nodes": [
@@ -134,9 +134,9 @@ class TestGraphStructure(unittest.TestCase):
                 {"source": "job:1", "target": "skill:orphan", "type": "REQUIRES"},
             ],
         }
-        profile_graph = _profile_snapshot_graph({"n": "Candidate", "skills": [], "projects": [], "exp": []})
+        profile_graph = profile_snapshot_graph({"n": "Candidate", "skills": [], "projects": [], "exp": []})
 
-        filtered = _filter_stale_profile_nodes(graph, profile_graph)
+        filtered = filter_stale_profile_nodes(graph, profile_graph)
 
         self.assertNotIn("project:deleted", {node["id"] for node in filtered["nodes"]})
         self.assertNotIn("skill:orphan", {node["id"] for node in filtered["nodes"]})

@@ -14,6 +14,7 @@ from core.telemetry import log_error, redact_sensitive, redact_text
 from data.graph.connection import run_graph
 from data.repository import Repository
 from graph_service.helpers import is_bad_vector_label
+from graph_service.stats import filter_stale_profile_nodes, merge_graphs, profile_snapshot_graph
 
 
 router = APIRouter(prefix="/api/v1", tags=["misc"])
@@ -64,6 +65,11 @@ async def graph_stats(repo: Repository = Depends(get_repository), repair: bool =
             errors,
             default={},
         )
+    # A profile snapshot is durable even when the native graph store is empty,
+    # stale, or temporarily locked. Merge it into the raw snapshot so Knowledge
+    # never becomes a blank canvas while Profile visibly contains evidence.
+    profile_graph = profile_snapshot_graph(profile_snapshot)
+    graph = merge_graphs(filter_stale_profile_nodes(graph, profile_graph), profile_graph)
     embedding = _apply_embedding_deletions(_embedding_space(repo))
     if embedding.get("error"):
         errors.append(f"embedding: {embedding['error']}")

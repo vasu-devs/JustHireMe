@@ -24,7 +24,7 @@ def _contains_term(text: str, term: str) -> bool:
     return bool(re.search(r"(?<![a-z0-9+#.-])" + re.escape(term.lower()) + r"(?![a-z0-9+#.-])", text.lower()))
 
 
-def _profile_snapshot_graph(profile: dict) -> dict:
+def profile_snapshot_graph(profile: dict) -> dict:
     nodes: list[dict] = []
     edges: list[dict] = []
 
@@ -85,7 +85,7 @@ def _profile_snapshot_graph(profile: dict) -> dict:
     return {"nodes": nodes, "edges": edges, "available": bool(nodes), "error": ""}
 
 
-def _merge_graphs(primary: dict, fallback: dict) -> dict:
+def merge_graphs(primary: dict, fallback: dict) -> dict:
     merged: dict[str, Any] = {
         "nodes": list(primary.get("nodes") or []),
         "edges": list(primary.get("edges") or []),
@@ -106,7 +106,7 @@ def _merge_graphs(primary: dict, fallback: dict) -> dict:
     return merged
 
 
-def _filter_stale_profile_nodes(graph: dict, profile_graph: dict) -> dict:
+def filter_stale_profile_nodes(graph: dict, profile_graph: dict) -> dict:
     allowed_profile_ids = {str(node.get("id") or "") for node in profile_graph.get("nodes") or []}
     candidate_owned_ids = {
         str(edge.get("target") or "")
@@ -170,8 +170,8 @@ def graph_stats_payload(*, repair: bool = False) -> dict:
     counts = safe_graph_step(repo.graph.graph_counts, "counts", errors, default={})
     available = safe_graph_step(repo.graph.graph_available, "availability", errors, default=False)
     graph = safe_graph_step(repo.graph.graph_snapshot, "snapshot", errors, default={"nodes": [], "edges": [], "available": False})
-    profile_graph = _profile_snapshot_graph(profile_snapshot)
-    graph = _merge_graphs(_filter_stale_profile_nodes(graph, profile_graph), profile_graph)
+    profile_graph = profile_snapshot_graph(profile_snapshot)
+    graph = merge_graphs(filter_stale_profile_nodes(graph, profile_graph), profile_graph)
     embedding = embedding_space(repo)
     if embedding.get("error"):
         errors.append(f"embedding: {embedding['error']}")

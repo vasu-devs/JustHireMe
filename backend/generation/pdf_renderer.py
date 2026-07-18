@@ -91,9 +91,34 @@ def _shorten_text(text: str, limit: int) -> str:
     return clean[: max(0, limit - 1)].rstrip(" ,.;:-") + "."
 
 
+# ── Visual style presets (#90) ────────────────────────────────────────────────
+# Named looks for the rendered resume PDF. "classic" is the original design;
+# "harvard" is the traditional serif/black academic layout; "modern" is the
+# brand-warm left-aligned variant. Fonts are fpdf core faces (no embedding).
+STYLE_PRESETS: dict[str, dict] = {
+    "classic": {"label": "Classic (navy)", "accent": (31, 78, 121), "font": "Helvetica", "name_align": "C"},
+    "harvard": {"label": "Harvard (serif)", "accent": (0, 0, 0), "font": "Times", "name_align": "C"},
+    "modern": {"label": "Modern (warm)", "accent": (172, 81, 54), "font": "Helvetica", "name_align": "L"},
+}
+_DEFAULT_STYLE_PRESET = "classic"
+
+
+def _resolve_style_preset() -> dict:
+    """Current preset from settings; unknown/legacy values fall back to classic."""
+    try:
+        from data.sqlite.settings import get_setting
+        chosen = str(get_setting("resume_style_preset", _DEFAULT_STYLE_PRESET) or _DEFAULT_STYLE_PRESET)
+    except Exception:
+        chosen = _DEFAULT_STYLE_PRESET
+    return STYLE_PRESETS.get(chosen, STYLE_PRESETS[_DEFAULT_STYLE_PRESET])
+
+
 def _render_resume_template(md_text: str, filename: str) -> str:
     """Render a one-page, recruiter-friendly resume template from constrained Markdown."""
     from fpdf import FPDF
+
+    style_preset = _resolve_style_preset()
+    base_font = style_preset["font"]
 
     text = _clean(md_text)
     lines = [line.rstrip() for line in text.splitlines()]
@@ -194,7 +219,7 @@ def _render_resume_template(md_text: str, filename: str) -> str:
         page_h = pdf.h
         eff_w = page_w - (2 * margin_x)
         bottom = page_h - margin_y
-        accent = (31, 78, 121)
+        accent = style_preset["accent"]
         ink = (28, 31, 35)
         muted = (92, 98, 108)
         rule = (183, 194, 207)
@@ -215,7 +240,7 @@ def _render_resume_template(md_text: str, filename: str) -> str:
 
         def set_font(size: float, style: str = "", color=ink):
             pdf.set_text_color(*color)
-            pdf.set_font("Helvetica", style=style, size=fs(size))
+            pdf.set_font(base_font, style=style, size=fs(size))
 
         def write_block(text_value: str, size: float = 8.0, style: str = "", indent: float = 0, after: float = 0.2):
             clean = _strip_inline(text_value)
@@ -246,7 +271,7 @@ def _render_resume_template(md_text: str, filename: str) -> str:
                 return
             y = pdf.get_y()
             pdf.set_text_color(*accent)
-            pdf.set_font("Helvetica", "B", fs(8.0))
+            pdf.set_font(base_font, "B", fs(8.0))
             pdf.set_xy(margin_x + bullet_indent, y)
             pdf.cell(2.5 * scale, line_h, "-")
             set_font(7.8)
@@ -318,14 +343,14 @@ def _render_resume_template(md_text: str, filename: str) -> str:
 
         set_font(19.0, "B", accent)
         pdf.set_xy(margin_x, margin_y)
-        pdf.cell(eff_w, lh(fs(19.0)), name, align="C")
+        pdf.cell(eff_w, lh(fs(19.0)), name, align=style_preset["name_align"])
         pdf.ln(lh(fs(19.0)) + (0.6 * spread))
 
         if contact_lines:
             contact = "  |  ".join(part for part in contact_lines if part)
             set_font(7.8, "", muted)
             pdf.set_x(margin_x)
-            pdf.multi_cell(eff_w, lh(fs(7.8)), contact, align="C")
+            pdf.multi_cell(eff_w, lh(fs(7.8)), contact, align=style_preset["name_align"])
             pdf.ln(1.2 * scale * spread)
 
         pdf.set_draw_color(*accent)
@@ -376,6 +401,10 @@ def _render(md_text: str, filename: str, kind: str = "resume") -> str:
     if kind == "resume":
         return _render_resume_template(md_text, filename)
 
+    # Non-resume documents (cover letters etc.) keep the fixed Helvetica look;
+    # the visual style presets (#90) apply to the resume template only.
+    base_font = "Helvetica"
+
     text = _clean(md_text)
     lines = text.splitlines()
 
@@ -406,7 +435,7 @@ def _render(md_text: str, filename: str, kind: str = "resume") -> str:
             return max(2.8, font_size * 0.42)
 
         def wrapped_lines_plain(txt: str, width: float, font_size: float, bold: bool = False) -> int:
-            pdf.set_font("Helvetica", style="B" if bold else "", size=font_size)
+            pdf.set_font(base_font, style="B" if bold else "", size=font_size)
             words = str(txt or "").split()
             if not words:
                 return 1
@@ -441,19 +470,26 @@ def _render(md_text: str, filename: str, kind: str = "resume") -> str:
             parts = re.split(r'(\*\*.*?\*\*)', txt)
             for part in parts:
                 if part.startswith("**") and part.endswith("**"):
-                    pdf.set_font("Helvetica", style="B", size=font_size)
+                    pdf.set_font(base_font, style="B", size=font_size)
                     pdf.write(lh, part[2:-2])
                 else:
                     # Handle *italic* inside non-bold parts
                     italic_parts = re.split(r'(\*[^*]+?\*)', part)
                     for ip in italic_parts:
                         if ip.startswith("*") and ip.endswith("*") and len(ip) > 2:
-                            pdf.set_font("Helvetica", style="I", size=font_size)
+                            pdf.set_font(base_font, style="I", size=font_size)
                             pdf.write(lh, ip[1:-1])
                         else:
-                            pdf.set_font("Helvetica", style="", size=font_size)
+                            pdf.set_font(base_font, style="", size=font_size)
                             pdf.write(lh, ip)
             pdf.ln(lh)
+            # write() wraps by real glyph widths, and bold runs are wider than
+            # the plain-width estimate emit() checked against — so a rich line
+            # can overflow the page even though emit() predicted it would fit
+            # (issue #122). Detect it post-render; the scale-retry loop in
+            # build_pdf() then rebuilds at a smaller scale.
+            if pdf.get_y() > bottom:
+                truncated = True
 
         def emit(txt: str, font_size: float, bold: bool = False, indent: float = 0, before: float = 0, after: float = 0):
             nonlocal truncated
@@ -462,7 +498,11 @@ def _render(md_text: str, filename: str, kind: str = "resume") -> str:
             clean_for_height = _strip_inline(txt)
             width = max(24.0, eff_w - indent)
             lh = line_height(font_size)
-            height = before + wrapped_lines_plain(clean_for_height, width, font_size, bold) * lh + after
+            # Lines with inline **bold** render wider than the plain-font
+            # estimate; measure them as bold so the pre-check is conservative
+            # rather than optimistic (issue #122).
+            measure_bold = bold or _has_inline_bold(txt)
+            height = before + wrapped_lines_plain(clean_for_height, width, font_size, measure_bold) * lh + after
             if pdf.get_y() + height > bottom:
                 truncated = True
                 return
@@ -473,7 +513,7 @@ def _render(md_text: str, filename: str, kind: str = "resume") -> str:
                 _emit_rich_line(txt, font_size, indent)
             else:
                 clean = _strip_inline(txt)
-                pdf.set_font("Helvetica", style="B" if bold else "", size=font_size)
+                pdf.set_font(base_font, style="B" if bold else "", size=font_size)
                 pdf.set_x(pdf.l_margin + indent)
                 pdf.multi_cell(width, lh, clean)
             if after:

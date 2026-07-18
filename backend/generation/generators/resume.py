@@ -27,9 +27,11 @@ def _build_proof(profile: dict) -> str:
         role   = exp.get("role", "")
         co     = exp.get("co", "")
         period = exp.get("period", "")
+        loc    = exp.get("location", "")
         desc   = exp.get("d", "")
         if role:
-            parts.append(f"Role: {role} at {co} ({period}) | {desc}")
+            where = f"{co}, {loc}" if loc else co
+            parts.append(f"Role: {role} at {where} ({period}) | {desc}")
     skills = [s["n"] for s in profile.get("skills", []) if s.get("n")]
     if skills:
         parts.append(f"Skills: {', '.join(skills)}")
@@ -392,7 +394,9 @@ def _fallback_package(profile: dict, lead: dict, template: str = "") -> _DocPack
         role = e.get("role", "Role")
         co = e.get("co", "Company")
         period = e.get("period", "")
-        exp_block = f"### {role} - {co} {period}\n".strip() + "\n"
+        loc = e.get("location", "")
+        where = f"{co} ({loc})" if loc else co
+        exp_block = f"### {role} - {where} {period}\n".strip() + "\n"
         for bullet in _experience_bullets(e, lead, prioritized_skills)[:2]:
             exp_block += f"- {bullet}\n"
         exp_lines.append(exp_block)
