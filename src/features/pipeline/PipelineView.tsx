@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+
+const LANE_PAGE_SIZE = 8;
 import { DemoIcon } from "../../demo/DemoIcon";
 import type { ApiFetch, Lead, PipelineTab, View } from "../../types";
 import { leadDisplayHeading, leadSearchText, leadSignal } from "../../shared/lib/leadUtils";
@@ -64,6 +66,9 @@ export function PipelineView({
   const [query, setQuery] = useState("");
   const [moving, setMoving] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Per-lane visible-card windows so a 40-card lane doesn't become an
+  // unreadable infinite scroll; "Show more" reveals a page at a time.
+  const [laneLimits, setLaneLimits] = useState<Record<string, number>>({});
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -135,10 +140,15 @@ export function PipelineView({
     {loading ? <div className="kanban-loading">Opening your live application board…</div> : <div className={`kanban-board ${tab === "discarded" ? "is-single" : ""}`}>
       {boardLanes.map((lane, laneIndex) => {
         const laneLeads = boardRows.filter(lead => laneFor(lead) === lane.id);
+        // Lanes with dozens of cards were an unreadable infinite scroll — show
+        // a page at a time, with an explicit reveal for the rest.
+        const laneLimit = laneLimits[lane.id] ?? LANE_PAGE_SIZE;
+        const visibleLeads = laneLeads.slice(0, laneLimit);
+        const hiddenCount = laneLeads.length - visibleLeads.length;
         return <section className={`kanban-lane lane-${lane.id.toLowerCase()}`} key={lane.id}>
           <header><div><span>{lane.id}</span><b>{laneLeads.length}</b></div><small>{lane.hint}</small><button aria-label={`Add to ${lane.id}`} onClick={() => setView("apply")}><DemoIcon name="plus" /></button></header>
           <div className="kanban-cards">
-            {laneLeads.map(lead => {
+            {visibleLeads.map(lead => {
               const { role, company } = leadDisplayHeading(lead);
               return <article className="kanban-card" key={lead.job_id}>
                 <button className="kanban-open" onClick={() => openDrawer(lead)}>
@@ -153,6 +163,22 @@ export function PipelineView({
               </article>;
             })}
             {laneLeads.length === 0 && <div className="kanban-empty"><span>Drop roles here</span><small>No opportunities in this stage</small></div>}
+            {hiddenCount > 0 && (
+              <button
+                className="kanban-more"
+                onClick={() => setLaneLimits(prev => ({ ...prev, [lane.id]: laneLimit + LANE_PAGE_SIZE }))}
+              >
+                Show {Math.min(LANE_PAGE_SIZE, hiddenCount)} more · {hiddenCount} hidden
+              </button>
+            )}
+            {hiddenCount === 0 && laneLeads.length > LANE_PAGE_SIZE && (
+              <button
+                className="kanban-more"
+                onClick={() => setLaneLimits(prev => ({ ...prev, [lane.id]: LANE_PAGE_SIZE }))}
+              >
+                Show less
+              </button>
+            )}
           </div>
         </section>;
       })}

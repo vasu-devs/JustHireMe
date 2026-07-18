@@ -95,6 +95,22 @@ const LEADS: Lead[] = [
   },
 ];
 
+// Bulk leads so lane windowing ("Show more") is visible in preview.
+for (let i = 0; i < 14; i++) {
+  LEADS.push({
+    job_id: `pv-bulk-${i}`,
+    title: ["Platform Engineer", "Data Analyst", "QA Engineer", "Site Reliability Engineer", "Product Designer", "ML Engineer", "Backend Developer"][i % 7] + ` ${i + 1}`,
+    company: ["Fernhill", "Bright Anchor", "Copperline", "Mosswood", "Tidewater", "Juniper Labs", "Stonebridge"][i % 7],
+    url: `https://example.com/jobs/bulk-${i}`,
+    platform: ["greenhouse", "lever", "ashby"][i % 3],
+    status: "tailoring", asset: "",
+    score: 55 + ((i * 7) % 40), signal_score: 50 + ((i * 11) % 45),
+    reason: "Seeded preview lead", description: "Seeded lead for lane-window preview.",
+    match_points: [], gaps: [], location: "Remote · EU",
+    seniority_level: "mid", source_meta: { seniority_level: "mid" },
+  });
+}
+
 const LOGS: LogLine[] = [
   { id: 1, ts: "09:14", msg: "Scan started — 9 keyless sources", src: "scout", kind: "system" },
   { id: 2, ts: "09:15", msg: "ATS aggregator returned 41 raw postings", src: "scout", kind: "agent" },
@@ -256,13 +272,14 @@ export default function PreviewHarness() {
         collapsed={false} onToggleCollapsed={noop} onSettings={noop}
       />
       <div className="product-shell app-main">
-        <Topbar view={view} progress={PROGRESS} onRun={noop} onCommand={noop} onNavigate={setView} />
+        <Topbar view={view} progress={params.get("running") === "1" ? { ...PROGRESS, active: true, mode: "scan", total: 19, completed: 7, current: "Scanning greenhouse boards…" } : PROGRESS} onRun={noop} onStop={noop} onCommand={noop} onNavigate={setView} />
         <main id="product-content" className="product-content production-live-content">
           {view === "dashboard" && (
             <ErrorBoundary label="Dashboard">
               <DashboardView
                 leads={LEADS} dueFollowups={[LEADS[4]]} logs={LOGS} setView={setView} openDrawer={setSel}
-                scanning={false} reevaluating={false} cleaning={false} progress={PROGRESS}
+                scanning={params.get("running") === "1"} reevaluating={false} cleaning={false}
+                progress={params.get("running") === "1" ? { ...PROGRESS, active: true, mode: "scan", total: 19, completed: 7, current: "Scanning greenhouse boards…" } : PROGRESS}
                 onScan={asyncNoop} onStopScan={asyncNoop} onReevaluate={asyncNoop} onStopReevaluate={asyncNoop}
                 onCleanup={asyncNoop} scanErr={null} api={mockApi}
               />

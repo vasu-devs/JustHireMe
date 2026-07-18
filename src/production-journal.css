@@ -1425,3 +1425,50 @@
 /* 4. Help-chat fab icon: theme-aware contrast (was hardcoded white). */
 .product-app.app-production .help-chat-fab { color: #fdf6ec; }
 .product-app.app-production[data-theme="dark"] .help-chat-fab { color: #2b1d18; }
+
+/* Run-agent pill flips to a stop control while the agent works: terracotta
+   instead of green, ink label, still one obvious action in the same spot. */
+.product-app.app-production .product-run.running {
+  background: var(--journal-red, #dc745f) !important;
+  color: #342922 !important;
+  cursor: pointer;
+}
+
+/* Lane paging control: quiet full-width reveal at the bottom of a lane. */
+.product-app.app-production .kanban-more {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 4px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink-2);
+  font: 700 11px var(--font-sans);
+  cursor: pointer;
+}
+.product-app.app-production .kanban-more:hover { border-color: var(--accent); color: var(--ink); }
+
+/* Live scan telemetry in the journal focus card: a real progress readout
+   instead of a bare status line, so a running scan is visibly working. */
+.product-app.app-production .journal-scan-meter { margin-top: 8px; }
+.product-app.app-production .journal-scan-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(var(--ink-rgb), .12);
+  overflow: hidden;
+}
+.product-app.app-production .journal-scan-track i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--journal-red, #dc745f);
+  transition: width .4s cubic-bezier(.22, 1, .36, 1);
+}
+.product-app.app-production .journal-scan-meter > span {
+  display: block;
+  margin-top: 5px;
+  font: 600 8px var(--font-mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--journal-faint);
+}

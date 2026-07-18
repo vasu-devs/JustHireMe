@@ -259,12 +259,23 @@ def _codex_exec(exe_path: str, prompt: str, *, model, timeout: int) -> str:
     WITHOUT -m so the call still succeeds on the user's default model.
     """
     try:
-        return _codex_run_once(exe_path, prompt, model=model, timeout=timeout)
-    except CliModelUnsupported:
-        # Only retry if we actually forwarded a model; otherwise the account's
-        # own default is the problem and there's nothing to drop.
-        if model and str(model) not in _CODEX_REJECTED_MODELS:
-            return _codex_run_once(exe_path, prompt, model=None, timeout=timeout)
+        try:
+            return _codex_run_once(exe_path, prompt, model=model, timeout=timeout)
+        except CliModelUnsupported:
+            # Only retry if we actually forwarded a model; otherwise the account's
+            # own default is the problem and there's nothing to drop.
+            if model and str(model) not in _CODEX_REJECTED_MODELS:
+                return _codex_run_once(exe_path, prompt, model=None, timeout=timeout)
+            raise
+    except (CliTimeout, CliNotInstalled, CliNotLoggedIn, CliCreditExhausted, CliModelUnsupported):
+        raise
+    except CliError as exc:
+        # Reasoning models occasionally end a turn without emitting the final
+        # text (seen on the large scout prompts as "no response from codex" in
+        # packaged builds). That outcome is usually transient — give it exactly
+        # one fresh attempt before surfacing the error.
+        if "without a final text message" in str(exc) or "no response from codex" in str(exc):
+            return _codex_run_once(exe_path, prompt, model=model, timeout=timeout)
         raise
 
 

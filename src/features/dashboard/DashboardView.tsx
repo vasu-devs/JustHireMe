@@ -65,7 +65,14 @@ export function DashboardView(props: {
           <div>
             <small>{busy ? "Scout is working" : "One thing before 4 PM"}</small>
             <strong>{busy ? progress?.current || "Checking the evidence" : current ? `Review the ${leadDisplayHeading(current).company} role.` : "Run one focused scan."}</strong>
-            <p>{current ? "The evidence is ready and the role is still fresh." : "Scout will bring back only roles with a credible match."}</p>
+            {busy && (progress?.total ?? 0) > 0 ? (
+              <div className="journal-scan-meter" role="progressbar" aria-valuemin={0} aria-valuemax={progress!.total} aria-valuenow={progress!.completed}>
+                <div className="journal-scan-track"><i style={{ width: `${Math.min(100, Math.round((progress!.completed / Math.max(1, progress!.total)) * 100))}%` }} /></div>
+                <span>{progress!.completed}/{progress!.total} {progress!.mode === "reevaluate" ? "leads re-scored" : "sources scanned"}</span>
+              </div>
+            ) : (
+              <p>{current ? "The evidence is ready and the role is still fresh." : "Scout will bring back only roles with a credible match."}</p>
+            )}
           </div>
           {scanning
             ? <button onClick={onStopScan}><DemoIcon name="close" />Stop scan</button>

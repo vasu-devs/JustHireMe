@@ -298,7 +298,14 @@ export default function App() {
           onSettings={() => setShowSettings(true)}
         />
         <div className="product-shell app-main">
-          <Topbar view={view} progress={progress} onRun={onScan} onCommand={focusApplyView} onNavigate={setView} />
+          <Topbar
+            view={view}
+            progress={progress}
+            onRun={onScan}
+            onStop={() => { void (progress.mode === "reevaluate" ? onStopReevaluate() : onStopScan()); }}
+            onCommand={focusApplyView}
+            onNavigate={setView}
+          />
           <SubsystemBanner items={degradedSubsystems} />
           <NoticeBanner />
           <main id="product-content" className="product-content production-live-content">

@@ -43,6 +43,8 @@
       "nsis": {
         "displayLanguageSelector": false,
         "installerIcon": "icons/icon.ico",
+        "headerImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp",
         "installMode": "currentUser",
         "installerHooks": "windows/nsis-hooks.nsh"
       },

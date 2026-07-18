@@ -26,12 +26,14 @@ export function Topbar({
   view,
   progress,
   onRun,
+  onStop,
   onCommand,
   onNavigate,
 }: {
   view: View;
   progress?: OperationProgress;
   onRun?: () => void;
+  onStop?: () => void;
   onCommand?: () => void;
   onNavigate?: (view: View) => void;
 }) {
@@ -52,8 +54,15 @@ export function Topbar({
         <span><DemoIcon name="sun" /><DemoIcon name="moon" /></span>
       </button>
       <button className="product-notify" aria-label="Notifications" onClick={() => onNavigate?.("activity")}><span>2</span><DemoIcon name="activity" /></button>
-      <button className={`product-run ${running ? "running" : ""}`} onClick={onRun} disabled={running || !onRun}>
-        <DemoIcon name="radar" />{running ? "Agent running" : "Run agent"}<i />
+      {/* While the agent runs, this becomes the stop control instead of a
+          dead disabled pill — one place to start AND interrupt the scan. */}
+      <button
+        className={`product-run ${running ? "running" : ""}`}
+        onClick={running ? onStop : onRun}
+        disabled={running ? !onStop : !onRun}
+        aria-label={running ? "Stop the running agent" : "Run agent"}
+      >
+        <DemoIcon name={running ? "close" : "radar"} />{running ? "Stop agent" : "Run agent"}<i />
       </button>
     </div>
   </header>;
