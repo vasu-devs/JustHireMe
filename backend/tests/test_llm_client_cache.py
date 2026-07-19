@@ -72,3 +72,47 @@ def test_concurrent_calls_share_one_client():
     for t in threads:
         t.join()
     assert len(set(map(id, results))) == 1  # all threads got the same cached instance
+
+
+def test_cache_boundary_splits_anthropic_and_strips_elsewhere(monkeypatch):
+    """The \x1e marker becomes a cache_control prefix block on the anthropic
+    path and is stripped for every other provider."""
+    from types import SimpleNamespace
+    from pydantic import BaseModel
+
+    from llm import client as llm_client
+
+    class _Out(BaseModel):
+        answer: str = ""
+
+    captured = {}
+
+    class _FakeMessages:
+        def parse(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(parsed_output=_Out(answer="ok"))
+
+    monkeypatch.setattr(llm_client, "_resolve", lambda step: ("anthropic", "k", "claude-sonnet-5"))
+    monkeypatch.setattr(
+        llm_client, "_anthropic",
+        lambda **kw: SimpleNamespace(messages=_FakeMessages()),
+    )
+    prompt = "STATIC PROFILE" + llm_client.CACHE_BOUNDARY + "PER-LEAD JD"
+    out = llm_client._call_llm_once("sys", prompt, _Out, step="evaluator")
+    assert out.answer == "ok"
+    content = captured["messages"][0]["content"]
+    assert isinstance(content, list) and len(content) == 2
+    assert content[0]["text"] == "STATIC PROFILE"
+    assert content[0]["cache_control"] == {"type": "ephemeral"}
+    assert content[1]["text"] == "PER-LEAD JD"
+    assert captured["system"][0]["cache_control"] == {"type": "ephemeral"}
+
+    # Marker-free prompts stay plain strings (no behavior change).
+    captured.clear()
+    llm_client._call_llm_once("sys", "no marker here", _Out, step="evaluator")
+    assert captured["messages"][0]["content"] == "no marker here"
+
+    # Non-anthropic providers must never see the marker.
+    assert llm_client.CACHE_BOUNDARY not in "x".join(
+        llm_client._anthropic_user_content("a" + llm_client.CACHE_BOUNDARY + "b")[1]["text"]
+    )

@@ -423,22 +423,47 @@ def _subscription_call(provider, attempt, fallback, *, step):
         return fallback()
 
 
+# Record separator: callers that build a stable-prefix + per-item prompt (the
+# evaluator's profile-first ordering) mark the boundary with \x1e. On the
+# anthropic path the prefix becomes its own cache_control block, so the
+# byte-identical profile is billed once per scan instead of once per lead;
+# every other provider just gets the marker stripped (OpenAI-style automatic
+# prefix caching already benefits from the ordering alone).
+CACHE_BOUNDARY = "\x1e"
+
+
+def _anthropic_user_content(u: str):
+    if CACHE_BOUNDARY not in u:
+        return u
+    prefix, rest = u.split(CACHE_BOUNDARY, 1)
+    if not prefix.strip():
+        return rest
+    return [
+        {"type": "text", "text": prefix, "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": rest},
+    ]
+
+
 def _call_llm_once(s: str, u: str, m: type[BaseModel], step: str | None = None):
     p, k, model = _resolve(step)
 
     if p == "anthropic":
         if not k:
             _log.warning("anthropic — no key (step=%s) — falling back", step)
-            return _parse_fallback(u, m)
+            return _parse_fallback(u.replace(CACHE_BOUNDARY, ""), m)
         anthropic_client = _anthropic(api_key=k, timeout=120.0, max_retries=0)
         r = anthropic_client.messages.parse(
             model=model,
             max_tokens=4096,
-            system=s,
-            messages=[{"role": "user", "content": u}],
+            # System prompt is static across a whole scan — always cacheable.
+            system=[{"type": "text", "text": s, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": _anthropic_user_content(u)}],
             output_format=m,
         )
         return r.parsed_output
+
+    if CACHE_BOUNDARY in u:
+        u = u.replace(CACHE_BOUNDARY, "")
 
     elif p == "groq":
         if not k:

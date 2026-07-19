@@ -33,6 +33,7 @@ interface LearningInsights {
   strengths: GapInsight[];
   themes: ThemeInsight[];
   note: string;
+  phrase_mining_skipped?: boolean;
 }
 
 export function LearnView({ api }: { api: ApiFetch }) {
@@ -136,6 +137,9 @@ export function LearnView({ api }: { api: ApiFetch }) {
             ))}
           </div>
         </section>
+        {insights.phrase_mining_skipped && (
+          <p className="learn-footnote">Semantic runtime not installed — showing taxonomy gaps only. Install it from Settings to also mine field-specific phrases from your market.</p>
+        )}
         <p className="learn-footnote">Mined locally from your own lead journal — recency-weighted, no model calls.</p>
       </aside>
     </div>

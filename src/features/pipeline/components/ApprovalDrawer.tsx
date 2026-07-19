@@ -9,6 +9,18 @@ import { GENERATION_TIMEOUT_MS } from "../../../api/generation";
 import { cleanLeadText, getTone, leadDisplayHeading } from "../../../shared/lib/leadUtils";
 import { FormReader } from "../../apply/components/FormReader";
 
+// Score provenance, shown beside the match score: SOTA scoring means the user
+// can always see WHAT judged a lead. Empty string = legacy row, show nothing.
+export function scoredByLabel(scoredBy?: string): string {
+  switch (scoredBy || "") {
+    case "llm": return "AI evaluated";
+    case "llm_score_fallback": return "AI evidence · rubric score";
+    case "deterministic_fallback": return "rubric scored";
+    case "prefiltered_off_field": return "off-field prefilter";
+    default: return "";
+  }
+}
+
 export function ApprovalDrawer({ j: initialLead, api, onClose }: {
   j: Lead; api: ApiFetch; onClose: () => void;
 }) {
@@ -351,6 +363,7 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
               {!!j.learning_delta && <span className="pill mono" style={{ background: j.learning_delta > 0 ? "var(--green-soft)" : "var(--bad-soft)", color: j.learning_delta > 0 ? "var(--green-ink)" : "var(--bad)", border: `1px solid ${j.learning_delta > 0 ? "var(--green)" : "var(--bad)"}` }}>Learning {j.learning_delta > 0 ? "+" : ""}{j.learning_delta}</span>}
               {j.feedback && <span className="pill mono" style={{ background: "var(--blue-soft)", color: "var(--blue-ink)", border: "1px solid var(--blue)" }}>{j.feedback.replace(/_/g, " ")}</span>}
               {j.score > 0 && <span className="pill mono" style={{ background: j.score >= 85 ? "var(--green-soft)" : j.score >= 60 ? "var(--yellow-soft)" : "var(--bad-soft)", color: j.score >= 85 ? "var(--green-ink)" : j.score >= 60 ? "var(--yellow-ink)" : "var(--bad)" }}>{j.score}/100 match</span>}
+              {j.score > 0 && scoredByLabel(j.scored_by) && <span className="pill mono" title="How this score was produced" style={{ background: "var(--paper-2)", color: "var(--ink-3)", fontSize: 10 }}>{scoredByLabel(j.scored_by)}</span>}
             </div>
             <h2 style={{ fontSize: 26, fontWeight: 600, overflowWrap: "anywhere" }}>
               {display.role} <span style={{ color: "var(--ink-3)", fontWeight: 700 }}>||</span> {display.company}
