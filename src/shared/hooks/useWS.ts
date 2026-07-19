@@ -183,23 +183,18 @@ export function useWS() {
             addLog(`Heartbeat #${d.beat} - uptime ${d.uptime_seconds.toFixed(0)}s`, "heartbeat", "hb");
         } else if (d.type === "agent") {
           addLog(d.msg ?? d.event ?? "agent", "agent", d.event ?? "agent");
-          if (d.event === "eval_start" || d.event === "eval_scored") {
-            setProgress(prev => nextProgressFromAgentEvent(prev, d.event, d.msg));
-          }
+          // Every agent event goes through the progress reducer — it ignores
+          // events it doesn't know. Filtering here is how the topbar stop
+          // control and dashboard meter sat dead through the scouting phase.
+          setProgress(prev => nextProgressFromAgentEvent(prev, d.event, d.msg));
           if (d.event === "eval_done") {
-            setProgress(prev => nextProgressFromAgentEvent(prev, d.event, d.msg));
             window.dispatchEvent(new CustomEvent("scan-done"));
           }
-          if (d.event === "reeval_start" || d.event === "reeval_scored") {
-            setProgress(prev => nextProgressFromAgentEvent(prev, d.event, d.msg));
-          }
           if (d.event === "reeval_done") {
-            setProgress(prev => nextProgressFromAgentEvent(prev, d.event, d.msg));
             window.dispatchEvent(new CustomEvent("reevaluate-done"));
             window.dispatchEvent(new CustomEvent("leads-refresh"));
           }
           if (d.event === "cleanup_done") {
-            setProgress(prev => nextProgressFromAgentEvent(prev, d.event, d.msg));
             window.dispatchEvent(new CustomEvent("cleanup-done"));
             window.dispatchEvent(new CustomEvent("leads-refresh"));
           }
