@@ -38,12 +38,16 @@ interface LearningInsights {
 export function LearnView({ api }: { api: ApiFetch }) {
   const [insights, setInsights] = useState<LearningInsights | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setError(null);
     (async () => {
       try {
-        const response = await api("/api/v1/learning/insights");
+        // First read over a big corpus computes for several seconds before the
+        // server-side cache warms — give it more room than the default 30s.
+        const response = await api("/api/v1/learning/insights", { timeoutMs: 60000 });
         if (!response.ok) throw new Error(`Insights failed (${response.status})`);
         const data = (await response.json()) as LearningInsights;
         if (!cancelled) setInsights(data);
@@ -52,10 +56,14 @@ export function LearnView({ api }: { api: ApiFetch }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [api]);
+  }, [api, attempt]);
 
   if (error) {
-    return <div className="learn-view product-enter scroll"><div className="learn-state" role="alert"><DemoIcon name="close" /><strong>Couldn’t read your market.</strong><p>{error} — run a scan, then open this page again.</p></div></div>;
+    return <div className="learn-view product-enter scroll"><div className="learn-state" role="alert">
+      <DemoIcon name="close" /><strong>Couldn’t read your market.</strong>
+      <p>{error}</p>
+      <button className="learn-retry" onClick={() => setAttempt(n => n + 1)}>Try again</button>
+    </div></div>;
   }
   if (!insights) {
     return <div className="learn-view product-enter scroll"><div className="learn-state"><DemoIcon name="radar" /><strong>Reading your market…</strong><p>Weighing every live posting in your journal against your evidence.</p></div></div>;

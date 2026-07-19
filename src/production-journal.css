@@ -1607,3 +1607,12 @@
 /* Timeline delete control reserves its footprint: the button pins at the
    article's right edge, so text must never render under its hit area. */
 .product-app.app-production .profile-timeline > article { padding-right: 34px; }
+
+/* Learn error-state retry: quiet pill, same idiom as .kanban-more. */
+.product-app.app-production .learn-retry {
+  margin-top: 8px; padding: 8px 16px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: transparent; color: var(--ink);
+  font: 700 11px var(--font-sans); cursor: pointer;
+}
+.product-app.app-production .learn-retry:hover { border-color: var(--accent); }

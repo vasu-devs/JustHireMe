@@ -183,6 +183,16 @@ def _semantic_stub(text: str) -> tuple[float, ...]:
     return (1.0, 0.0)
 
 
+def _patch_semantics(monkeypatch) -> None:
+    # Phrase embeds go through the BATCHED seam; the profile embed through
+    # _field_vector — both must be stubbed for deterministic mining tests.
+    monkeypatch.setattr("learning.insights._field_vector", _semantic_stub)
+    monkeypatch.setattr(
+        "learning.insights._phrase_vectors",
+        lambda phrases: {p: _semantic_stub(p) for p in phrases},
+    )
+
+
 def _icu_leads(companies: list[str], description: str = "Wound care for patients.") -> list[dict]:
     return [
         _lead(f"ICU Nurse {i}", description, score=75, days_ago=2, job_id=f"icu{i}", company=co)
@@ -193,7 +203,7 @@ def _icu_leads(companies: list[str], description: str = "Wound care for patients
 def test_recurring_market_phrase_surfaces_as_non_tech_gap(monkeypatch):
     # "wound care" is in no tech taxonomy and not in the nurse's profile, but
     # three independent hospitals keep asking for it.
-    monkeypatch.setattr("learning.insights._field_vector", _semantic_stub)
+    _patch_semantics(monkeypatch)
     leads = _icu_leads(["St Mary", "City General", "Lakeside Clinic"])
     out = compute_learning_insights(leads, NURSE_PROFILE, now=NOW)
     assert out["phrase_mining_skipped"] is False
@@ -215,7 +225,7 @@ def test_hash_only_embeddings_skip_mining_and_flag_it(monkeypatch):
 
 
 def test_boilerplate_phrases_fail_the_field_relevance_filter(monkeypatch):
-    monkeypatch.setattr("learning.insights._field_vector", _semantic_stub)
+    _patch_semantics(monkeypatch)
     leads = _icu_leads(
         ["St Mary", "City General", "Lakeside Clinic"],
         description="Wound care for patients. Equal opportunity employer statement.",
@@ -228,7 +238,7 @@ def test_boilerplate_phrases_fail_the_field_relevance_filter(monkeypatch):
 
 def test_phrases_from_a_single_company_are_boilerplate_not_gaps(monkeypatch):
     # Three postings but one employer: per-company boilerplate, not demand.
-    monkeypatch.setattr("learning.insights._field_vector", _semantic_stub)
+    _patch_semantics(monkeypatch)
     leads = _icu_leads(["Acme Health", "Acme Health", "Acme Health"])
     out = compute_learning_insights(leads, NURSE_PROFILE, now=NOW)
     assert out["phrase_mining_skipped"] is False
@@ -236,7 +246,7 @@ def test_phrases_from_a_single_company_are_boilerplate_not_gaps(monkeypatch):
 
 
 def test_mined_phrase_gaps_are_capped_at_four(monkeypatch):
-    monkeypatch.setattr("learning.insights._field_vector", _semantic_stub)
+    _patch_semantics(monkeypatch)
     desc = (
         "Wound care. Triage assessment. Ventilator management. "
         "Telemetry monitoring. Dialysis support. Catheter insertion."
@@ -245,4 +255,5 @@ def test_mined_phrase_gaps_are_capped_at_four(monkeypatch):
     out = compute_learning_insights(leads, NURSE_PROFILE, now=NOW)
     mined = [g for g in out["gaps"] if "keeps appearing" in g["first_step"]]
     assert 0 < len(mined) <= 4
+
 

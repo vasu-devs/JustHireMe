@@ -103,9 +103,24 @@ export function ProfileView({ api, setView, stats }: { api: ApiFetch; setView: (
   }, [load]);
 
   const evidenceCount = profile.skills.length + profile.projects.length + profile.exp.length + profile.education.length + profile.certifications.length + profile.achievements.length;
-  const readiness = Math.min(98, Math.max(38, 48 + Math.min(50, evidenceCount * 3)));
-  const roleClarity = Math.min(96, 58 + Math.min(38, profile.exp.length * 8 + profile.projects.length * 4));
-  const recency = Math.min(95, 64 + Math.min(31, profile.projects.length * 6 + profile.achievements.length * 3));
+  // Honest, component-based readiness — the old formula (48 + evidence×3)
+  // pinned virtually any filled profile at 98, which reads as a fake number
+  // because it is one. Every point below is traceable to something real the
+  // user added; the ceiling is only reachable with impact-bearing projects
+  // AND dated experience AND credentials.
+  const impactfulProjects = profile.projects.filter(item => entryDetail(item, ["impact", "description", "d"]).length > 40).length;
+  const datedExperience = profile.exp.filter(item => entryDetail(item, ["period"]).length > 0).length;
+  const credentials = profile.education.length + profile.certifications.length + profile.achievements.length;
+  const contactsCount = [profile.identity.city, profile.identity.email, profile.identity.linkedin_url].filter(Boolean).length;
+  const identityScore = (profile.n ? 6 : 0) + Math.min(4, contactsCount * 2);
+  const summaryScore = profile.s ? (profile.s.length > 120 ? 10 : 6) : 0;
+  const skillScore = Math.min(18, profile.skills.length * 2);
+  const projectScore = Math.min(18, profile.projects.length * 5) + Math.min(8, impactfulProjects * 4);
+  const expScore = Math.min(18, profile.exp.length * 6) + Math.min(6, datedExperience * 3);
+  const credScore = Math.min(10, credentials * 2);
+  const readiness = Math.min(99, identityScore + summaryScore + skillScore + projectScore + expScore + credScore);
+  const roleClarity = Math.min(99, Math.round(((summaryScore + expScore) / 34) * 100));
+  const recency = Math.min(99, Math.round(((skillScore + projectScore) / 44) * 100));
   const name = profile.n || "Build your professional profile";
   const latestRole = profile.exp[0] ? entryTitle(profile.exp[0]) : "Your evidence-backed career story";
   const contacts = [profile.identity.city, profile.identity.email, profile.identity.linkedin_url ? "LinkedIn connected" : ""].filter(Boolean);
@@ -190,7 +205,7 @@ export function ProfileView({ api, setView, stats }: { api: ApiFetch; setView: (
           <div className="profile-bars">
             <label><span>Evidence depth <b>{readiness}</b></span><i><em style={{ width: `${readiness}%` }} /></i></label>
             <label><span>Role clarity <b>{roleClarity}</b></span><i><em style={{ width: `${roleClarity}%` }} /></i></label>
-            <label><span>Evidence recency <b>{recency}</b></span><i><em style={{ width: `${recency}%` }} /></i></label>
+            <label><span>Proof coverage <b>{recency}</b></span><i><em style={{ width: `${recency}%` }} /></i></label>
           </div>
         </section>
 

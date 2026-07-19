@@ -26,6 +26,7 @@ appear nowhere in their profile ("wound care" for a nurse who never wrote it).
 from __future__ import annotations
 
 import re
+import math
 from datetime import datetime, timezone
 
 from ranking.scoring_engine import (
@@ -98,6 +99,32 @@ _MINING_STOPWORDS = frozenset({
 
 # Phrases never cross punctuation or digits — those are sentence/list breaks.
 _MINING_SEGMENT_SPLIT = re.compile(r"[^a-z\s]+")
+
+
+def _phrase_vectors(phrases: list[str]) -> dict[str, tuple[float, ...]] | None:
+    """ONE batched embed for every surviving phrase.
+
+    A per-phrase inference was the packaged sidecar's dominant first-call cost
+    on a real corpus (hundreds of sequential ONNX runs behind a single HTTP
+    request). Same hash-provider guard as _field_vector: None means semantic
+    embeddings are unavailable and mining must be skipped, never approximated.
+    """
+    if not phrases:
+        return {}
+    try:
+        from data.vector.embeddings import active_provider, embed_texts
+
+        if active_provider() == "hash":
+            return None
+        vectors = embed_texts(list(phrases))
+        out: dict[str, tuple[float, ...]] = {}
+        for phrase, vec in zip(phrases, vectors or [], strict=False):
+            norm = math.sqrt(sum(x * x for x in vec))
+            if norm:
+                out[phrase] = tuple(x / norm for x in vec)
+        return out
+    except Exception:
+        return None
 
 
 def _is_role_phrase(phrase: str) -> bool:
@@ -180,7 +207,7 @@ def mine_market_phrases(
                 row["companies"].add(company)
 
     total_postings = max(1, len(lead_phrases))
-    survivors: dict[str, dict] = {}
+    pending: dict[str, dict] = {}
     for phrase, row in stats.items():
         if row["postings"] < MIN_PHRASE_POSTINGS or len(row["companies"]) < MIN_PHRASE_COMPANIES:
             continue
@@ -195,8 +222,16 @@ def mine_market_phrases(
             continue  # the taxonomy already surfaces this as a term gap
         if _contains_phrase(candidate_profile_text, phrase):
             continue  # candidate's own vocabulary, not an unknown
-        # Embedding only runs on the few phrases left after the cheap filters.
-        vec = _field_vector(phrase)
+        pending[phrase] = row
+
+    # Embedding runs ONCE, batched, on the few phrases left after the cheap
+    # filters — never one inference per phrase.
+    vectors = _phrase_vectors(sorted(pending))
+    if vectors is None:
+        return None
+    survivors: dict[str, dict] = {}
+    for phrase, row in pending.items():
+        vec = vectors.get(phrase)
         if vec is None:
             continue
         cosine = sum(a * b for a, b in zip(profile_vec, vec, strict=False))
@@ -343,7 +378,13 @@ def compute_learning_insights(
 
     # Unknown-skill discovery beyond the tech taxonomy: without this a nurse or
     # welder sees strengths but never a gap they haven't already written down.
-    mined = mine_market_phrases(considered, _profile_text(profile), now=now)
+    # Mining is an ENHANCEMENT: any failure inside it (embedding runtime,
+    # pathological text) degrades to taxonomy-only insights, never a 500 —
+    # the Learn page must always answer.
+    try:
+        mined = mine_market_phrases(considered, _profile_text(profile), now=now)
+    except Exception:
+        mined = None
     mined_rows: list[dict] = []
     if mined:
         for phrase, row in mined.items():
