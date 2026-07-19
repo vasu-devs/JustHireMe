@@ -37,16 +37,18 @@ describe("FIX.md frontend stability contracts", () => {
   });
 
   it("keeps the profile dossier read surface wired", () => {
-    // REDESIGN NOTE (2026-07): the dossier redesign removed per-item profile
-    // deletion from this view entirely, so the old single-flight delete
-    // contract (deleteInFlightRef / "Deleting...") has no subject anymore.
-    // If item management returns (e.g. via "Edit skills"), restore the
-    // rapid-click guard contract with it — concurrent backend DELETEs from
-    // double clicks were a real bug class. Until then, pin the surfaces the
-    // dossier must keep.
     expect(profile).toContain("/api/v1/profile");
     expect(profile).toContain("Recheck profile");
     expect(profile).not.toContain("deleteQueueRef");
+  });
+
+  it("keeps per-item deletion single-flight guarded", () => {
+    // Restored after the dossier redesign dropped it: concurrent backend
+    // DELETEs from rapid double clicks were a real bug class (graph-lock
+    // contention), so deletion must stay behind a same-tick flight guard.
+    expect(profile).toContain("deleteFlightRef");
+    expect(profile).toContain("window.confirm");
+    expect(profile).toContain("profileDeletePath");
   });
 
   it("keeps profile and ingestion flows connected to their API contracts", () => {

@@ -422,6 +422,7 @@ def run(
     raw_watchlist: str | None = None,
     max_requests: int = 5,
     min_signal_score: int = 55,
+    should_stop=None,
 ) -> list[dict]:
     errors: list[str] = []
     usage: dict[str, Any] = {
@@ -449,6 +450,9 @@ def run(
     usage["configured_queries"] = len(targets)
 
     for query in targets[:max_requests]:
+        if should_stop and should_stop():
+            errors.append("stopped by user")
+            break
         try:
             tweets, users = asyncio.run(_search_recent(token, query, max_results=max_results))
             usage["executed_queries"] += 1

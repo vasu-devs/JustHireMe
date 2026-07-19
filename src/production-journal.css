@@ -1560,3 +1560,50 @@
 }
 .product-app.app-production .learn-state strong { font: 400 18px var(--font-display); color: var(--ink); }
 .product-app.app-production .learn-state p { margin: 0; font: 400 12px var(--font-sans); color: var(--ink-2); }
+
+/* ================= PROFILE ITEM DELETION =================
+   Per-item removal restored after the dossier redesign dropped it. Quiet
+   affordances following the kanban delete idiom: transparent close buttons,
+   confirm guard + single-flight handled in the view. */
+.product-app.app-production .profile-chip-delete {
+  display: inline-grid; place-items: center;
+  width: 18px; height: 18px; padding: 0;
+  border: 0; border-radius: 50%;
+  background: transparent; color: var(--ink-2);
+  cursor: pointer;
+}
+.product-app.app-production .profile-chip-delete svg { width: 10px; height: 10px; }
+.product-app.app-production .profile-chip-delete:hover:not(:disabled) { color: var(--accent); }
+.product-app.app-production .profile-chip-delete:disabled { opacity: .45; cursor: default; }
+.product-app.app-production .profile-skill-cloud > span:has(> .profile-chip-delete) { padding-right: 8px; }
+
+/* Projects gained a delete column ahead of the edit chevron. */
+.product-app.app-production .profile-project-list > article { grid-template-columns: 40px minmax(0, 1fr) 34px 34px; }
+.product-app.app-production .profile-entry-delete { color: var(--ink-2); }
+.product-app.app-production .profile-entry-delete svg { width: 12px; }
+.product-app.app-production .profile-entry-delete:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.product-app.app-production .profile-entry-delete:disabled { opacity: .45; }
+/* Timeline entries are prose, not a grid: pin the close control top-right
+   (the article is the positioned ancestor, not the copy div). */
+.product-app.app-production .profile-timeline .profile-entry-delete {
+  position: absolute; right: 2px; top: 16px;
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: transparent;
+}
+
+/* Credibility markers: education / certifications / achievements as quiet,
+   deletable chips in the insight rail. */
+.product-app.app-production .profile-credentials-card { padding: 18px; border: 1px solid var(--line); border-radius: 18px 8px 18px 9px; background: var(--surface); }
+.product-app.app-production .profile-credentials-card > header { display: flex; align-items: center; justify-content: space-between; padding: 3px 5px 13px; }
+.product-app.app-production .profile-credentials-card > header > strong { font: 800 24px var(--font-display); }
+.product-app.app-production .profile-credential-group { padding: 11px 5px 4px; border-top: 1px dashed var(--line); }
+.product-app.app-production .profile-credential-group > span { font: 750 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.product-app.app-production .profile-credential-group > div { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+.product-app.app-production .profile-credential-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px 5px 12px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--paper-2); font: 400 12.5px var(--font-display); color: var(--ink); }
+.product-app.app-production .profile-credentials-empty { margin: 2px 5px 0; padding-top: 11px; border-top: 1px dashed var(--line); font-size: 11px !important; color: var(--ink-3); }
+
+/* Timeline delete control reserves its footprint: the button pins at the
+   article's right edge, so text must never render under its hit area. */
+.product-app.app-production .profile-timeline > article { padding-right: 34px; }

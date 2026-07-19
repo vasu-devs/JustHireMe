@@ -1,6 +1,7 @@
 import asyncio
 import re
 import threading
+from collections.abc import Callable
 from contextvars import ContextVar
 from datetime import datetime, timezone, timedelta
 from typing import Any
@@ -468,6 +469,7 @@ def run(
     apify_actor: str | None = None,
     headed: bool = False,
     min_quality: int = MIN_DEFAULT_QUALITY,
+    should_stop: Callable[[], bool] | None = None,
 ) -> list:
     errors: list[str] = []
     leads = []
@@ -488,6 +490,9 @@ def run(
     }
 
     for target in all_targets:
+        if should_stop and should_stop():
+            errors.append("stopped by user")
+            break
         target = _ensure_scheme(target)
         try:
             before = len(processed_leads)
@@ -527,7 +532,7 @@ def run(
     # populated by any caller, so this branch was dead and the actor never ran.
     # Derive queries from the `site:` dork targets — exactly the targets the
     # keyless API/RSS path cannot serve — so Apify becomes the engine for them.
-    if apify_token and apify_actor:
+    if apify_token and apify_actor and not (should_stop and should_stop()):
         actor_queries = queries or [
             target[len("site:"):].strip()
             for target in all_targets

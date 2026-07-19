@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import httpx
@@ -37,13 +38,14 @@ async def run_actor(actor: str, inp: dict, token: str) -> list:
         return response.json()
 
 
-def run_board_scan(urls: list[str], cfg: dict) -> BoardScanResult:
+def run_board_scan(urls: list[str], cfg: dict, should_stop: Callable[[], bool] | None = None) -> BoardScanResult:
     from automation.source_adapters import run_apify_scout
 
     result = run_apify_scout(
         urls=urls,
         apify_token=cfg.get("apify_token") or None,
         apify_actor=cfg.get("apify_actor") or None,
+        should_stop=should_stop,
     )
     return BoardScanResult(
         leads=result.leads,

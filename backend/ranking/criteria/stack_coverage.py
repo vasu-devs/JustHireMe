@@ -22,11 +22,15 @@ def evaluate_stack_coverage(posting: PostingSignals, candidate: CandidateEvidenc
     direct_value = len(direct)
     adjacent_value = 0.30 * len(adjacent)
     coverage = (direct_value + adjacent_value) / max(1, len(required))
-    score = clamp((coverage * 88) + min(10, len(direct) * 2))
+    # Specificity-scaled ceiling: full coverage of a generic 2-term JD is weaker
+    # evidence than full coverage of a specific 6-term one, so the ceiling grows
+    # with how much the posting actually asked for.
+    ceiling = 70 + min(26, 4 * len(required))
+    score = clamp((coverage * ceiling) + min(8, 2 * len(direct)))
     if direct and not missing:
-        score = max(score, 86)
+        score = max(score, 72)
     elif direct:
-        score = max(score, 55)
+        score = max(score, 50)
     elif adjacent:
         score = max(min(38, 22 + len(adjacent) * 4), 22)
     reason = (

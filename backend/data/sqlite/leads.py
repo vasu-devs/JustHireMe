@@ -106,6 +106,7 @@ def lead_row_dict(row) -> dict:
         "source_meta": source_meta,
         "lead_quality_score": source_meta.get("lead_quality_score") or 0,
         "lead_quality_reason": source_meta.get("lead_quality_reason") or "",
+        "scored_by": source_meta.get("scored_by") or "",
         "keyword_coverage": source_meta.get("keyword_coverage") or {},
         "contact_lookup": source_meta.get("contact_lookup") or {},
         "feedback": row_get(row, "feedback") or "",

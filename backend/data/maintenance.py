@@ -1,8 +1,10 @@
-"""Destructive maintenance: wipe local data so the app can be reset for testing.
+"""Data maintenance: destructive local-data reset.
 
 `reset_all_data` clears the CRM/leads, the profile knowledge graph, the vector
 tables, and generated documents — leaving the schemas intact so the app keeps
-working and lands back in a clean, first-run-like state.
+working and lands back in a clean, first-run-like state. (The non-destructive
+stored-lead repair lives in ``discovery.maintenance`` — it re-runs discovery's
+parsers, and ``data`` must not import ``discovery``.)
 
 By default it PRESERVES settings (LLM provider, API keys, preferences) and
 saved resume templates, so a reset leaves the app immediately usable. Pass

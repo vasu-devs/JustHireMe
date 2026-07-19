@@ -2,6 +2,7 @@ import logging
 import asyncio
 import re
 import threading
+from collections.abc import Callable
 from contextvars import ContextVar
 from typing import Any
 
@@ -324,6 +325,7 @@ def run(
     kind_filter: str | None = None,
     max_requests: int = 20,
     min_signal_score: int = MIN_DEFAULT_QUALITY,
+    should_stop: Callable[[], bool] | None = None,
 ) -> list[dict]:
     errors: list[str] = []
     error_token = _ERROR_SINK.set(errors)
@@ -369,6 +371,9 @@ def run(
     seen: set[str] = set()
 
     for target in all_targets[:cap]:
+        if should_stop and should_stop():
+            errors.append("stopped by user")
+            break
         try:
             batch = asyncio.run(_scrape_target(target))
             usage["executed"] += 1
@@ -436,6 +441,10 @@ def run(
 
     remaining = max(0, cap - usage["executed"])
     for connector in custom_connectors[:remaining]:
+        if should_stop and should_stop():
+            if "stopped by user" not in errors:
+                errors.append("stopped by user")
+            break
         if not isinstance(connector, dict):
             errors.append("custom connector skipped: each connector must be an object")
             continue

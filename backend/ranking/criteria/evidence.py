@@ -33,22 +33,30 @@ def evaluate_evidence(posting: PostingSignals, candidate: CandidateEvidence, wei
     values: list[float] = []
     proofed_terms: list[str] = []
     weak_terms: list[str] = []
+    # Depth-graded per-term proof: a term proven by multiple projects (and again
+    # in employment) outranks a single mention, which outranks a bare skills-list
+    # entry — so proof depth, not just proof presence, separates candidates.
     for term in required:
         if term in candidate.project_terms:
-            values.append(1.0)
+            depth = sum(1 for _title, _text, terms in candidate.project_texts if term in terms)
+            value = 0.72 + 0.09 * min(depth, 2)
+            if term in candidate.experience_terms:
+                value += 0.10
+            values.append(value)
             proofed_terms.append(term)
         elif term in candidate.experience_terms:
-            values.append(0.75)
+            depth = sum(1 for _title, _text, terms in candidate.experience_texts if term in terms)
+            values.append(0.60 + 0.08 * min(depth, 2))
             proofed_terms.append(term)
         elif term in candidate.skills:
-            values.append(0.45)
+            values.append(0.30)
             weak_terms.append(term)
         else:
             values.append(0.0)
 
     term_score = (sum(values) / max(1, len(required))) * 100
     deliverable_overlap = posting.deliverables & candidate.deliverables
-    deliverable_score = min(100, 55 + len(deliverable_overlap) * 15) if deliverable_overlap else 45
+    deliverable_score = min(100, 55 + len(deliverable_overlap) * 15) if deliverable_overlap else 38
     score = clamp(term_score * 0.78 + deliverable_score * 0.22)
     if proofed_terms:
         evidence = _evidence_line(candidate, set(proofed_terms))

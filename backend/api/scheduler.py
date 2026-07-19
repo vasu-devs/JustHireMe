@@ -106,7 +106,7 @@ def create_ghost_tick(manager):
                     repo.leads.update_lead_score,
                     lead["job_id"], result["score"], result["reason"],
                     result.get("match_points", []), result.get("gaps", []),
-                    preserve_status=True,
+                    preserve_status=True, scored_by=result.get("scored_by", ""),
                 )
                 await manager.broadcast({"type": "LEAD_UPDATED", "data": {**lead, **result}})
                 if result["score"] >= 85:
@@ -187,11 +187,33 @@ def create_ghost_tick(manager):
     return ghost_tick
 
 
+def _run_lead_hygiene_migration(logger) -> None:
+    """One-shot repair of stored lead rows (legacy HN comment-dump titles,
+    RemoteOK spam blurbs/mojibake). Flag-gated so every install pays the cost
+    exactly once; the repair itself is also idempotent as a second guard."""
+    try:
+        repo = get_repository()
+        if (repo.settings.get_settings() or {}).get("lead_hygiene_v2") == "done":
+            return
+        # Dynamic import: the api layer reaches domain packages through
+        # import_module by design (see api.dependencies._local_service).
+        from importlib import import_module
+        counts = import_module("discovery.maintenance").normalize_stored_leads()
+        repo.settings.save_settings({"lead_hygiene_v2": "done"})
+        logger.info(
+            "lead hygiene migration: %s titles fixed, %s descriptions cleaned",
+            counts.get("titles_fixed", 0), counts.get("descriptions_cleaned", 0),
+        )
+    except Exception as exc:
+        logger.warning("lead hygiene migration skipped: %s", exc)
+
+
 def create_lifespan(scheduler: AsyncIOScheduler, ghost_tick, logger):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         init_sql()
         prune_history()  # cap the append-only telemetry tables on startup
+        _run_lead_hygiene_migration(logger)
         ensure_ghost_job(scheduler, ghost_tick)
         log_startup_warnings(get_repository(), logger)
         scheduler.start()

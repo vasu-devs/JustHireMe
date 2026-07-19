@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import lru_cache
+
 import html
 import re
 from datetime import datetime, timedelta, timezone
@@ -226,6 +228,13 @@ def classify_job_seniority(lead: dict) -> str:
     return "unknown"
 
 
+_ROLE_EXTRA_TERMS = (
+    "software", "frontend", "front-end", "backend", "full stack",
+    "full-stack", "data", "ai", "ml", "devops", "sre", "qa", "mobile",
+    "product", "solution architect", "solutions architect",
+)
+
+
 def looks_role_like(text: str) -> bool:
     lower = text.lower()
     # Field-agnostic: recognize a role/occupation in ANY field (healthcare,
@@ -234,14 +243,56 @@ def looks_role_like(text: str) -> bool:
     # posting is no longer dropped at HN/RSS ingestion as "not role-like".
     from core.occupations import EMPLOYMENT_TERMS, OCCUPATION_TERMS
 
-    extra = (
-        "software", "frontend", "front-end", "backend", "full stack",
-        "full-stack", "data", "ai", "ml", "devops", "sre", "qa", "mobile",
-        "product", "solution architect", "solutions architect",
-    )
-    return any(term in lower for term in OCCUPATION_TERMS) \
-        or any(term in lower for term in EMPLOYMENT_TERMS) \
-        or any(term in lower for term in extra)
+    if any(term in lower for term in OCCUPATION_TERMS) \
+            or any(term in lower for term in EMPLOYMENT_TERMS):
+        return True
+    for term in _ROLE_EXTRA_TERMS:
+        # Short tokens ("ai", "ml", "qa", "data") appear inside ordinary words
+        # ("gmail", "html", "database") — an email address once became a stored
+        # title via 'ai' in 'gmail' — so they only count on word boundaries.
+        # Longer phrases keep plain substring matching.
+        if len(term) <= 4:
+            if re.search(rf"\b{re.escape(term)}\b", lower):
+                return True
+        elif term in lower:
+            return True
+    return False
+
+
+# Level/shape modifiers that legitimately accompany occupation nouns in a bare
+# role title ("Senior Full Stack Engineer", "Head of Engineering").
+_ROLE_MODIFIER_TOKENS = frozenset({
+    "senior", "junior", "mid", "lead", "staff", "principal", "head", "chief",
+    "vp", "founding", "full", "stack", "fullstack", "front", "back", "end",
+    "frontend", "backend", "software", "platform", "product", "data", "ml",
+    "ai", "devops", "cloud", "infra", "infrastructure", "site", "reliability",
+    "of", "and", "&", "-", "engineering", "engineer", "engineers", "developer",
+    "manager", "designer", "scientist", "architect", "analyst", "intern",
+    "apprentice", "specialist", "consultant", "researcher", "technologist",
+})
+
+
+@lru_cache(maxsize=1)
+def _occupation_token_set() -> frozenset[str]:
+    from core.occupations import OCCUPATION_TERMS
+
+    tokens: set[str] = set()
+    for term in OCCUPATION_TERMS:
+        tokens.update(term.lower().split())
+    return frozenset(tokens)
+
+
+def _pure_role_segment(text: str) -> bool:
+    """True only when EVERY token is role vocabulary — the discriminator that
+    keeps a company name containing an occupation noun ("Panopto Software",
+    "Engineers Gate", "Designer Brands") from being read as a role-first post
+    and inverting the whole parse. "Engineering Manager" qualifies; anything
+    carrying a non-role token does not."""
+    tokens = [tok for tok in re.split(r"[\s/]+", text.lower()) if tok.strip(",.&-")]
+    if not 1 <= len(tokens) <= 6:
+        return False
+    vocab = _occupation_token_set() | _ROLE_MODIFIER_TOKENS
+    return all(tok.strip(",.") in vocab for tok in tokens)
 
 
 def looks_like_hn_job_post(text: str) -> bool:
@@ -277,6 +328,25 @@ def looks_like_hn_job_post(text: str) -> bool:
     return first_line.count("|") >= 1 and has_role and has_hiring_signal
 
 
+_TITLE_FRAGMENT_STARTERS = {
+    "we", "we're", "we've", "have", "are", "is", "our", "the", "a", "an",
+    "and", "to", "with", "you", "your", "this", "it", "it's", "if", "as", "in",
+}
+
+
+def _junk_title(text: str) -> bool:
+    """Reject strings that pass looks_role_like but are not titles: email
+    addresses ('engineer@acme.com'), overlong lines, and sentence fragments
+    that start mid-prose with a lowercase filler word ('we are looking...')."""
+    if "@" in text and " " not in text:
+        return True
+    words = text.split()
+    if len(words) > 8:
+        return True
+    first = words[0] if words else ""
+    return bool(first) and first[0].islower() and first.lower() in _TITLE_FRAGMENT_STARTERS
+
+
 def hn_company_role(text: str, author: str = "") -> tuple[str, str]:
     clean = strip_html_text(text)
     first_line = clean.splitlines()[0].strip() if clean else ""
@@ -288,17 +358,32 @@ def hn_company_role(text: str, author: str = "") -> tuple[str, str]:
         "full-time", "part-time", "contract", "internship",
     }
 
+    def is_noise(segment: str) -> bool:
+        lower = segment.lower()
+        return any(noise == lower or noise in lower for noise in role_noise)
+
     def clean_role(raw: str) -> str:
         role = re.sub(r"^\s*(?:\d+\s*[\).:-]?\s*)+", "", raw or "").strip(" -|:;,.")
         role = re.sub(r"\s+", " ", role)
         return role[:140]
 
     for segment in pipe_parts[1:]:
-        lower = segment.lower()
-        if any(noise == lower or noise in lower for noise in role_noise):
+        if is_noise(segment):
             continue
         if looks_role_like(segment):
             return company, clean_role(segment)
+
+    # Role-first post ("Engineering Manager | Remote | Full-time"): the first
+    # segment IS the role and no later segment is one (the loop above already
+    # returned otherwise). Gated on EVERY token being role vocabulary — a mere
+    # occupation-noun substring would invert company-first posts like
+    # "Panopto Software | Remote | Python, Go". A comma-bearing segment (stack
+    # list) is never promoted to company; ambiguous posts keep the company-
+    # first fallback below.
+    if len(pipe_parts) >= 2 and _pure_role_segment(pipe_parts[0]):
+        rest = [seg for seg in pipe_parts[1:] if not is_noise(seg)]
+        company_seg = next((seg for seg in rest if not looks_role_like(seg) and "," not in seg), "")
+        return (company_seg or author or "")[:100], clean_role(pipe_parts[0])
 
     role_block = re.search(
         r"(?:hiring\s+for\s+(?:multiple\s+)?(?:core\s+)?roles?|roles?|positions?)\s*:\s*([^\n.]+)",
@@ -314,7 +399,7 @@ def hn_company_role(text: str, author: str = "") -> tuple[str, str]:
 
     for line in clean.splitlines()[1:8]:
         role = clean_role(line)
-        if role and looks_role_like(role) and len(role.split()) <= 8:
+        if role and looks_role_like(role) and not _junk_title(role):
             return company, role
 
     return company, f"Hiring at {company}" if company else "HN hiring lead"

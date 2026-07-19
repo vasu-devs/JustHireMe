@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -10,7 +11,7 @@ import httpx
 from discovery.sources.net import guarded_async_client
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from discovery.normalizer import is_recent, looks_role_like, strip_html_text
+from discovery.normalizer import clean_text, is_recent, looks_role_like, strip_html_text
 from discovery.sources.common import retry_after_seconds
 
 SOURCE_CAPS = {
@@ -149,8 +150,6 @@ def rss_company_and_role(title: str, platform: str) -> tuple[str, str]:
     if not clean:
         return "RSS Feed", ""
 
-    import re
-
     if re.search(r"\s+at\s+", clean, flags=re.I):
         role, company = re.split(r"\s+at\s+", clean, maxsplit=1, flags=re.I)
         return company.strip(" -|:"), role.strip(" -|:")
@@ -214,6 +213,107 @@ async def scrape_rss(u: str) -> list:
     return items
 
 
+# UTF-8 bytes read as Windows-1252 leave a telltale lead char (a-circumflex
+# U+00E2, A-tilde U+00C3, U+00C2, U+00F0) followed by a char from cp1252's high
+# range: U+00E2 U+20AC U+2122 is a mojibake apostrophe, U+00C3 U+00A9 a
+# mojibake e-acute.
+_MOJIBAKE_RE = re.compile(
+    "[\u00c2\u00c3\u00e2\u00f0]"
+    "[\u00a0-\u00ff"  # cp1252 0xA0-0xFF map to the same codepoints
+    # cp1252 0x80-0x9F map to these scattered punctuation/letter codepoints
+    "\u0152\u0153\u0160\u0161\u0178\u017d\u017e\u0192\u02c6\u02dc"
+    "\u2018-\u201e\u2020-\u2022\u2013\u2014\u2026\u2030\u2039\u203a\u20ac\u2122]"
+)
+
+
+def _repair_mojibake_once(text: str) -> str:
+    encoded = text.encode("cp1252", errors="ignore")
+    if len(encoded) != len(text):
+        # Every cp1252-encodable char is exactly one byte, so a shorter result
+        # means genuine non-cp1252 content (CJK, emoji) the round trip would
+        # silently drop — keep the original.
+        return text
+    try:
+        # Strict decode: text that is not ENTIRELY valid UTF-8-read-as-cp1252
+        # is not a pure misread. Mixed content ("José" beside real mojibake) or
+        # marker lookalikes (Icelandic "Sigurðór" matches the marker regex with
+        # no mojibake at all) would lose their real characters under a lenient
+        # decode — keep the original instead.
+        repaired = encoded.decode("utf-8")
+    except UnicodeDecodeError:
+        return text
+    # ASCII-only count: mojibake chars are themselves alphabetic, so a total-
+    # alnum comparison would veto every legitimate repair. Real content the
+    # repair must preserve is the ASCII text around the mojibake.
+    ascii_alnum = sum(1 for ch in repaired if ch.isascii() and ch.isalnum())
+    original_ascii_alnum = sum(1 for ch in text if ch.isascii() and ch.isalnum())
+    if not repaired.strip() or ascii_alnum < original_ascii_alnum:
+        return text
+    return repaired
+
+
+def repair_mojibake(text: str) -> str:
+    """Undo UTF-8-read-as-cp1252 mojibake ("â€™" -> "'", "Ã©" -> "é").
+
+    Only touches text carrying mojibake marker sequences, and keeps the
+    original whenever the cp1252 round trip would lose real content. Iterates
+    to a fixpoint so double-encoded text repairs fully (and re-running is a
+    no-op, which stored-row maintenance relies on).
+    """
+    if not text:
+        return text
+    for _ in range(3):
+        if not _MOJIBAKE_RE.search(text):
+            break
+        repaired = _repair_mojibake_once(text)
+        if repaired == text:
+            break
+        text = repaired
+    return text
+
+
+# RemoteOK injects an anti-spam paragraph into every description ("Please
+# mention the word **WORD** and tag RMTQ0... when applying to show you read
+# the job post ..."). The lookahead ANCHORS on the injection's own markers so
+# an employer-authored sentence that happens to start the same way ("please
+# mention the word banana and include salary expectations") is never touched;
+# the match then runs to the paragraph boundary in raw HTML or cleaned text.
+_REMOTEOK_SPAM_RE = re.compile(
+    r"please mention the word\b(?=.{0,200}?(?:and tag rmt|to show you read the job post))"
+    r".*?(?=\n|</p|<p|$)",
+    flags=re.I,
+)
+
+
+def strip_remoteok_noise(text: str) -> str:
+    return _REMOTEOK_SPAM_RE.sub("", text or "")
+
+
+# Role-shaped title patterns beyond the occupation vocabulary: leadership heads
+# ("Head of Growth", "VP of Sales"), practice titles by suffix ("Illustrator",
+# "Dental Hygienist", "Veterinarian"), and named non-noun roles. Adversarial
+# testing showed a strict looks_role_like gate silently dropped 17/47 real
+# titles — a false DROP loses a lead forever, a false KEEP just flows on to
+# the quality gate, so this tier errs lenient.
+_ROLE_HEAD_RE = re.compile(
+    r"(?i)\b(head of|vp|vice president|chief|director|lead|manager|master|host|moderator|"
+    r"specialist|coordinator|consultant|advisor|analyst|architect|designer|developer|"
+    r"engineer|recruiter|writer|editor|producer|hacker|attendant|interpreter)\b"
+)
+_ROLE_SUFFIX_RE = re.compile(r"(?i)\b\w{4,}(?:ist|ator|ician|arian|grapher|ineer|urse|erapist)s?\b")
+_POSTING_SIGNAL_RE = re.compile(r"(?i)\b(hiring|apply|salary|responsibilit\w*|requirement\w*|experience)\b")
+
+
+def _remoteok_title_ok(title: str, description_text: str) -> bool:
+    if looks_role_like(title):
+        return True
+    if _ROLE_HEAD_RE.search(title) or _ROLE_SUFFIX_RE.search(title):
+        return True
+    # A title the vocabulary can't classify but whose description reads like a
+    # real posting is kept; the quality gate judges the content downstream.
+    return bool(_POSTING_SIGNAL_RE.search(description_text or ""))
+
+
 @retry(
     retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
     wait=wait_exponential(multiplier=1, min=2, max=8),
@@ -230,15 +330,23 @@ async def scrape_remoteok() -> list:
             await asyncio.sleep(retry_after)
             r.raise_for_status()
         r.raise_for_status()
+        # RemoteOK's response omits an explicit charset; without forcing UTF-8
+        # the body may be decoded as cp1252 and every non-ASCII char arrives
+        # as mojibake.
+        r.encoding = "utf-8"
         data = r.json()
 
     results = []
     for j in data:
         if not isinstance(j, dict):
             continue
-        title = j.get("position", "")
+        title = clean_text(repair_mojibake(str(j.get("position") or "")))
         url = j.get("url", "")
         if not title or not url:
+            continue
+        # Title hygiene gate: the real feed carries junk titles ("Danny",
+        # "Date Posted", "Replace with job title") that are not roles at all.
+        if not _remoteok_title_ok(title, str(j.get("description") or "")):
             continue
         epoch = j.get("epoch")
         posted_date = ""
@@ -249,7 +357,7 @@ async def scrape_remoteok() -> list:
             posted_date = posted.isoformat()
         salary = salary_from_bounds(j.get("salary_min"), j.get("salary_max"), "USD")
         desc = description(
-            j.get("description", ""),
+            strip_remoteok_noise(repair_mojibake(str(j.get("description") or ""))),
             detail("Location", j.get("location")),
             detail("Tags", j.get("tags")),
             detail("Salary", salary),

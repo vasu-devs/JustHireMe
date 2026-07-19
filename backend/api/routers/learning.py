@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from importlib import import_module
 
 from fastapi import APIRouter, Depends
 
 from api.dependencies import get_repository
 from data.repository import Repository
-from learning import compute_learning_insights
 
 router = APIRouter(prefix="/api/v1", tags=["learning"])
 
@@ -18,6 +18,9 @@ async def learning_insights(repo: Repository = Depends(get_repository)):
     Deterministic and local: recent postings vs. the profile's evidence,
     with near-miss roles (score 55-84) weighted as the highest-leverage gaps.
     """
+    # Dynamic import: the api layer reaches domain packages through
+    # import_module by design (see api.dependencies._local_service).
+    compute = import_module("learning").compute_learning_insights
     leads = await asyncio.to_thread(repo.leads.get_leads_for_learning, 500)
     profile = await asyncio.to_thread(repo.profile.get_profile)
-    return await asyncio.to_thread(compute_learning_insights, leads, profile or {})
+    return await asyncio.to_thread(compute, leads, profile or {})

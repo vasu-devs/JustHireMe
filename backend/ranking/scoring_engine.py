@@ -55,6 +55,10 @@ class PostingSignals:
     commercial_intent: bool
     red_flags: list[str]
     quality_features: list[str]
+    # True when the SEMANTIC off-field gate (candidate-vs-JD cosine, any
+    # profession pair) set wrong_field, as opposed to the tech-only blocklist.
+    # Drives a candidate-relative cap message instead of "not software".
+    wrong_field_semantic: bool = False
 
 
 
@@ -350,9 +354,10 @@ def _company_from_text(text: str) -> str:
 
 def _extract_years(text: str) -> int:
     years: list[int] = []
+    # "years?"/"yrs?" so a singular "1+ year" still reads as a requirement.
     for pattern in (
-        r"(\d{1,2})\s*\+?\s*(?:years|yrs|yoe)",
-        r"(\d{1,2})\s*-\s*(\d{1,2})\s*(?:years|yrs|yoe)",
+        r"(\d{1,2})\s*\+?\s*(?:years?|yrs?|yoe)",
+        r"(\d{1,2})\s*-\s*(\d{1,2})\s*(?:years?|yrs?|yoe)",
     ):
         for match in re.finditer(pattern, text or "", flags=re.I):
             nums = [int(g) for g in match.groups() if g and g.isdigit()]
@@ -590,6 +595,7 @@ def apply_domain_generalization(posting: PostingSignals, candidate: CandidateEvi
         similarity = _semantic_field_similarity(candidate_data, jd)
         if similarity is not None and similarity < _OFF_FIELD_SIM:
             posting.wrong_field = True
+            posting.wrong_field_semantic = True
     return matched
 
 
@@ -653,23 +659,32 @@ def _apply_caps(
     candidate: CandidateEvidence,
     direct: set[str],
     adjacent: set[str],
-) -> tuple[int, list[str], int | None]:
-    caps: list[tuple[int, str]] = []
+) -> tuple[int, list[str], int | None, list[str]]:
+    caps: list[tuple[int, str, str]] = []
     if posting.wrong_field:
-        caps.append((15, "wrong-field cap: posting is not a technical/software opportunity"))
+        # Candidate-relative wording when the semantic (any-profession) gate set
+        # the flag; the blocklist wording only fits the tech-vs-not case.
+        detail = (
+            "posting looks like a different profession than this profile"
+            if posting.wrong_field_semantic
+            else "posting is not a technical/software opportunity"
+        )
+        caps.append((15, f"wrong-field cap: {detail}", "wrong-field"))
     seniority = _seniority_cap(posting, candidate)
     if seniority:
-        caps.append(seniority)
+        caps.append((seniority[0], seniority[1], "seniority"))
     if posting.terms and not direct and len(posting.terms) >= 2:
         cap = 52 if adjacent else 42
-        caps.append((cap, "stack cap: no exact evidence for requested primary stack"))
+        caps.append((cap, "stack cap: no exact evidence for requested primary stack", "stack"))
     if not posting.terms and len(_squash(posting.text)) < 160:
-        caps.append((68, "confidence cap: posting is too thin for a high rating"))
+        caps.append((68, "confidence cap: posting is too thin for a high rating", "confidence"))
     if not caps:
-        return score, [], None
-    cap, _reason = min(caps, key=lambda item: item[0])
-    limit_notes = [reason for _limit, reason in sorted(caps, key=lambda item: item[0])]
-    return min(score, cap), limit_notes, cap
+        return score, [], None, []
+    ordered = sorted(caps, key=lambda item: item[0])
+    cap = ordered[0][0]
+    limit_notes = [reason for _limit, reason, _kind in ordered]
+    cap_kinds = [kind for _limit, _reason, kind in ordered]
+    return min(score, cap), limit_notes, cap, cap_kinds
 
 
 def _describe_missing(missing: set[str], candidate: CandidateEvidence) -> str:
@@ -714,6 +729,7 @@ def _result(
     missing: set[str],
     caps: list[str],
     applied_cap: int | None = None,
+    cap_kinds: list[str] | None = None,
 ) -> ScoreResult:
     ordered = sorted(criteria, key=lambda c: c.weight, reverse=True)
     breakdown = ", ".join(f"{c.name.split()[0]} {c.score}" for c in ordered)
@@ -748,6 +764,7 @@ def _result(
         gaps=list(dict.fromkeys(gaps))[:8],
         criteria=criteria,
         applied_cap=applied_cap,
+        cap_kinds=list(cap_kinds or []),
     )
 
 
@@ -825,7 +842,7 @@ def score_job_lead(jd: str, candidate_data: dict) -> ScoreResult:
     from ranking.criteria.evidence import evaluate_evidence
     from ranking.criteria.logistics import evaluate_logistics
     from ranking.criteria.role_alignment import evaluate_role_alignment
-    from ranking.criteria.seniority_fit import evaluate_seniority_fit
+    from ranking.criteria.seniority_fit import evaluate_seniority_fit, posting_states_seniority_requirement
     from ranking.criteria.stack_coverage import evaluate_stack_coverage
 
     candidate = analyze_candidate(candidate_data)
@@ -836,6 +853,16 @@ def score_job_lead(jd: str, candidate_data: dict) -> ScoreResult:
     # would drag a genuine same-field match below the bar, so real semantic fit must
     # lead instead of merely breaking ties.
     tech_taxonomy_present = bool(posting.terms)
+    # When the posting states NO seniority requirement, seniority fit is mostly
+    # noise (everyone lands near the same neutral score), so shift its weight
+    # onto proof-of-work and semantic fit — the criteria that actually
+    # discriminate between candidates for such postings. ONLY when the tech
+    # taxonomy covers the JD: for non-tech postings the evidence sets are
+    # structurally empty (domain phrases fold into posting.terms, not the
+    # proof sets), so proof sits at its floor for EVERY in-field non-tech
+    # candidate and the shift would uniformly sink them 6-9 points on
+    # no-years postings — adding zero discrimination.
+    no_seniority_req = tech_taxonomy_present and not posting_states_seniority_requirement(posting)
     # Field-agnostic step: credit the candidate's own domain vocabulary and make
     # the wrong-field judgement relative to the candidate (must run before the
     # criteria and caps read posting.terms / posting.wrong_field).
@@ -850,37 +877,40 @@ def score_job_lead(jd: str, candidate_data: dict) -> ScoreResult:
         # meaning-level fit dominate (with the field-blind seniority/logistics still
         # contributing). This is what lets a nurse/lawyer/teacher's genuine match
         # score on the same scale as a software match instead of being under-scored.
+        proof_w, seniority_w, semantic_w = (22, 8, 48) if no_seniority_req else (15, 18, 45)
         stack = evaluate_stack_coverage(posting, candidate, 8)
-        proof = evaluate_evidence(posting, candidate, 15)
+        proof = evaluate_evidence(posting, candidate, proof_w)
         criteria = [
             _with_weight(role, 12),
             stack,
             proof,
-            _with_weight(seniority, 18),
+            _with_weight(seniority, seniority_w),
             _with_weight(constraints, 12),
-            _with_weight(semantic, 45),
+            _with_weight(semantic, semantic_w),
         ]
     elif semantic is not None:
         # Software posting: semantic acts as a tiebreaker, keyword/rubric still leads.
+        proof_w, seniority_w, semantic_w = (26, 8, 19) if no_seniority_req else (18, 20, 15)
         stack = evaluate_stack_coverage(posting, candidate, 20)
-        proof = evaluate_evidence(posting, candidate, 18)
+        proof = evaluate_evidence(posting, candidate, proof_w)
         criteria = [
             _with_weight(role, 15),
             stack,
             proof,
-            _with_weight(seniority, 20),
+            _with_weight(seniority, seniority_w),
             _with_weight(constraints, 12),
-            semantic,
+            _with_weight(semantic, semantic_w),
         ]
     else:
-        stack = evaluate_stack_coverage(posting, candidate, 27)
-        proof = evaluate_evidence(posting, candidate, 20)
-        criteria = [role, stack, proof, _with_weight(seniority, 20), constraints]
+        stack_w, proof_w, seniority_w = (31, 28, 8) if no_seniority_req else (27, 20, 20)
+        stack = evaluate_stack_coverage(posting, candidate, stack_w)
+        proof = evaluate_evidence(posting, candidate, proof_w)
+        criteria = [role, stack, proof, _with_weight(seniority, seniority_w), constraints]
 
     direct, adjacent, missing = _direct_and_adjacent(posting, candidate)
     raw = _weighted_total(criteria)
-    final, caps, applied_cap = _apply_caps(raw, posting, candidate, direct, adjacent)
-    result = _result(final, criteria, posting, candidate, direct, adjacent, missing, caps, applied_cap)
+    final, caps, applied_cap, cap_kinds = _apply_caps(raw, posting, candidate, direct, adjacent)
+    result = _result(final, criteria, posting, candidate, direct, adjacent, missing, caps, applied_cap, cap_kinds)
     if semantic is None:
         result.gaps.append("Semantic matching unavailable; used deterministic keyword/rubric scoring.")
     return result

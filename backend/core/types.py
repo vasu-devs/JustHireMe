@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -240,6 +240,11 @@ class ScoreResult:
     # any. Carried so the LLM evaluator can raise within the guardrail band
     # rather than being pinned to the deterministic baseline.
     applied_cap: int | None = None
+    # Which cap kinds fired ("wrong-field"/"seniority"/"stack"/"confidence"),
+    # ordered by ascending ceiling. Structural signal for cap enforcement — the
+    # display `gaps` list is truncated, so a cap note there can be cut without
+    # the cap having gone away.
+    cap_kinds: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -248,6 +253,7 @@ class ScoreResult:
             "match_points": self.match_points,
             "gaps": self.gaps,
             "applied_cap": self.applied_cap,
+            "cap_kinds": self.cap_kinds,
         }
 
 

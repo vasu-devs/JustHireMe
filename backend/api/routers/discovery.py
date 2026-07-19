@@ -124,6 +124,16 @@ def should_preserve_job_status(status: str) -> bool:
     return status in REEVALUATION_STATUS_LOCKS
 
 
+async def _select_llm_eval_targets(ranking_service, leads: list[dict], profile: dict, max_llm: int):
+    """(llm_ids, deterministic baselines by job_id). Injected ranking services that
+    predate select_llm_eval_targets only expose select_llm_eval_ids; fall back to it
+    with no reusable baselines rather than crashing the scan."""
+    selector = getattr(ranking_service, "select_llm_eval_targets", None)
+    if selector is None:
+        return await ranking_service.select_llm_eval_ids(leads, profile, max_llm=max_llm), {}
+    return await selector(leads, profile, max_llm=max_llm)
+
+
 async def broadcast_x_source_errors(manager, errors: list[str]) -> None:
     if not errors:
         return
@@ -139,6 +149,7 @@ async def run_x_signal_scan(
     kind_filter: str | None = None,
     profile: dict | None = None,
     discovery_service=None,
+    stop_event: asyncio.Event | None = None,
 ) -> list[dict]:
     if not has_x_token(cfg):
         return []
@@ -147,7 +158,10 @@ async def run_x_signal_scan(
     kind_filter = "job"
     label = "job leads"
     await manager.broadcast({"type": "agent", "event": "x_scout_start", "msg": f"Scanning X for {label}..."})
-    result = await discovery_service.scan_x(cfg, kind_filter=kind_filter, profile=profile)
+    result = await discovery_service.scan_x(
+        cfg, kind_filter=kind_filter, profile=profile,
+        should_stop=stop_event.is_set if stop_event else None,
+    )
     leads = result.leads
     usage = result.usage
     await manager.broadcast({"type": "agent", "event": "x_scout_done", "msg": f"X scout - {len(leads)} {label} found"})
@@ -177,6 +191,7 @@ async def run_free_source_scan(
     profile: dict | None = None,
     force: bool = False,
     discovery_service=None,
+    stop_event: asyncio.Event | None = None,
 ) -> tuple[list[dict], dict, list[str]]:
     if not force and not free_sources_enabled(cfg):
         return [], {}, []
@@ -186,7 +201,14 @@ async def run_free_source_scan(
     label = "job leads"
     await manager.broadcast({"type": "agent", "event": "free_scout_start", "msg": f"Scanning free sources for {label}..."})
     try:
-        result = await discovery_service.scan_free_sources(cfg, kind_filter=kind_filter, profile=profile, force=force)
+        # Event.is_set is a plain attribute read, safe to poll from to_thread workers.
+        result = await discovery_service.scan_free_sources(
+            cfg,
+            kind_filter=kind_filter,
+            profile=profile,
+            force=force,
+            should_stop=stop_event.is_set if stop_event else None,
+        )
     except Exception as exc:
         # Close the websocket activity entry before propagating, so listeners
         # don't sit on "Scanning free sources..." with no terminal event.
@@ -280,8 +302,8 @@ async def _run_scan_inner(
 
     market_focus = cfg.get("job_market_focus", "global")
     raw_urls = job_targets(cfg.get("job_boards", ""), market_focus)
-    await run_x_signal_scan(manager, cfg, "job", profile, discovery_service=discovery_service)
-    await run_free_source_scan(manager, cfg, "job", profile, discovery_service=discovery_service)
+    await run_x_signal_scan(manager, cfg, "job", profile, discovery_service=discovery_service, stop_event=stop_event)
+    await run_free_source_scan(manager, cfg, "job", profile, discovery_service=discovery_service, stop_event=stop_event)
 
     await manager.broadcast({"type": "agent", "event": "query_gen_start", "msg": "Generating profile-tailored search queries..."})
     try:
@@ -312,7 +334,7 @@ async def _run_scan_inner(
             if stop_event.is_set():
                 return None
             try:
-                outcome = ("ok", batch, await discovery_service.scan_job_boards(batch, cfg))
+                outcome = ("ok", batch, await discovery_service.scan_job_boards(batch, cfg, should_stop=stop_event.is_set))
             except Exception as exc:
                 detail = str(exc).strip() or type(exc).__name__
                 record_error("source_fetch_failed", detail, "api.discovery")
@@ -368,7 +390,7 @@ async def _run_scan_inner(
     # Token gate: LLM-evaluate only the top-K new leads by the cheap deterministic
     # score; the rest keep the deterministic score. Caps per-scan LLM cost at O(K).
     max_llm = int_cfg(cfg, "max_llm_evaluations", 25, 0, 500)
-    llm_ids = await ranking_service.select_llm_eval_ids(to_score, profile, max_llm=max_llm)
+    llm_ids, baselines = await _select_llm_eval_targets(ranking_service, to_score, profile, max_llm)
 
     fallback_count = 0
     prefiltered_count = 0
@@ -382,7 +404,12 @@ async def _run_scan_inner(
             if stop_event.is_set():
                 return False
             try:
-                result = await ranking_service.evaluate_lead(lead, profile, cfg, use_llm=lead["job_id"] in llm_ids)
+                # Reuse the deterministic baseline from target selection (both the
+                # llm-gated and deterministic leads) so it isn't recomputed. Kwarg
+                # only when present: injected fakes may not accept `baseline`.
+                baseline = baselines.get(lead["job_id"])
+                extra = {"baseline": baseline} if baseline is not None else {}
+                result = await ranking_service.evaluate_lead(lead, profile, cfg, use_llm=lead["job_id"] in llm_ids, **extra)
                 await asyncio.to_thread(
                     repo.leads.update_lead_score,
                     lead["job_id"], result["score"], result["reason"],
@@ -506,7 +533,7 @@ async def _run_reevaluate_jobs_inner(
     # the rest keep the (calibrated) deterministic score. This caps the dominant
     # per-lead LLM cost from O(backlog) to O(K).
     max_llm = int_cfg(cfg, "max_llm_evaluations", 25, 0, 500)
-    llm_ids = await ranking_service.select_llm_eval_ids(jobs, profile, max_llm=max_llm)
+    llm_ids, baselines = await _select_llm_eval_targets(ranking_service, jobs, profile, max_llm)
 
     await manager.broadcast({
         "type": "agent",
@@ -524,8 +551,11 @@ async def _run_reevaluate_jobs_inner(
             return
 
         try:
+            # Same baseline reuse as the scan loop; kwarg only when present.
+            baseline = baselines.get(lead["job_id"])
+            extra = {"baseline": baseline} if baseline is not None else {}
             result = await ranking_service.evaluate_lead(
-                lead, profile, cfg, use_llm=lead["job_id"] in llm_ids
+                lead, profile, cfg, use_llm=lead["job_id"] in llm_ids, **extra
             )
             preserve_status = should_preserve_job_status(lead.get("status", ""))
             await asyncio.to_thread(

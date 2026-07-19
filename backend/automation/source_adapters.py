@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 
@@ -37,12 +38,18 @@ def run_free_scout(**kwargs) -> SourceAdapterResult:
     return _drain(free_scout, lambda: free_scout.run(**kwargs))
 
 
-def run_apify_scout(*, urls: list[str], apify_token: str | None = None, apify_actor: str | None = None) -> SourceAdapterResult:
+def run_apify_scout(
+    *,
+    urls: list[str],
+    apify_token: str | None = None,
+    apify_actor: str | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> SourceAdapterResult:
     from automation import scout
 
     return _drain(
         scout,
-        lambda: scout.run(urls=urls, apify_token=apify_token, apify_actor=apify_actor),
+        lambda: scout.run(urls=urls, apify_token=apify_token, apify_actor=apify_actor, should_stop=should_stop),
         fallback_usage={"targets": len(urls)},
     )
 

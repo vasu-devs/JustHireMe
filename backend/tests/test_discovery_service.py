@@ -95,7 +95,74 @@ def test_discovery_service_scans_job_boards():
 
     assert result.leads == [fake_lead]
     assert result.usage == {"targets": 1}
-    scan.assert_called_once_with(["site:jobs.example Python"], {"apify_token": "tok"})
+    scan.assert_called_once_with(["site:jobs.example Python"], {"apify_token": "tok"}, None)
+
+
+def test_discovery_service_forwards_should_stop_to_scouts():
+    service = DiscoveryService()
+    stop = lambda: False  # noqa: E731
+
+    with mock.patch("automation.free_scout.run", return_value=[]) as free_run, \
+         mock.patch("automation.free_scout.LAST_USAGE", {}), \
+         mock.patch("automation.free_scout.LAST_ERRORS", []):
+        asyncio.run(service.scan_free_sources(
+            {"free_sources_enabled": "true"},
+            profile={"s": "Python developer", "skills": [{"n": "FastAPI"}]},
+            should_stop=stop,
+        ))
+    assert free_run.call_args.kwargs["should_stop"] is stop
+
+    with mock.patch("automation.scout.run", return_value=[]) as board_run, \
+         mock.patch("automation.scout.LAST_USAGE", {}), \
+         mock.patch("automation.scout.LAST_ERRORS", []):
+        asyncio.run(service.scan_job_boards(["site:jobs.example"], {}, should_stop=stop))
+    assert board_run.call_args.kwargs["should_stop"] is stop
+
+
+class _StopAfterChecks:
+    """should_stop stub: returns False for the first ``allowed`` checks."""
+
+    def __init__(self, allowed: int) -> None:
+        self.checks = 0
+        self.allowed = allowed
+
+    def __call__(self) -> bool:
+        self.checks += 1
+        return self.checks > self.allowed
+
+
+def test_free_scout_run_stops_between_targets():
+    from automation.source_adapters import run_free_scout
+
+    with mock.patch("automation.free_scout._scrape_target", new=mock.AsyncMock(return_value=[])) as scrape:
+        result = run_free_scout(
+            targets=["reddit:forhire", "hn", "remoteok"],
+            should_stop=_StopAfterChecks(1),
+        )
+
+    assert scrape.await_count == 1  # stopped before the 2nd target
+    assert result.leads == []
+    assert result.usage["executed"] == 1
+    assert "stopped by user" in result.errors
+
+
+def test_scout_run_stops_before_targets_and_skips_apify_fallback():
+    from automation.source_adapters import run_apify_scout
+
+    with mock.patch("automation.scout.scrape") as scrape, \
+         mock.patch("automation.scout.apify", new=mock.AsyncMock(return_value=[])) as apify:
+        result = run_apify_scout(
+            urls=["site:jobs.example python"],
+            apify_token="tok",
+            apify_actor="actor",
+            should_stop=lambda: True,
+        )
+
+    scrape.assert_not_called()
+    apify.assert_not_awaited()  # fallback is gated by should_stop too
+    assert result.leads == []
+    assert result.usage["executed"] == 0
+    assert "stopped by user" in result.errors
 
 
 def test_run_scan_continues_when_board_scan_batch_fails():
@@ -224,6 +291,115 @@ def test_run_scan_only_scores_unscored_leads():
     assert ranking.evaluate_lead.await_count == 1
     scored_ids = [call.args[0]["job_id"] for call in ranking.evaluate_lead.await_args_list]
     assert scored_ids == ["new-1"]  # the already-'matched' lead was not re-scored
+
+
+def test_run_scan_passes_baselines_to_llm_and_deterministic_leads():
+    """The deterministic ScoreResult computed during top-K selection must be
+    handed back to evaluate_lead for EVERY lead (llm-gated and deterministic),
+    so the scan doesn't pay for the same rubric + embedding pass twice."""
+    from api.routers import discovery
+
+    class Manager:
+        async def broadcast(self, _payload):
+            return None
+
+    class JobStore:
+        def create(self, *_args, **_kwargs):
+            return SimpleNamespace(job_id="scan-1")
+
+        def update(self, *_args, **_kwargs):
+            return None
+
+    baseline_llm, baseline_det = object(), object()
+    repo = SimpleNamespace(
+        settings=SimpleNamespace(
+            get_settings=lambda: {
+                "job_boards": "site:jobs.example",
+                "free_sources_enabled": "false",
+            },
+            save_settings=lambda _settings: None,
+        ),
+        profile=SimpleNamespace(get_profile=lambda: {"s": "Python engineer"}),
+        leads=SimpleNamespace(
+            get_discovered_leads=lambda: [
+                {"job_id": "new-1", "title": "A", "url": "https://e.com/1", "status": "discovered"},
+                {"job_id": "new-2", "title": "B", "url": "https://e.com/2", "status": "discovered"},
+            ],
+            update_lead_score=lambda *_args, **_kwargs: None,
+        ),
+    )
+    service = SimpleNamespace(
+        scan_x=mock.AsyncMock(return_value=SimpleNamespace(leads=[], usage={}, errors=[])),
+        scan_free_sources=mock.AsyncMock(return_value=SimpleNamespace(leads=[], usage={}, errors=[])),
+        plan_board_targets=mock.AsyncMock(return_value=["site:jobs.example"]),
+        scan_job_boards=mock.AsyncMock(return_value=SimpleNamespace(leads=[], usage={}, errors=[])),
+    )
+    ranking = SimpleNamespace(
+        evaluate_lead=mock.AsyncMock(return_value={
+            "score": 82, "reason": "ok", "match_points": [], "gaps": [],
+        }),
+        select_llm_eval_targets=mock.AsyncMock(
+            return_value=({"new-1"}, {"new-1": baseline_llm, "new-2": baseline_det})
+        ),
+    )
+
+    with mock.patch.object(discovery, "get_job_runner", return_value=JobStore()):
+        asyncio.run(discovery.run_scan(
+            Manager(), repo=repo, discovery_service=service, ranking_service=ranking,
+        ))
+
+    calls = {call.args[0]["job_id"]: call for call in ranking.evaluate_lead.await_args_list}
+    assert calls["new-1"].kwargs["use_llm"] is True
+    assert calls["new-1"].kwargs["baseline"] is baseline_llm
+    assert calls["new-2"].kwargs["use_llm"] is False
+    assert calls["new-2"].kwargs["baseline"] is baseline_det
+
+
+def test_run_reevaluate_passes_baselines_from_shared_selection():
+    from api.routers import discovery
+
+    class Manager:
+        async def broadcast(self, _payload):
+            return None
+
+    class JobStore:
+        def create(self, *_args, **_kwargs):
+            return SimpleNamespace(job_id="reeval-1")
+
+        def update(self, *_args, **_kwargs):
+            return None
+
+    baseline_llm, baseline_det = object(), object()
+    repo = SimpleNamespace(
+        settings=SimpleNamespace(get_settings=lambda: {}),
+        profile=SimpleNamespace(get_profile=lambda: {"s": "Python engineer"}),
+        leads=SimpleNamespace(
+            get_job_leads_for_evaluation=lambda: [
+                {"job_id": "old-1", "title": "A", "status": "matched"},
+                {"job_id": "old-2", "title": "B", "status": "matched"},
+            ],
+            update_lead_score=lambda *_args, **_kwargs: None,
+            get_lead_by_id=lambda _jid: None,
+        ),
+    )
+    ranking = SimpleNamespace(
+        evaluate_lead=mock.AsyncMock(return_value={
+            "score": 70, "reason": "ok", "match_points": [], "gaps": [],
+        }),
+        select_llm_eval_targets=mock.AsyncMock(
+            return_value=({"old-1"}, {"old-1": baseline_llm, "old-2": baseline_det})
+        ),
+    )
+
+    with mock.patch.object(discovery, "get_job_runner", return_value=JobStore()):
+        asyncio.run(discovery.run_reevaluate_jobs(
+            Manager(), repo=repo, ranking_service=ranking,
+        ))
+
+    calls = {call.args[0]["job_id"]: call for call in ranking.evaluate_lead.await_args_list}
+    assert calls["old-1"].kwargs["baseline"] is baseline_llm
+    assert calls["old-2"].kwargs["use_llm"] is False
+    assert calls["old-2"].kwargs["baseline"] is baseline_det
 
 
 def test_run_scan_skips_empty_profile_without_explicit_sources():

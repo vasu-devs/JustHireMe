@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from discovery.targets import (
@@ -27,10 +28,15 @@ class DiscoveryService:
 
         return await asyncio.to_thread(generate, profile, raw_urls, market_focus)
 
-    async def scan_job_boards(self, urls: list[str], cfg: dict) -> DiscoveryRunResult:
+    async def scan_job_boards(
+        self,
+        urls: list[str],
+        cfg: dict,
+        should_stop: Callable[[], bool] | None = None,
+    ) -> DiscoveryRunResult:
         from discovery.sources.apify import run_board_scan
 
-        result = await asyncio.to_thread(run_board_scan, urls, cfg)
+        result = await asyncio.to_thread(run_board_scan, urls, cfg, should_stop)
         return DiscoveryRunResult(leads=result.leads, usage=result.usage, errors=result.errors)
 
     async def scan_free_sources(
@@ -40,6 +46,7 @@ class DiscoveryService:
         kind_filter: str | None = None,
         profile: dict | None = None,
         force: bool = False,
+        should_stop: Callable[[], bool] | None = None,
     ) -> DiscoveryRunResult:
         if not force and not free_sources_enabled(cfg):
             return DiscoveryRunResult()
@@ -66,6 +73,7 @@ class DiscoveryService:
             kind_filter=kind_filter or "job",
             max_requests=int_cfg(cfg, "free_source_max_requests", 20, 1, 80),
             min_signal_score=int_cfg(cfg, "free_source_min_signal_score", 60, 0, 100),
+            should_stop=should_stop,
         )
         return DiscoveryRunResult(
             leads=result.leads,
@@ -79,6 +87,7 @@ class DiscoveryService:
         *,
         kind_filter: str = "job",
         profile: dict | None = None,
+        should_stop=None,
     ) -> DiscoveryRunResult:
         if not has_x_token(cfg):
             return DiscoveryRunResult()
@@ -87,6 +96,7 @@ class DiscoveryService:
 
         result = await asyncio.to_thread(
             run_x_scan,
+            should_stop=should_stop,
             bearer_token=cfg.get("x_bearer_token") or None,
             raw_queries=cfg.get("x_search_queries", "") or profile_x_queries(profile or {}, cfg.get("job_market_focus", "global")),
             raw_watchlist=cfg.get("x_watchlist", ""),

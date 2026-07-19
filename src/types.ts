@@ -49,7 +49,7 @@ export interface Lead {
   resume_version?: number;
   keyword_coverage?: KeywordCoverage;
   contact_lookup?: ContactLookup;
-  score: number; reason: string; match_points: string[]; gaps?: string[];
+  score: number; reason: string; match_points: string[]; gaps?: string[]; scored_by?: string;
   description?: string; kind?: string; budget?: string;
   signal_score?: number; signal_reason?: string; signal_tags?: string[];
   base_signal_score?: number; learning_delta?: number; learning_reason?: string;

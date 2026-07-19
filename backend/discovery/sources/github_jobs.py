@@ -13,6 +13,24 @@ def github_query(raw: str) -> str:
     return f"is:issue is:open archived:false updated:>={since} {base}"
 
 
+_HIRING_SIGNALS = (
+    "hiring", "job", "position", "role", "apply", "salary",
+    "we're looking", "we are looking",
+)
+_ISSUE_MARKERS = ("[bug]", "error:", "proposal", "issue")
+
+
+def looks_like_hiring_issue(title: str, body: str) -> bool:
+    """The GitHub search API returns ISSUES; without this gate the source
+    surfaces bug reports as leads. Require a hiring signal in title/body and
+    reject issue-tracker markers. Strict on purpose: an empty github
+    contribution beats a page of bug reports."""
+    text = f"{title}\n{body}".lower()
+    if any(marker in text for marker in _ISSUE_MARKERS):
+        return False
+    return any(signal in text for signal in _HIRING_SIGNALS)
+
+
 async def scrape_github(raw: str) -> list[dict]:
     data = await json_get("https://api.github.com/search/issues", {
         "q": github_query(raw),
@@ -24,6 +42,8 @@ async def scrape_github(raw: str) -> list[dict]:
         return []
     results = []
     for item in data.get("items", []):
+        if not looks_like_hiring_issue(str(item.get("title") or ""), str(item.get("body") or "")):
+            continue
         updated = item.get("updated_at", "")
         if updated and not is_recent(updated):
             continue

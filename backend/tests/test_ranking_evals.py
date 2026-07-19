@@ -48,3 +48,23 @@ def test_ranking_eval_accuracy_floor() -> None:
         f"ranking eval accuracy {report.accuracy:.1%} below floor "
         f"{ACCURACY_FLOOR:.0%}\n\n" + format_report(report)
     )
+
+
+# Case pairs whose ORDERING is the guarantee — bands alone can drift into
+# overlap while both cases stay individually green (the generic/specific pair
+# measured 84 vs 89 in no-semantic mode, inside overlapping bands).
+ORDERED_PAIRS = [
+    ("disc-specific-6term-full-coverage", "disc-generic-2term-full-coverage"),
+    ("disc-noseniority-deep-proof", "disc-noseniority-bare-skills"),
+]
+
+
+def test_ranking_eval_pairwise_ordering() -> None:
+    report = run_evals()
+    scores = {result.case.id: result.score for result in report.results}
+    for winner, loser in ORDERED_PAIRS:
+        assert winner in scores and loser in scores, f"ordering pair case missing: {winner}/{loser}"
+        assert scores[winner] > scores[loser], (
+            f"specificity ordering regressed: {winner}={scores[winner]} "
+            f"must beat {loser}={scores[loser]}"
+        )

@@ -12,6 +12,16 @@ SPEC = CriterionSpec(
 )
 
 
+def posting_states_seniority_requirement(posting: PostingSignals) -> bool:
+    """Whether the posting states ANY seniority requirement (years or title flags).
+
+    When it doesn't, the seniority criterion returns the same near-neutral score
+    for every candidate, so the scoring engine shifts its weight onto criteria
+    that actually discriminate (proof of work, semantic fit).
+    """
+    return bool(posting.max_years or posting.seniority_flags)
+
+
 def evaluate_seniority_fit(posting: PostingSignals, candidate: CandidateEvidence) -> CriterionScore:
     level_years = {"fresher": 0, "junior": 1.5, "mid": 3.5, "senior": 7}.get(candidate.level, 1)
     flags = posting.seniority_flags

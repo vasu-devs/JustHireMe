@@ -14,6 +14,7 @@ import json
 from pydantic import BaseModel, Field
 from core.logging import get_logger
 from core.telemetry import record_error
+from core.types import ScoreResult
 
 from ranking.scoring_engine import (
     build_proof_text,
@@ -85,6 +86,8 @@ Seniority decision rules (these constrain the upper bound regardless of stack):
 
 Calibration: use the deterministic baseline as a reference point and respect its
 hard caps. Adjust up or down from it when the full profile evidence justifies it.
+Hard caps enforced after your reply: wrong-field and seniority; the baseline's
+stack and confidence caps are advisory and you may score above them with evidence.
 
 Candidate preferences: if a "What the candidate is looking for" section is present,
 it is the candidate's own stated wants (industry, role type, remote/onsite, comp,
@@ -157,16 +160,25 @@ def _profile_prompt_payload(candidate_data: dict) -> dict:
 
 
 def _evaluator_llm_requested(settings: dict | None = None) -> bool:
-    """Return True only when the user has configured some LLM route."""
+    """Return True only when the user has configured an actual LLM provider route.
+
+    A bare evaluator_api_key/evaluator_model is NOT a route: with no provider the
+    call falls through to a localhost ollama that is usually absent, burning a
+    3x-retry (~7s dead) per top-K lead. Key/model alone -> deterministic scoring,
+    with one telemetry record naming the missing provider setting.
+    """
     settings = settings or {}
     try:
-        keys = (
-            "evaluator_provider",
-            "evaluator_api_key",
-            "evaluator_model",
-            "llm_provider",
-        )
-        return any(str(settings.get(key, "") or "").strip() for key in keys)
+        if any(str(settings.get(key, "") or "").strip() for key in ("evaluator_provider", "llm_provider")):
+            return True
+        if any(str(settings.get(key, "") or "").strip() for key in ("evaluator_api_key", "evaluator_model")):
+            record_error(
+                "evaluator_provider_missing",
+                "evaluator_api_key/evaluator_model is set but evaluator_provider/llm_provider is empty; "
+                "using deterministic scoring",
+                "ranking.evaluator",
+            )
+        return False
     except Exception as log_exc:
         logging.getLogger(__name__).warning('suppressed exception in backend/ranking/evaluator.py:_evaluator_llm_requested: %s', log_exc)
         return False
@@ -213,24 +225,36 @@ def _as_list(value) -> list[str]:
 
 
 def _hard_cap(baseline: dict) -> tuple[int | None, str]:
+    """Enforcement ceiling from the baseline's STRUCTURAL cap signal (cap_kinds +
+    applied_cap), not from string-scanning the display gaps list — that list is
+    truncated to 8, so a cap note can be cut without the cap having gone away.
+    Only wrong-field and seniority are enforced hard here; stack/confidence caps
+    are deliberately soft — the LLM may out-argue them with full-profile evidence.
+    """
     score = int(baseline.get("score") or 0)
+    kinds = {str(kind) for kind in baseline.get("cap_kinds") or []}
     gaps = [str(g) for g in baseline.get("gaps", []) or []]
-    for gap in gaps:
-        if gap.startswith("wrong-field cap"):
-            return min(score, 15), gap
-    for gap in gaps:
-        if gap.startswith("seniority cap"):
-            # Use the real cap band (30/38/45/48) so the LLM may raise the score
-            # within the guardrail; returning the baseline final score here would
-            # pin it and forbid any upward adjustment.
-            cap = baseline.get("applied_cap")
-            return (int(cap) if isinstance(cap, (int, float)) else score), gap
+    if "wrong-field" in kinds or any(g.startswith("wrong-field cap") for g in gaps):
+        reason = next((g for g in gaps if g.startswith("wrong-field cap")), "wrong-field cap")
+        return min(score, 15), reason
+    if "seniority" in kinds or any(g.startswith("seniority cap") for g in gaps):
+        # Use the real cap band (30/38/45/48) so the LLM may raise the score
+        # within the guardrail; returning the baseline final score here would
+        # pin it and forbid any upward adjustment.
+        cap = baseline.get("applied_cap")
+        reason = next((g for g in gaps if g.startswith("seniority cap")), "seniority cap")
+        return (int(cap) if isinstance(cap, (int, float)) else score), reason
     return None, ""
 
 
 def _normalize_llm_result(raw, baseline: dict) -> dict:
+    # model_fields_set distinguishes "model omitted 'score'" from "model sent 0":
+    # _Score.score defaults to 0, so model_dump() always emits a score and the
+    # dict-level baseline fallback below can never see the omission.
+    fields_set: set[str] | None = None
     if hasattr(raw, "model_dump"):
         data = raw.model_dump()
+        fields_set = getattr(raw, "model_fields_set", None)
     elif isinstance(raw, dict):
         data = raw
     else:
@@ -242,11 +266,21 @@ def _normalize_llm_result(raw, baseline: dict) -> dict:
     if not reason and not match_points and not gaps:
         raise ValueError("empty evaluator response")
 
-    try:
-        score = round(float(data.get("score", baseline.get("score", 0))))
-    except Exception as log_exc:
-        logging.getLogger(__name__).warning('suppressed exception in backend/ranking/evaluator.py:_normalize_llm_result: %s', log_exc)
+    score_omitted = fields_set is not None and "score" not in fields_set
+    if score_omitted:
         score = int(baseline.get("score") or 0)
+        gaps.append("AI reply omitted a score; kept the deterministic baseline score.")
+        record_error(
+            "llm_evaluator_score_missing",
+            "evaluator reply validated without a 'score' field; fell back to the baseline score",
+            "ranking.evaluator",
+        )
+    else:
+        try:
+            score = round(float(data.get("score", baseline.get("score", 0))))
+        except Exception as log_exc:
+            logging.getLogger(__name__).warning('suppressed exception in backend/ranking/evaluator.py:_normalize_llm_result: %s', log_exc)
+            score = int(baseline.get("score") or 0)
     score = max(0, min(100, score))
 
     cap, cap_reason = _hard_cap(baseline)
@@ -261,12 +295,16 @@ def _normalize_llm_result(raw, baseline: dict) -> dict:
     if not reason:
         reason = str(baseline.get("reason") or "LLM evaluator returned supporting evidence.").strip()
 
-    return {
+    out = {
         "score": score,
         "reason": reason[:500],
         "match_points": match_points[:7],
         "gaps": list(dict.fromkeys(gaps))[:8],
     }
+    if score_omitted:
+        # Fallback-ish: evidence came from the model, the score did not.
+        out["scored_by"] = "llm_score_fallback"
+    return out
 
 
 def _score_with_llm(jd: str, candidate_data: dict, baseline: dict, preferences: str = "") -> dict:
@@ -289,6 +327,8 @@ def _off_field_prefilter(baseline: dict, settings: dict | None) -> bool:
     the prefilter_off_field setting."""
     if str((settings or {}).get("prefilter_off_field", "true")).strip().lower() in ("0", "false", "no", "off"):
         return False
+    if "wrong-field" in (baseline.get("cap_kinds") or []):
+        return True
     return any(str(gap).startswith("wrong-field cap") for gap in (baseline.get("gaps") or []))
 
 
@@ -311,43 +351,54 @@ def _below_llm_floor(baseline: dict, settings: dict | None) -> bool:
     return int(baseline.get("score") or 0) < floor
 
 
-def score(jd: str, candidate_data: dict, settings: dict | None = None, use_llm: bool = True) -> dict:
+def score(
+    jd: str,
+    candidate_data: dict,
+    settings: dict | None = None,
+    use_llm: bool = True,
+    *,
+    baseline: ScoreResult | None = None,
+) -> dict:
     """
     Return a 0-100 job match score.
 
     If an evaluator/global LLM route is configured AND ``use_llm`` is set, the model
     rates the lead against the whole profile. Otherwise the deterministic local rubric
     is used. Callers pass ``use_llm=False`` to gate the (expensive) LLM to only the
-    top-K leads of a scan.
+    top-K leads of a scan, and may pass a precomputed ``baseline`` (e.g. from top-K
+    selection) so the deterministic rubric is not recomputed per lead.
     """
-    baseline = score_job_lead(jd, candidate_data).as_dict()
+    base = (baseline if baseline is not None else score_job_lead(jd, candidate_data)).as_dict()
     if not use_llm or not _evaluator_llm_requested(settings):
         # use_llm=False is the caller's per-scan top-K gate: only the highest-baseline
         # leads (the ones the user actually looks at) are worth an LLM call.
-        baseline["scored_by"] = "deterministic"
-        return baseline
+        base["scored_by"] = "deterministic"
+        return base
     # Token-saving relevance gate: don't run the LLM on leads the cheap pass has
     # already ruled off-field — they can't score above 15 no matter what it says.
-    if _off_field_prefilter(baseline, settings):
-        baseline["scored_by"] = "prefiltered_off_field"
-        baseline["reason"] = (
+    if _off_field_prefilter(base, settings):
+        base["scored_by"] = "prefiltered_off_field"
+        # Compose within the store-time 500-char reason cut: keep the prefix
+        # intact and truncate the original reason's tail instead.
+        base["reason"] = (
             "Off-field for your profile — skipped the full AI evaluation to save tokens. "
-            + str(baseline.get("reason") or "")
-        ).strip()
-        return baseline
-    if _below_llm_floor(baseline, settings):
-        baseline["scored_by"] = "deterministic"
-        return baseline
+            + str(base.get("reason") or "")
+        ).strip()[:500]
+        return base
+    if _below_llm_floor(base, settings):
+        base["scored_by"] = "deterministic"
+        return base
     preferences = str((settings or {}).get("job_preferences") or "").strip()
     try:
-        result = _score_with_llm(jd, candidate_data, baseline, preferences)
-        result["scored_by"] = "llm"
+        result = _score_with_llm(jd, candidate_data, base, preferences)
+        # _normalize_llm_result may pre-set a more specific value (score fallback).
+        result.setdefault("scored_by", "llm")
         return result
     except Exception as exc:
         _log.warning("LLM evaluator failed, using deterministic fallback: %s", exc)
         record_error("llm_evaluator_failed", str(exc), "ranking.evaluator")
-        baseline["scored_by"] = "deterministic_fallback"
-        return baseline
+        base["scored_by"] = "deterministic_fallback"
+        return base
 
 
 class Evaluator:
@@ -356,6 +407,14 @@ class Evaluator:
     def __init__(self, settings: dict | None = None):
         self.settings = settings or {}
 
-    def score(self, jd: str, candidate_data: dict, settings: dict | None = None, use_llm: bool = True) -> dict:
+    def score(
+        self,
+        jd: str,
+        candidate_data: dict,
+        settings: dict | None = None,
+        use_llm: bool = True,
+        *,
+        baseline: ScoreResult | None = None,
+    ) -> dict:
         active_settings = settings if settings is not None else self.settings
-        return score(jd, candidate_data, active_settings or None, use_llm)
+        return score(jd, candidate_data, active_settings or None, use_llm, baseline=baseline)

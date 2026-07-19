@@ -5,6 +5,7 @@ import asyncio
 from dataclasses import dataclass, field
 from functools import lru_cache
 
+from core.types import ScoreResult
 from ranking.evaluator import Evaluator
 from ranking.feedback_ranker import FeedbackRanker
 from ranking.scoring_engine import ScoringEngine
@@ -39,15 +40,27 @@ class RankingService:
         self.semantic = semantic or SemanticMatcher()
         self.feedback = feedback or FeedbackRanker()
 
-    async def evaluate_lead(self, lead: dict, profile: dict, settings: dict | None = None, use_llm: bool = True) -> dict:
+    async def evaluate_lead(
+        self,
+        lead: dict,
+        profile: dict,
+        settings: dict | None = None,
+        use_llm: bool = True,
+        baseline: ScoreResult | None = None,
+    ) -> dict:
         # `settings` is loop-invariant across a scan/reevaluate; callers that loop
         # over many leads pass the already-loaded cfg to avoid an N+1 SELECT on the
         # settings table (and an extra thread hop) per lead. `use_llm=False` lets the
         # caller gate the expensive LLM call to only the top-K leads of a scan.
         if settings is None:
             settings = await asyncio.to_thread(self._load_settings)
+        # `baseline` is the deterministic ScoreResult already computed by
+        # select_llm_eval_targets; passing it lets the evaluator skip re-running the
+        # same rubric + embedding pass per lead. Threaded conditionally so an
+        # Evaluator.score without the kwarg keeps working.
+        extra = {"baseline": baseline} if baseline is not None else {}
         return await asyncio.to_thread(
-            self.evaluator.score, self.job_document(lead), profile, settings, use_llm
+            self.evaluator.score, self.job_document(lead), profile, settings, use_llm, **extra
         )
 
     @staticmethod
@@ -69,29 +82,39 @@ class RankingService:
         jd = lead if isinstance(lead, str) else self.job_document(lead)
         return await asyncio.to_thread(self.scoring_engine.score, jd, profile)
 
-    async def select_llm_eval_ids(self, leads: list[dict], profile: dict, *, max_llm: int = 25) -> set[str]:
-        """Job_ids worth an LLM evaluation: the top ``max_llm`` by the cheap
-        deterministic score. A scan then spends the model only on the leads the user
-        actually looks at, not the whole backlog; the rest keep the calibrated
-        deterministic score. ``max_llm <= 0`` disables the cap (evaluate all)."""
+    async def select_llm_eval_targets(
+        self, leads: list[dict], profile: dict, *, max_llm: int = 25
+    ) -> tuple[set[str], dict[str, ScoreResult]]:
+        """Job_ids worth an LLM evaluation (the top ``max_llm`` by the cheap
+        deterministic score) plus the deterministic ScoreResult per job_id so
+        callers can hand it back to ``evaluate_lead(baseline=...)`` instead of
+        paying for the same rubric + embedding pass twice. ``max_llm <= 0``
+        disables the cap (evaluate all); the short-circuit paths return an empty
+        baseline dict because nothing was scored."""
         ids = [str(lead.get("job_id") or "") for lead in leads]
         if max_llm <= 0 or len(leads) <= max_llm:
-            return {jid for jid in ids if jid}
+            return {jid for jid in ids if jid}, {}
 
         # Deterministic scores are independent and cheap; running them serially
         # added an O(N) stall between scouting and evaluation on large scans.
         gate = asyncio.Semaphore(8)
 
-        async def _one(lead: dict, jid: str) -> tuple[int, str]:
+        async def _one(lead: dict, jid: str) -> tuple[int, str, ScoreResult]:
             async with gate:
                 det = await self.deterministic_score(lead, profile)
-                return int(getattr(det, "score", 0) or 0), jid
+                return int(getattr(det, "score", 0) or 0), jid, det
 
         scored = list(await asyncio.gather(*(
             _one(lead, jid) for lead, jid in zip(leads, ids, strict=False) if jid
         )))
+        baselines = {jid: det for _, jid, det in scored}
         scored.sort(key=lambda item: -item[0])
-        return {jid for _, jid in scored[:max_llm]}
+        return {jid for _, jid, _det in scored[:max_llm]}, baselines
+
+    async def select_llm_eval_ids(self, leads: list[dict], profile: dict, *, max_llm: int = 25) -> set[str]:
+        """Thin wrapper kept for callers that only need the id gate (scheduler)."""
+        ids, _baselines = await self.select_llm_eval_targets(leads, profile, max_llm=max_llm)
+        return ids
 
     async def semantic_match(self, lead: dict | str, profile: dict) -> dict | None:
         jd = lead if isinstance(lead, str) else self.job_document(lead)

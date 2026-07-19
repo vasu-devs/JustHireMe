@@ -20,6 +20,7 @@ def run_x_scan(
     raw_watchlist: str | None = None,
     max_requests: int = 5,
     min_signal_score: int = 55,
+    should_stop=None,
 ) -> XScanResult:
     from automation.source_adapters import run_x_scout
 
@@ -32,6 +33,7 @@ def run_x_scan(
         raw_watchlist=raw_watchlist,
         max_requests=max_requests,
         min_signal_score=min_signal_score,
+        should_stop=should_stop,
     )
     return XScanResult(
         leads=result.leads,

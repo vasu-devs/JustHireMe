@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 from discovery.lead_intel import clean_text, signal_quality
@@ -10,6 +11,48 @@ from discovery.normalizer import parse_date
 
 MIN_DEFAULT_QUALITY = 60
 HOT_LEAD_THRESHOLD = 80
+
+# Boilerplate description signatures measured in the real stored corpus:
+# scraper junk that carries zero job content. Case-insensitive substrings —
+# future signatures are one-line additions.
+BOILERPLATE_DESCRIPTION_SIGNATURES = (
+    "see this and similar jobs on linkedin",   # LinkedIn preview stub
+    "skip to main content",                    # site-nav dump
+    "there are no articles in this category",  # empty Joomla listing
+    "fill in job description here",            # template placeholder
+    "morbi tristique senectus",                # lorem-ipsum boilerplate
+    "lorem ipsum",
+    "forgotten your password",                 # scraped login page
+)
+
+_ALPHA_RUN_RE = re.compile(r"[a-z]{40,}")
+
+
+def is_boilerplate_description(text: str) -> bool:
+    """True when a scraped description IS boilerplate/scraper junk rather than
+    job content that merely mentions a signature phrase.
+
+    A signature match alone must not reject: a real accessibility JD names
+    "skip to main content", a real auth JD describes "forgotten your password",
+    and a full JD can carry a LinkedIn footer stub appended by the scrape. So a
+    signature only counts when the description is short (nothing else there) or
+    when it LEADS the text (nav/footer/stub dumps start with their signature).
+    Keyboard-mash gibberish (40+ char unbroken alphabetic run with under 30%
+    vowels) rejects on content regardless of length."""
+    lower = str(text or "").lower().strip()
+    for sig in BOILERPLATE_DESCRIPTION_SIGNATURES:
+        at = lower.find(sig)
+        if at < 0:
+            continue
+        # Measured junk rows (stubs, placeholders, login pages) all sit under
+        # ~150 chars; real JDs that merely mention a signature run longer. Nav
+        # dumps of any length START with their signature.
+        if len(lower) < 200 or at < 60:
+            return True
+    return any(
+        sum(run.count(v) for v in "aeiou") / len(run) < 0.30
+        for run in _ALPHA_RUN_RE.findall(lower)
+    )
 
 _RED_FLAGS = (
     "unpaid",
@@ -140,6 +183,9 @@ def evaluate_lead_quality(
 
     if not str(lead.get("url") or "").strip():
         return {"accepted": False, "score": 0, "reason": "missing source/apply URL", "tags": ["missing_url"]}
+
+    if is_boilerplate_description(str(lead.get("description") or "")):
+        return {"accepted": False, "score": 0, "reason": "boilerplate scraped description", "tags": ["boilerplate_description"]}
 
     if len(text) < 140:
         penalties += 18
