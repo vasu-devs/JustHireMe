@@ -34,11 +34,35 @@ export function nextProgressFromAgentEvent(
   message: string | undefined,
   now = Date.now(),
 ): OperationProgress {
+  // The scan is "running" from its first phase, not just once evaluation
+  // starts — otherwise the topbar stop control and the dashboard meter sit
+  // dead through the whole scouting stretch (the longest part of a scan).
+  if (event === "x_scout_start" || event === "free_scout_start" || event === "query_gen_start") {
+    return { active: true, mode: "scan", total: 0, completed: 0, current: message ?? "", unit: "sources", updatedAt: now };
+  }
+  if (event === "scout_start") {
+    return { active: true, mode: "scan", total: firstNumber(message), completed: 0, current: message ?? "", unit: "sources", updatedAt: now };
+  }
+  if (event === "scout_progress") {
+    const slice = String(message || "").match(/\[(\d+)\/(\d+)\]/);
+    return {
+      active: true,
+      mode: "scan",
+      total: slice ? Number(slice[2]) : previous.total,
+      completed: slice ? Number(slice[1]) : previous.completed,
+      current: message ?? "",
+      unit: "sources",
+      updatedAt: now,
+    };
+  }
+  if (event === "scout_done") {
+    return { ...previous, active: true, mode: "scan", completed: previous.total || previous.completed, current: message ?? "", unit: "sources", updatedAt: now };
+  }
   if (event === "eval_start") {
-    return { active: true, mode: "scan", total: firstNumber(message), completed: 0, current: "", updatedAt: now };
+    return { active: true, mode: "scan", total: firstNumber(message), completed: 0, current: "", unit: "leads", updatedAt: now };
   }
   if (event === "eval_scored") {
-    return { active: true, mode: "scan", total: previous.total, completed: previous.completed + 1, current: message ?? "", updatedAt: now };
+    return { active: true, mode: "scan", total: previous.total, completed: previous.completed + 1, current: message ?? "", unit: "leads", updatedAt: now };
   }
   if (event === "reeval_start") {
     return { active: true, mode: "reevaluate", total: firstNumber(message), completed: 0, current: "", updatedAt: now };

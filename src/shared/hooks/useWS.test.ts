@@ -34,4 +34,32 @@ describe("WebSocket progress parsing", () => {
     const prev = { ...__wsTest.emptyProgress(), updatedAt: 1 };
     expect(nextProgressFromAgentEvent(prev, "heartbeat", "noop", 99)).toBe(prev);
   });
+
+  // The scan must read as running from its FIRST phase — the topbar stop
+  // control and dashboard meter were dead through scouting when only
+  // eval_* events activated progress.
+  it("activates from the earliest scan phase", () => {
+    const next = nextProgressFromAgentEvent(__wsTest.emptyProgress(), "free_scout_start", "Scanning free sources for job leads...", 10);
+    expect(next).toMatchObject({ active: true, mode: "scan", unit: "sources" });
+  });
+
+  it("reads the search-plan size from scout_start", () => {
+    const next = nextProgressFromAgentEvent(__wsTest.emptyProgress(), "scout_start", "Launching scan for 19 targets...", 10);
+    expect(next).toMatchObject({ active: true, total: 19, completed: 0, unit: "sources" });
+  });
+
+  it("tracks batch completion via scout_progress", () => {
+    const start = nextProgressFromAgentEvent(__wsTest.emptyProgress(), "scout_start", "Launching scan for 19 targets...", 10);
+    const next = nextProgressFromAgentEvent(start, "scout_progress", "[8/19] sources scanned", 20);
+    expect(next).toMatchObject({ active: true, total: 19, completed: 8, unit: "sources" });
+  });
+
+  it("stays active through scout_done and hands off to evaluation", () => {
+    const scout = nextProgressFromAgentEvent(__wsTest.emptyProgress(), "scout_progress", "[19/19] sources scanned", 10);
+    const done = nextProgressFromAgentEvent(scout, "scout_done", "Scout finished - 42 new leads found", 20);
+    expect(done.active).toBe(true);
+    expect(done.completed).toBe(19);
+    const evaluating = nextProgressFromAgentEvent(done, "eval_start", "Evaluating 42 new leads via codex_cli", 30);
+    expect(evaluating).toMatchObject({ active: true, total: 42, completed: 0, unit: "leads" });
+  });
 });

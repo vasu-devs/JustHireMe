@@ -303,17 +303,29 @@ async def _run_scan_inner(
     # sinks in the scout), so run a few at once. Bounded because each in-flight
     # batch can hold a live Chromium.
     board_semaphore = asyncio.Semaphore(int_cfg(cfg, "board_scan_concurrency", 3, 1, 8))
+    total_targets = len(urls)
+    targets_done = 0
 
     async def _scan_batch(batch_index: int, batch: list[str]):
+        nonlocal targets_done
         async with board_semaphore:
             if stop_event.is_set():
                 return None
             try:
-                return ("ok", batch, await discovery_service.scan_job_boards(batch, cfg))
+                outcome = ("ok", batch, await discovery_service.scan_job_boards(batch, cfg))
             except Exception as exc:
                 detail = str(exc).strip() or type(exc).__name__
                 record_error("source_fetch_failed", detail, "api.discovery")
-                return ("err", batch, f"board batch {batch_index}/{len(batches)} skipped ({len(batch)} targets): {detail}")
+                outcome = ("err", batch, f"board batch {batch_index}/{len(batches)} skipped ({len(batch)} targets): {detail}")
+            # Live telemetry for the dashboard meter: which slice of the search
+            # plan is done, batch by batch, while batches run concurrently.
+            targets_done += len(batch)
+            await manager.broadcast({
+                "type": "agent",
+                "event": "scout_progress",
+                "msg": f"[{targets_done}/{total_targets}] sources scanned",
+            })
+            return outcome
 
     for outcome in await asyncio.gather(*(_scan_batch(i, b) for i, b in enumerate(batches, start=1))):
         if outcome is None:

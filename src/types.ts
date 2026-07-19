@@ -103,6 +103,8 @@ export interface OperationProgress {
   total: number;
   completed: number;
   current: string;
+  /** What total/completed count: scan sources while scouting, leads while scoring. */
+  unit?: "sources" | "leads";
   updatedAt: number;
 }
 
