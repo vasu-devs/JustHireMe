@@ -9,7 +9,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from api.auth import LOCAL_ORIGIN_RE, require_http_token
 from api.dependencies import get_event_bus
-from api.routers import automation, diagnostics, discovery, events, generation, health, ingestion, leads, misc, profile, runtime, settings, templates
+from api.routers import automation, diagnostics, discovery, events, generation, health, ingestion, leads, learning, misc, profile, runtime, settings, templates
 from api.websocket import register_websocket
 from core.telemetry import record_exception
 from core.version import APP_VERSION
@@ -84,6 +84,7 @@ def create_app(
     app.include_router(misc.router)
     app.include_router(runtime.router)
     app.include_router(profile.router)
+    app.include_router(learning.router)
     if connection_manager is not None:
         _wire_event_bus(connection_manager)
         app.include_router(leads.create_router(connection_manager))

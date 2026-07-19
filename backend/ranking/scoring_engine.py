@@ -672,6 +672,26 @@ def _apply_caps(
     return min(score, cap), limit_notes, cap
 
 
+def _describe_missing(missing: set[str], candidate: CandidateEvidence) -> str:
+    """Gap terms with their category and a learnability cue.
+
+    "react (frontend - near your existing work, fast to close)" tells the user
+    which gaps are one project away versus genuinely new territory; the plain
+    term list told them nothing. Purely descriptive - no score effect.
+    """
+    candidate_categories = _category_set(candidate.all_terms)
+    bits: list[str] = []
+    for term in _sorted_terms(missing)[:8]:
+        category = TECH_CATEGORY.get(term, "")
+        if category and category in candidate_categories:
+            bits.append(f"{term} ({category} - near your existing work, fast to close)")
+        elif category:
+            bits.append(f"{term} ({category})")
+        else:
+            bits.append(term)
+    return ", ".join(bits) if bits else "none"
+
+
 def _evidence_line(candidate: CandidateEvidence, terms: set[str]) -> str:
     chunks: list[str] = []
     for term in _sorted_terms(terms):
@@ -719,7 +739,7 @@ def _result(
         if c.score < 58
     ]
     if missing:
-        gaps.insert(0, "Missing or weak evidence for: " + _fmt_terms(missing))
+        gaps.insert(0, "Missing or weak evidence for: " + _describe_missing(missing, candidate))
     gaps.extend(caps)
     return ScoreResult(
         score=final_score,

@@ -8,7 +8,7 @@ export type PipelineViewId =
   | "pipeline-generated"
   | "pipeline-applied"
   | "pipeline-discarded";
-export type View = "apply" | "dashboard" | PipelineViewId | "graph" | "activity" | "profile" | "ingestion";
+export type View = "apply" | "dashboard" | PipelineViewId | "graph" | "activity" | "profile" | "ingestion" | "learn";
 export type LeadSort = "recommended" | "newest" | "signal" | "match" | "company";
 export type SeniorityFilter = "all" | "beginner" | "fresher" | "junior" | "mid" | "senior" | "unknown";
 

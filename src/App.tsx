@@ -21,6 +21,7 @@ import { GraphView } from "./features/graph/GraphView";
 import { ActivityView } from "./features/activity/ActivityView";
 import { ProfileView } from "./features/profile/ProfileView";
 import { IngestionView } from "./features/profile/IngestionView";
+import { LearnView } from "./features/learning/LearnView";
 import { ApprovalDrawer } from "./features/pipeline/components/ApprovalDrawer";
 import { OnboardingWizard } from "./shared/components/OnboardingWizard";
 import { HelpChat } from "./shared/components/HelpChat";
@@ -316,6 +317,7 @@ export default function App() {
             {view === "activity"  && <ErrorBoundary label="Activity" api={api ?? undefined}><ActivityView logs={logs} /></ErrorBoundary>}
             {view === "profile"   && (api ? <ErrorBoundary label="Profile" api={api ?? undefined}><ProfileView api={api} setView={setView} stats={stats} /></ErrorBoundary> : <BackendUnavailable title="Profile" conn={conn} port={port} />)}
             {view === "ingestion" && (api ? <ErrorBoundary label="Ingestion" api={api ?? undefined}><IngestionView api={api} /></ErrorBoundary> : <BackendUnavailable title="Add Context" conn={conn} port={port} />)}
+            {view === "learn"     && (api ? <ErrorBoundary label="Learn" api={api ?? undefined}><LearnView api={api} /></ErrorBoundary> : <BackendUnavailable title="Learn" conn={conn} port={port} />)}
           </main>
         </div>
 

@@ -9,6 +9,7 @@ const titleFor = (view: View) => {
   if (view === "graph") return "Knowledge";
   if (view === "ingestion") return "Context";
   if (view === "profile") return "Profile";
+  if (view === "learn") return "Learn";
   return "Pipeline";
 };
 
@@ -19,6 +20,7 @@ const subtitleFor = (view: View) => {
   if (view === "graph") return "Your connected evidence atlas";
   if (view === "ingestion") return "Add resume, projects, links, and proof";
   if (view === "profile") return "Your connected evidence map";
+  if (view === "learn") return "What your market wants you to learn next";
   return "Every role moving forward";
 };
 

@@ -18,6 +18,7 @@ const ITEMS: RailItem[] = [
   { label: "Scout", hint: "Agent journal", icon: "radar", tone: "mint", view: "activity", badge: "hot", active: view => view === "activity" },
   { label: "Tailor", hint: "Asset workshop", icon: "tailor", tone: "pink", view: "apply", active: view => view === "apply" },
   { label: "Knowledge", hint: "Evidence atlas", icon: "graph", tone: "blue", view: "graph", active: view => view === "graph" },
+  { label: "Learn", hint: "Skill intelligence", icon: "tune", tone: "mint", view: "learn", active: view => view === "learn" },
   { label: "Profile", hint: "Evidence garden", icon: "profile", tone: "lilac", view: "profile", active: view => view === "profile" },
   { label: "Context", hint: "Add evidence", icon: "context", tone: "peach", view: "ingestion", active: view => view === "ingestion" },
 ];

@@ -22,6 +22,7 @@ import { GraphView } from "../features/graph/GraphView";
 import { ActivityView } from "../features/activity/ActivityView";
 import { ProfileView } from "../features/profile/ProfileView";
 import { IngestionView } from "../features/profile/IngestionView";
+import { LearnView } from "../features/learning/LearnView";
 import { ApplyJobView } from "../features/apply/ApplyJobView";
 import { ApprovalDrawer } from "../features/pipeline/components/ApprovalDrawer";
 import { HelpChat } from "../shared/components/HelpChat";
@@ -197,8 +198,30 @@ const PROFILE = {
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 
+const LEARNING_INSIGHTS = {
+  generated_at: "2026-07-19T12:00:00+00:00",
+  sample_size: 214,
+  gaps: [
+    { skill: "Kubernetes", category: "infra", demand: 41.5, postings: 68, share_pct: 32, near_miss_postings: 21, adjacent: false, example_roles: [{ title: "Platform Engineer", company: "Railway", score: 82 }, { title: "Backend Engineer, Infra", company: "Vercel", score: 78 }], first_step: "New territory (infra): learn Kubernetes fundamentals, then build one portfolio piece that pairs it with work you've already shipped." },
+    { skill: "PostgreSQL", category: "database", demand: 33.2, postings: 55, share_pct: 26, near_miss_postings: 14, adjacent: true, example_roles: [{ title: "Full Stack Engineer", company: "Kanary", score: 81 }], first_step: "You already work in database — ship one small, real project that uses PostgreSQL and add it to your evidence." },
+    { skill: "Go", category: "language", demand: 21.7, postings: 34, share_pct: 16, near_miss_postings: 9, adjacent: true, example_roles: [{ title: "Systems Engineer", company: "LiveKit", score: 74 }], first_step: "You already work in language — ship one small, real project that uses Go and add it to your evidence." },
+  ],
+  strengths: [
+    { skill: "React", category: "frontend", demand: 62.1, postings: 96, share_pct: 45, near_miss_postings: 0, adjacent: true, example_roles: [], first_step: "" },
+    { skill: "TypeScript", category: "language", demand: 48.9, postings: 80, share_pct: 37, near_miss_postings: 0, adjacent: true, example_roles: [], first_step: "" },
+    { skill: "Python", category: "language", demand: 41.3, postings: 71, share_pct: 33, near_miss_postings: 0, adjacent: true, example_roles: [], first_step: "" },
+  ],
+  themes: [
+    { theme: "ai agent", demand: 52.4, share_pct: 41 },
+    { theme: "rag", demand: 31.0, share_pct: 24 },
+    { theme: "dashboard", demand: 22.8, share_pct: 18 },
+  ],
+  note: "",
+};
+
 const mockApi: ApiFetch = async (path) => {
   if (path.startsWith("/api/v1/profile")) return json(PROFILE);
+  if (path.startsWith("/api/v1/learning/insights")) return json(LEARNING_INSIGHTS);
   if (path.startsWith("/api/v1/leads")) return json(LEADS);
   if (path.startsWith("/api/v1/followups")) return json([]);
   if (path.startsWith("/api/v1/help/chat")) {
@@ -209,7 +232,7 @@ const mockApi: ApiFetch = async (path) => {
 
 const PROGRESS: OperationProgress = { active: false, mode: null, total: 0, completed: 0, current: "", updatedAt: 0 };
 
-const VIEWS: View[] = ["dashboard", "pipeline", "graph", "activity", "profile", "ingestion", "apply"];
+const VIEWS: View[] = ["dashboard", "pipeline", "graph", "activity", "profile", "ingestion", "apply", "learn"];
 
 export default function PreviewHarness() {
   const params = new URLSearchParams(window.location.search);
@@ -299,6 +322,7 @@ export default function PreviewHarness() {
           {view === "activity"  && <ErrorBoundary label="Activity"><ActivityView logs={LOGS} /></ErrorBoundary>}
           {view === "profile"   && <ErrorBoundary label="Profile"><ProfileView api={mockApi} setView={setView} stats={STATS} /></ErrorBoundary>}
           {view === "ingestion" && <ErrorBoundary label="Ingestion"><IngestionView api={mockApi} /></ErrorBoundary>}
+          {view === "learn"     && <ErrorBoundary label="Learn"><LearnView api={mockApi} /></ErrorBoundary>}
           {view === "apply" && (
             <ErrorBoundary label="Apply">
               <ApplyJobView port={1420} api={mockApi} leads={LEADS} openDrawer={setSel} initialInput="" />

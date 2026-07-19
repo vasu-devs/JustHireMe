@@ -1472,3 +1472,91 @@
   text-transform: uppercase;
   color: var(--journal-faint);
 }
+
+/* ================= LEARN VIEW =================
+   A study-plan page in the journal: ranked gap cards whose signature mark is
+   a marker-highlight demand stroke sized by real share-of-postings. All data
+   is mined locally from the lead journal; nothing here is decorative. */
+.product-app.app-production .learn-view { padding: 26px 30px 44px; }
+.product-app.app-production .learn-view .view-toolbar { align-items: flex-end; }
+.product-app.app-production .learn-sample {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+  padding: 10px 16px; background: var(--green-soft); border: 1px solid var(--line-2);
+  border-radius: 14px;
+}
+.product-app.app-production .learn-sample strong { font: 400 26px var(--font-display); color: var(--green-ink); line-height: 1; }
+.product-app.app-production .learn-sample span { font: 600 8px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.product-app.app-production .learn-note { margin: 6px 2px 0; font: italic 400 14px var(--font-display); color: var(--ink-2); }
+
+.product-app.app-production .learn-columns {
+  display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 22px; margin-top: 20px;
+}
+@media (max-width: 1100px) { .product-app.app-production .learn-columns { grid-template-columns: 1fr; } }
+
+.product-app.app-production .learn-gaps > header,
+.product-app.app-production .learn-rail section > header { margin-bottom: 12px; }
+.product-app.app-production .learn-gaps > header span,
+.product-app.app-production .learn-rail section > header span {
+  font: 700 9px var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3);
+}
+.product-app.app-production .learn-gaps > header p,
+.product-app.app-production .learn-rail section > header p { margin: 4px 0 0; font: 400 12px var(--font-sans); color: var(--ink-2); max-width: 52ch; }
+
+.product-app.app-production .learn-gap-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+  padding: 16px 18px 14px; margin-bottom: 12px;
+}
+.product-app.app-production .learn-gap-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.product-app.app-production .learn-gap-head b { font: 400 15px var(--font-display); color: var(--accent); }
+.product-app.app-production .learn-gap-head h3 { margin: 0; font: 400 22px var(--font-display); color: var(--ink); }
+.product-app.app-production .learn-chip {
+  font: 700 8px var(--font-mono); letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-2); background: var(--paper-2); border: 1px solid var(--line-2);
+  border-radius: 999px; padding: 3px 8px;
+}
+.product-app.app-production .learn-chip.fast { background: var(--green-soft); color: var(--green-ink); }
+
+.product-app.app-production .learn-demand { margin-top: 10px; }
+.product-app.app-production .learn-demand i {
+  display: block; height: 10px; max-width: 100%;
+  background: var(--accent); opacity: .82;
+  border-radius: 3px 7px 7px 3px; transform: skewX(-8deg); transform-origin: left bottom;
+}
+.product-app.app-production .learn-demand.slim i { height: 6px; background: var(--green); opacity: .9; }
+.product-app.app-production .learn-demand small {
+  display: block; margin-top: 5px;
+  font: 600 8px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3);
+}
+.product-app.app-production .learn-examples { margin: 10px 0 0; font: 400 11.5px var(--font-sans); color: var(--ink-2); }
+.product-app.app-production .learn-step { margin: 10px 0 0; font: italic 400 13px var(--font-display); color: var(--ink); }
+.product-app.app-production .learn-step span {
+  display: inline-block; margin-right: 8px;
+  font: 700 8px var(--font-mono); letter-spacing: .1em; text-transform: uppercase;
+  color: var(--accent); font-style: normal;
+}
+
+.product-app.app-production .learn-rail { display: flex; flex-direction: column; gap: 22px; }
+.product-app.app-production .learn-rail section {
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px;
+}
+.product-app.app-production .learn-strength { margin-bottom: 12px; }
+.product-app.app-production .learn-strength strong { font: 400 15px var(--font-display); color: var(--ink); }
+.product-app.app-production .learn-strength .learn-demand { margin-top: 4px; }
+.product-app.app-production .learn-strength small { font: 600 9px var(--font-mono); color: var(--ink-3); }
+.product-app.app-production .learn-themes { display: flex; flex-wrap: wrap; gap: 8px; }
+.product-app.app-production .learn-theme {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  background: var(--paper-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 5px 11px;
+}
+.product-app.app-production .learn-theme b { font: 400 13px var(--font-display); color: var(--ink); }
+.product-app.app-production .learn-theme small { font: 700 9px var(--font-mono); color: var(--accent); }
+.product-app.app-production .learn-rail-empty { font: 400 12px var(--font-sans); color: var(--ink-3); }
+.product-app.app-production .learn-footnote { font: 600 8px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-4); margin: 0 4px; }
+
+.product-app.app-production .learn-state {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  background: var(--card); border: 1px dashed var(--line); border-radius: 16px; padding: 22px;
+  max-width: 460px;
+}
+.product-app.app-production .learn-state strong { font: 400 18px var(--font-display); color: var(--ink); }
+.product-app.app-production .learn-state p { margin: 0; font: 400 12px var(--font-sans); color: var(--ink-2); }

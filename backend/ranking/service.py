@@ -77,12 +77,19 @@ class RankingService:
         ids = [str(lead.get("job_id") or "") for lead in leads]
         if max_llm <= 0 or len(leads) <= max_llm:
             return {jid for jid in ids if jid}
-        scored: list[tuple[int, str]] = []
-        for lead, jid in zip(leads, ids, strict=False):
-            if not jid:
-                continue
-            det = await self.deterministic_score(lead, profile)
-            scored.append((int(getattr(det, "score", 0) or 0), jid))
+
+        # Deterministic scores are independent and cheap; running them serially
+        # added an O(N) stall between scouting and evaluation on large scans.
+        gate = asyncio.Semaphore(8)
+
+        async def _one(lead: dict, jid: str) -> tuple[int, str]:
+            async with gate:
+                det = await self.deterministic_score(lead, profile)
+                return int(getattr(det, "score", 0) or 0), jid
+
+        scored = list(await asyncio.gather(*(
+            _one(lead, jid) for lead, jid in zip(leads, ids, strict=False) if jid
+        )))
         scored.sort(key=lambda item: -item[0])
         return {jid for _, jid in scored[:max_llm]}
 
