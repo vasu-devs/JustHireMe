@@ -63,13 +63,16 @@ hidden = [
     # `from help` imports). PyInstaller's static analysis can't follow those, so
     # collect them explicitly — otherwise the frozen sidecar dies at startup with
     # ModuleNotFoundError (e.g. "No module named 'discovery'").
-    collect_submodules("core")
+    collect_submodules("api")
+    + collect_submodules("core")
     + collect_submodules("discovery")
+    + collect_submodules("models")
     + collect_submodules("ranking")
     + collect_submodules("generation")
     + collect_submodules("profile")
     + collect_submodules("automation")
     + collect_submodules("help")
+    + collect_submodules("learning")
     + collect_submodules("llm")
 )
 

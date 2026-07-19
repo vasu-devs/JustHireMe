@@ -283,6 +283,40 @@ async function smokeCoreApi(port, token) {
   }
 }
 
+// Every parameterless GET the app exposes must at least not 500 in the FROZEN
+// build. A handler whose module the bundler dropped only explodes when the
+// route runs (the learning router shipped broken this way: startup fine,
+// endpoint 500 ModuleNotFoundError) — so smoke ALL of them, discovered from
+// the app's own OpenAPI schema rather than a hand-maintained list.
+async function smokeEveryParameterlessGet(port, token) {
+  const response = await fetch(`http://127.0.0.1:${port}/openapi.json`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    fail(`/openapi.json returned HTTP ${response.status}`);
+  }
+  const schema = await response.json();
+  const targets = Object.entries(schema.paths || {})
+    .filter(([path, methods]) => methods.get && !path.includes("{"))
+    .map(([path]) => path);
+  if (targets.length < 5) {
+    fail(`OpenAPI sweep found only ${targets.length} parameterless GET routes — schema looks broken`);
+  }
+  const failures = [];
+  for (const path of targets) {
+    const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status >= 500) {
+      failures.push(`${path} -> HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    }
+  }
+  if (failures.length) {
+    fail(`Frozen-build GET sweep found server errors:\n${failures.join("\n")}`);
+  }
+  return targets.length;
+}
+
 function requireHealth(health, options = {}) {
   const components = health.components || health.checks || {};
   const sqlite = components.sqlite?.status;
@@ -405,6 +439,7 @@ try {
   const health = await readHealth(handshake.port, handshake.token);
   const summary = requireHealth(health);
   await smokeCoreApi(handshake.port, handshake.token);
+  const sweptRoutes = await smokeEveryParameterlessGet(handshake.port, handshake.token);
   const vectorRuntime = await ensureVectorRuntime(handshake.port, handshake.token);
   const healthAfterRuntime = await readHealth(handshake.port, handshake.token);
   const summaryAfterRuntime = requireHealth(healthAfterRuntime, { vectorRequired: vectorRuntime.ready });
@@ -416,6 +451,7 @@ try {
   console.log(`- graph: ${summary.graph}`);
   console.log(`- vector: ${summaryAfterRuntime.vector || summary.vector}`);
   console.log("- api: settings, leads, profile, diagnostics");
+  console.log(`- swept: ${sweptRoutes} parameterless GET routes, zero 5xx`);
   passed = true;
 } finally {
   if (handshake?.port && handshake?.token) {
