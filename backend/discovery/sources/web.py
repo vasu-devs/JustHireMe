@@ -169,8 +169,38 @@ def ensure_scheme(u: str) -> str:
 
 
 def google_past_week_url(target: str) -> str:
-    query = target.replace(" ", "+")
-    return f"https://www.google.com/search?q={query}&tbs=qdr:w"
+    """Past-week search URL for a `site:` dork target.
+
+    Despite the legacy name this now routes through DuckDuckGo's HTML
+    endpoint: live probing showed google.com/search serves its CAPTCHA
+    sorry-page to headless Chromium on 3/3 attempts — every dork target
+    yielded structurally zero results AND still spent one LLM extract call
+    on CAPTCHA text. DDG's html endpoint tolerates automation and honors
+    site: dorks; df=w is its past-week filter.
+    """
+    from urllib.parse import quote_plus
+
+    return f"https://html.duckduckgo.com/html/?q={quote_plus(target)}&df=w"
+
+
+# Search-engine interstitials that mean "no results, do not spend an LLM call
+# extracting this". Checked against the page markdown before parse().
+_BLOCK_PAGE_MARKERS = (
+    "unusual traffic from your computer network",
+    "our systems have detected unusual traffic",
+    "type the characters you see in this image",
+    "not a robot",
+    "if you're having trouble accessing google search",
+    # DuckDuckGo's anomaly challenge
+    "bots use duckduckgo too",
+    "select all squares containing a duck",
+    "complete the following challenge",
+)
+
+
+def is_search_block_page(md: str) -> bool:
+    lower = (md or "").lower()
+    return any(marker in lower for marker in _BLOCK_PAGE_MARKERS)
 
 
 def to_markdown(html: str) -> str:
@@ -317,6 +347,10 @@ def scrape(u: str, headed: bool = False) -> list:
     _require_scout_llm()
     u = ensure_scheme(u)
     md = asyncio.run(crawl(u, headed=headed))
+    if is_search_block_page(md):
+        # A CAPTCHA/interstitial has no jobs; skip the LLM extract entirely
+        # and surface the real cause instead of a silent "0 candidates".
+        raise RuntimeError("search engine served a bot-check page instead of results")
     return parse(md, u)
 
 
@@ -324,6 +358,8 @@ def scrape_wellfound_target(target: str, headed: bool = False) -> list:
     _require_scout_llm()
     crawl_target = google_past_week_url(target) if target.startswith("site:") else target
     md = asyncio.run(crawl(crawl_target, headed=headed))
+    if is_search_block_page(md):
+        raise RuntimeError("search engine served a bot-check page instead of results")
     return parse_wellfound(md, crawl_target)
 
 

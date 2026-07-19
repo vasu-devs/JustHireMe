@@ -221,8 +221,14 @@ def evaluate_lead_quality(
     # unset and forced the default back on — silently defeating free_scout's own
     # explicit-0 handling (it passes min_quality=min_score, which can be 0). A real
     # 0 is a valid threshold; just clamp it to [0, 100].
-    accepted = score >= max(0, min(min_quality, 100))
+    bar = max(0, min(min_quality, 100))
+    accepted = score >= bar
 
+    # Name the actual reject driver. Without this, a score-based reject showed
+    # only the incidental notes ("fresh posting: 0 days old" — the freshness
+    # PASS note) and read as if freshness rejected a brand-new posting.
+    if not accepted:
+        reasons.insert(0, f"signal score {score} below the {bar} quality bar")
     if not reasons:
         reasons.append("passes source quality checks")
     return {

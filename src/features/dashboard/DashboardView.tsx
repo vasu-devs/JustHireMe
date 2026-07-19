@@ -63,7 +63,7 @@ export function DashboardView(props: {
         <div className="journal-focus">
           <span className="journal-pin" />
           <div>
-            <small>{busy ? "Scout is working" : "One thing before 4 PM"}</small>
+            <small>{busy ? "Scout is working" : "Your next focused move"}</small>
             <strong>{busy ? progress?.current || "Checking the evidence" : current ? `Review the ${leadDisplayHeading(current).company} role.` : "Run one focused scan."}</strong>
             {busy && (progress?.total ?? 0) > 0 ? (
               <div className="journal-scan-meter" role="progressbar" aria-valuemin={0} aria-valuemax={progress!.total} aria-valuenow={progress!.completed}>
@@ -71,7 +71,7 @@ export function DashboardView(props: {
                 <span>{progress!.completed}/{progress!.total} {progress!.mode === "reevaluate" ? "leads re-scored" : progress!.unit === "leads" ? "leads scored" : "sources scanned"}</span>
               </div>
             ) : (
-              <p>{current ? "The evidence is ready and the role is still fresh." : "Scout will bring back only roles with a credible match."}</p>
+              <p>{current ? `Scout ranks it ${leadSignal(current)}% against your evidence — open it and decide.` : "Scout will bring back only roles with a credible match."}</p>
             )}
           </div>
           {scanning

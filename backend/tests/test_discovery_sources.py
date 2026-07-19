@@ -44,8 +44,11 @@ def test_hackernews_company_role_parsing():
 def test_web_source_target_helpers():
     assert web.ensure_scheme("example.com/jobs") == "https://example.com/jobs"
     assert web.ensure_scheme("site:jobs.example.com") == "site:jobs.example.com"
+    # Dorks route through DuckDuckGo's html endpoint now: google.com/search
+    # CAPTCHA-walls headless Chromium (probed live, 3/3), yielding zero results
+    # while still spending an LLM extract call per dork.
     assert web.google_past_week_url("site:jobs.example.com Python jobs") == (
-        "https://www.google.com/search?q=site:jobs.example.com+Python+jobs&tbs=qdr:w"
+        "https://html.duckduckgo.com/html/?q=site%3Ajobs.example.com+Python+jobs&df=w"
     )
 
 

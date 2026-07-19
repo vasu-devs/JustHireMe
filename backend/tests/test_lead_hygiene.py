@@ -409,3 +409,66 @@ def test_hn_role_first_requires_pure_role_segment():
     company, title = hn_company_role("Senior Full Stack Engineer | Acme | Remote")
     assert title == "Senior Full Stack Engineer"
     assert company == "Acme"
+
+
+# ── Live-probe regression locks (2026-07-20 scraper trial) ───────────────────
+
+def test_hn_accepts_em_dash_separated_posts():
+    from discovery.normalizer import hn_company_role, looks_like_hn_job_post
+    post = ("PrairieLearn (Remote US) " + chr(0x2014) + " Full-Stack Software Engineer " + chr(0x2014)
+            + " TypeScript/Postgres/React. We build learning tools used by thousands of students. Apply on our site.")
+    assert looks_like_hn_job_post(post)
+    company, title = hn_company_role(post)
+    assert "Full-Stack Software Engineer" in title
+    assert company.startswith("PrairieLearn")
+
+
+def test_salary_segments_are_never_roles_or_companies():
+    from discovery.normalizer import hn_company_role, looks_role_like
+    assert not looks_role_like("$160k-$210k + equity")
+    assert not looks_role_like("160k + equity + benefits")
+    company, title = hn_company_role(
+        "Senior Full Stack Engineer | New York, NY | Onsite | $160k-$210k + equity"
+    )
+    assert title == "Senior Full Stack Engineer"
+    assert "$" not in company and "equity" not in company.lower()
+
+
+def test_capitalized_requirement_fragments_are_junk_titles():
+    from discovery.normalizer import _junk_title
+    assert _junk_title("Have strong full-stack engineering experience")
+    assert _junk_title("We are looking for engineers")
+    assert not _junk_title("Senior Backend Engineer")
+
+
+def test_quality_gate_reject_reason_names_the_score_driver():
+    from discovery.quality_gate import evaluate_lead_quality
+    lead = {
+        "title": "Thin Role",
+        "url": "https://example.com/job",
+        "description": "Short description of a role at a company with little detail here.",
+        "posted_date": "",
+        "source_meta": {},
+    }
+    out = evaluate_lead_quality(lead, min_quality=99)
+    assert out["accepted"] is False
+    assert "below the 99 quality bar" in out["reason"]
+
+
+def test_github_gate_tolerates_the_word_issue_in_hiring_posts():
+    from discovery.sources.github_jobs import looks_like_hiring_issue
+    assert looks_like_hiring_issue(
+        "Hiring: Senior Rust Engineer",
+        "We are hiring for our platform team. Salary posted. To apply, open an issue with your CV link.",
+    )
+    assert not looks_like_hiring_issue(
+        "[BUG] crash on startup",
+        "Steps to reproduce: run the app. Stack trace attached.",
+    )
+
+
+def test_search_block_pages_are_detected_and_never_reach_the_llm():
+    from discovery.sources.web import is_search_block_page
+    assert is_search_block_page("Our systems have detected unusual traffic from your computer network.")
+    assert is_search_block_page("Unfortunately, bots use DuckDuckGo too. Select all squares containing a duck:")
+    assert not is_search_block_page("Senior Engineer at Acme. Apply now. Full job description follows.")

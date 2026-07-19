@@ -232,11 +232,18 @@ _ROLE_EXTRA_TERMS = (
     "software", "frontend", "front-end", "backend", "full stack",
     "full-stack", "data", "ai", "ml", "devops", "sre", "qa", "mobile",
     "product", "solution architect", "solutions architect",
+    # C-suite/founder roles are common on HN ("Logenta.ai | CTO | Remote")
+    # and fell through to "Hiring at <company>" titles without these.
+    "cto", "ceo", "coo", "cpo", "founder", "co-founder", "founding engineer",
 )
 
 
 def looks_role_like(text: str) -> bool:
     lower = text.lower()
+    # Compensation segments ("$160k-$210k + equity") match employment vocabulary
+    # ('equity') but are never roles — reject before any term matching.
+    if _money_segment(lower):
+        return False
     # Field-agnostic: recognize a role/occupation in ANY field (healthcare,
     # trades, business, education, creative, ...), not just software. Reuses the
     # broad occupation vocabulary so a "Registered Nurse" or "Electrician"
@@ -269,6 +276,7 @@ _ROLE_MODIFIER_TOKENS = frozenset({
     "of", "and", "&", "-", "engineering", "engineer", "engineers", "developer",
     "manager", "designer", "scientist", "architect", "analyst", "intern",
     "apprentice", "specialist", "consultant", "researcher", "technologist",
+    "cto", "ceo", "coo", "cpo", "founder", "co-founder",
 })
 
 
@@ -318,7 +326,10 @@ def looks_like_hn_job_post(text: str) -> bool:
 
     has_role = any(term in lower for term in role_terms)
     has_hiring_signal = any(term in lower for term in hiring_terms)
-    if first_line.count("|") >= 2 and has_role:
+    # Pipes and spaced em/en-dashes are both real HN separators; requiring
+    # literal pipes falsely dropped genuine dash-separated posts.
+    separators = first_line.count("|") + len(re.findall(r"\s[—–]\s", first_line))
+    if separators >= 2 and has_role:
         return True
     if has_role and has_hiring_signal and any(
         phrase in lower
@@ -333,23 +344,37 @@ _TITLE_FRAGMENT_STARTERS = {
     "and", "to", "with", "you", "your", "this", "it", "it's", "if", "as", "in",
 }
 
+# A segment that is compensation, not a role or company: currency symbols,
+# "160k"-style figures, or equity-with-numbers. "$160k-$210k + equity" passed
+# looks_role_like via the 'equity' employment term and got stored as a COMPANY.
+_MONEY_RE = re.compile(r"[$€£₹]|\b\d{2,3}k\b", re.I)
+
+
+def _money_segment(text: str) -> bool:
+    lower = text.lower()
+    return bool(_MONEY_RE.search(lower)) or ("equity" in lower and any(ch.isdigit() for ch in lower))
+
 
 def _junk_title(text: str) -> bool:
     """Reject strings that pass looks_role_like but are not titles: email
     addresses ('engineer@acme.com'), overlong lines, and sentence fragments
-    that start mid-prose with a lowercase filler word ('we are looking...')."""
+    that start with a prose filler word — any case: 'Have strong full-stack
+    engineering experience' is a requirements bullet, not a title."""
     if "@" in text and " " not in text:
         return True
     words = text.split()
     if len(words) > 8:
         return True
-    first = words[0] if words else ""
-    return bool(first) and first[0].islower() and first.lower() in _TITLE_FRAGMENT_STARTERS
+    first = words[0].lower() if words else ""
+    return first in _TITLE_FRAGMENT_STARTERS
 
 
 def hn_company_role(text: str, author: str = "") -> tuple[str, str]:
     clean = strip_html_text(text)
     first_line = clean.splitlines()[0].strip() if clean else ""
+    # Spaced em/en-dashes are pipe-equivalent separators on HN ("PrairieLearn
+    # — Full-Stack Engineer — Remote"); plain hyphens stay untouched (prose).
+    first_line = re.sub(r"\s+[—–]\s+", " | ", first_line)
     pipe_parts = [part.strip(" -|:") for part in first_line.split("|") if part.strip()]
     company = (pipe_parts[0] if pipe_parts else author or "HN Hiring")[:100]
 
@@ -368,7 +393,7 @@ def hn_company_role(text: str, author: str = "") -> tuple[str, str]:
         return role[:140]
 
     for segment in pipe_parts[1:]:
-        if is_noise(segment):
+        if is_noise(segment) or _money_segment(segment):
             continue
         if looks_role_like(segment):
             return company, clean_role(segment)
@@ -381,7 +406,7 @@ def hn_company_role(text: str, author: str = "") -> tuple[str, str]:
     # list) is never promoted to company; ambiguous posts keep the company-
     # first fallback below.
     if len(pipe_parts) >= 2 and _pure_role_segment(pipe_parts[0]):
-        rest = [seg for seg in pipe_parts[1:] if not is_noise(seg)]
+        rest = [seg for seg in pipe_parts[1:] if not is_noise(seg) and not _money_segment(seg)]
         company_seg = next((seg for seg in rest if not looks_role_like(seg) and "," not in seg), "")
         return (company_seg or author or "")[:100], clean_role(pipe_parts[0])
 

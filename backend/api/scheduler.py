@@ -193,13 +193,13 @@ def _run_lead_hygiene_migration(logger) -> None:
     exactly once; the repair itself is also idempotent as a second guard."""
     try:
         repo = get_repository()
-        if (repo.settings.get_settings() or {}).get("lead_hygiene_v2") == "done":
+        if (repo.settings.get_settings() or {}).get("lead_hygiene_v3") == "done":
             return
         # Dynamic import: the api layer reaches domain packages through
         # import_module by design (see api.dependencies._local_service).
         from importlib import import_module
         counts = import_module("discovery.maintenance").normalize_stored_leads()
-        repo.settings.save_settings({"lead_hygiene_v2": "done"})
+        repo.settings.save_settings({"lead_hygiene_v3": "done"})
         logger.info(
             "lead hygiene migration: %s titles fixed, %s descriptions cleaned",
             counts.get("titles_fixed", 0), counts.get("descriptions_cleaned", 0),

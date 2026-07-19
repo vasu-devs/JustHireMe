@@ -27,7 +27,7 @@ def normalize_stored_leads(db_path: str | None = None) -> dict:
     no-op returning zeros.
     """
     from data.sqlite.connection import get_connection
-    from discovery.normalizer import _junk_title, _pure_role_segment, hn_company_role
+    from discovery.normalizer import _junk_title, hn_company_role
     from discovery.sources.rss import repair_mojibake, strip_remoteok_noise
 
     def _needs_hn_repair(title: str, company: str) -> bool:
@@ -35,8 +35,12 @@ def normalize_stored_leads(db_path: str | None = None) -> dict:
             return True  # pre-parser comment dump
         if _junk_title(title):
             return True  # email / fragment stored as title
-        # Inverted parse: "Hiring at Engineering Manager" with the role in company.
-        return title == f"Hiring at {company}" and _pure_role_segment(company)
+        # Every "Hiring at <company>" fallback is worth a re-derivation pass:
+        # parser vocabulary keeps growing (C-suite roles landed late), and when
+        # the description still yields nothing better the re-derive returns the
+        # same title and writes nothing — idempotent by construction. Also
+        # covers the inverted case (role stored as company).
+        return title == f"Hiring at {company}"
 
     conn = get_connection(db_path)
     counts = {"titles_fixed": 0, "descriptions_cleaned": 0}

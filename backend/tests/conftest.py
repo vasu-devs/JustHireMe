@@ -1,4 +1,6 @@
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -7,6 +9,15 @@ import pytest
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
+
+# HARD app-data isolation for the whole test process, set BEFORE any backend
+# module can resolve app_data_dir(). Without this, module-level telemetry
+# (core.telemetry.record_error, scan metrics) resolved DEFAULT_DB_PATH to the
+# REAL installed app's crm.db — pytest sessions wrote phantom error rows into
+# a live user database and overwrote its last-scan metrics with test residue.
+# setdefault so an explicit externally-provided dir (or a subprocess real-DB
+# test that passes its own db_path) still behaves as intended.
+os.environ.setdefault("JHM_APP_DATA_DIR", tempfile.mkdtemp(prefix="jhm-test-appdata-"))
 
 
 collect_ignore_glob = ["tmp*"]

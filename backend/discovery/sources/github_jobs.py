@@ -17,7 +17,7 @@ _HIRING_SIGNALS = (
     "hiring", "job", "position", "role", "apply", "salary",
     "we're looking", "we are looking",
 )
-_ISSUE_MARKERS = ("[bug]", "error:", "proposal", "issue")
+_ISSUE_MARKERS = ("[bug]", "error:", "proposal", "steps to reproduce", "stack trace")
 
 
 def looks_like_hiring_issue(title: str, body: str) -> bool:

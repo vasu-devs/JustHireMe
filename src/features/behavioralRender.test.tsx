@@ -1,4 +1,4 @@
-import { renderToStaticMarkup } from "react-dom/server";
+﻿import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { DashboardView } from "./dashboard/DashboardView";
 import { ApplyJobView } from "./apply/ApplyJobView";
@@ -65,7 +65,7 @@ describe("high-risk component behavioral render coverage", () => {
     );
 
     expect(html).toContain("Find work");
-    expect(html).toContain("One thing before 4 PM");
+    expect(html).toContain("Your next focused move");
     expect(html).toContain("Acme AI");
     expect(html).toContain("Backend Engineer");
   });
@@ -108,3 +108,4 @@ describe("high-risk component behavioral render coverage", () => {
     expect(api).toHaveBeenCalledWith("/api/v1/errors", expect.objectContaining({ method: "POST" }));
   });
 });
+
