@@ -163,12 +163,53 @@ _SKILL_SCAN_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
+# Negation / "mention != usage" cues. A skill token appearing shortly AFTER one of
+# these (e.g. "migrated away from Angular", "deprecated jQuery") is a skill the
+# candidate moved OFF, not one they use — crediting it as evidence over-inflates the
+# match. Deliberately conservative: only unambiguous cues where the skill follows the
+# phrase, so we never suppress a genuinely-used skill.
+_NEGATION_CUES: tuple[str, ...] = (
+    "migrated away from",
+    "migrating away from",
+    "moved away from",
+    "moving away from",
+    "away from",
+    "deprecated",
+    "no longer",
+    "phased out",
+    "phasing out",
+    "sunsetting",
+    "sunset",
+)
+# Small left-context window so a cue binds only to the skill it IMMEDIATELY precedes
+# ("deprecated Flask" negates Flask, not a FastAPI seven words later). Deliberately
+# tight: we would rather under-suppress than wrongly drop a genuinely-used skill.
+_NEGATION_WINDOW = 20  # chars (~3 words)
+
+
+def _is_negated(lowered: str, start: int) -> bool:
+    window = lowered[max(0, start - _NEGATION_WINDOW):start]
+    return any(cue in window for cue in _NEGATION_CUES)
+
+
 def scan_skills_in_text(text: str) -> set[str]:
-    """Canonical skills whose alias appears as a whole token in ``text`` (case-insensitive)."""
+    """Canonical skills whose alias appears as a whole token in ``text`` (case-insensitive).
+
+    A match immediately preceded by a negation cue (``migrated away from X``,
+    ``deprecated X``) is skipped, so a skill the candidate explicitly moved off is not
+    credited as usage evidence. A skill counts if ANY of its occurrences is un-negated.
+    """
     if not text:
         return set()
     lowered = text.lower()
-    return {canonical for pattern, canonical in _SKILL_SCAN_PATTERNS if pattern.search(lowered)}
+    found: set[str] = set()
+    for pattern, canonical in _SKILL_SCAN_PATTERNS:
+        for match in pattern.finditer(lowered):
+            if _is_negated(lowered, match.start()):
+                continue
+            found.add(canonical)
+            break  # one un-negated usage is enough
+    return found
 
 
 SECTION_TITLES = {
@@ -290,6 +331,23 @@ GENERIC_SKILL_DENYLIST = {
     "star",
     "stars",
     "updated",
+}
+
+# Single lowercase words that are filler, not skills. FIELD-NEUTRAL by design: it is a
+# short list of generic English connectors/section words, NOT a tech vocabulary — so a
+# real single-word skill from ANY field ("phlebotomy", "welding", "figma", "excel",
+# "conveyancing") is accepted, while "and"/"with"/"experience" are not. This replaces
+# the old rule that dropped every lowercase word absent from the tech taxonomy, which
+# silently deleted non-tech skills.
+_SINGLE_WORD_NONSKILLS = {
+    "and", "the", "with", "for", "our", "your", "their", "his", "her", "its",
+    "various", "other", "others", "etc", "skills", "skill", "experience", "experienced",
+    "proficient", "proficiency", "knowledge", "strong", "excellent", "ability", "abilities",
+    "team", "teams", "work", "working", "using", "used", "use", "good", "great", "basic",
+    "advanced", "intermediate", "general", "responsible", "responsibilities", "requirement",
+    "requirements", "preferred", "plus", "bonus", "including", "included", "such", "like",
+    "must", "should", "will", "have", "has", "are", "was", "were", "been", "being",
+    "passionate", "motivated", "detail", "oriented", "years", "year", "months", "month",
 }
 
 
@@ -438,7 +496,8 @@ def normalize_skills(raw_items: list[Any]) -> list[dict[str, str]]:
         for skill in split_skill_names(str(value or "")):
             if not _valid_skill(skill):
                 continue
-            key = _key(skill)
+            # Symbol-preserving key so C/C++/C# stay distinct (see _skill_dedupe_key).
+            key = _skill_dedupe_key(skill)
             if key in seen:
                 continue
             seen.add(key)
@@ -889,7 +948,16 @@ def _valid_skill(skill: str) -> bool:
         return False
     if len(clean.split()) > 2 and _known_skill_hits(clean) and _key(clean) not in _known_skill_key_set():
         return False
-    if len(clean.split()) == 1 and lower == clean and _key(clean) not in _known_skill_key_set():
+    # A single lowercase word used to be rejected unless it was in the (tech-only)
+    # taxonomy — which silently dropped legitimate non-tech skills ("phlebotomy",
+    # "welding", "figma"). Now a single lowercase word is valid UNLESS it is generic
+    # filler or too short; field-agnostic, not taxonomy-gated.
+    if (
+        len(clean.split()) == 1
+        and lower == clean
+        and _key(clean) not in _known_skill_key_set()
+        and (len(clean) < 3 or lower in _SINGLE_WORD_NONSKILLS)
+    ):
         return False
     return not ACTION_SENTENCE_RE.search(clean)
 
@@ -1154,6 +1222,15 @@ def _clean_inline_text(value: str) -> str:
 
 def _key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def _skill_dedupe_key(value: str) -> str:
+    """Dedup key for skill NAMES that preserves the ``+``/``#`` that distinguish
+    C / C++ / C# / F#. The generic :func:`_key` strips all punctuation, so "C",
+    "C++" and "C#" all collapse to "c" and only the first survives import — a C++
+    engineer silently loses "C++", and every C++-required job then reads as a gap.
+    Dots are still stripped so "node.js"/"nodejs" continue to dedupe as one skill."""
+    return re.sub(r"[^a-z0-9+#]+", "", str(value or "").lower())
 
 
 def _dedupe(values: list[str]) -> list[str]:

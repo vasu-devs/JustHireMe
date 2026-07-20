@@ -220,8 +220,16 @@ def test_profile_normalization_rejects_github_metadata_as_skills():
         ],
     })
 
-    assert cleaned["skills"] == [{"name": "TypeScript", "category": "github"}]
-    assert cleaned["projects"][0]["stack"] == "TypeScript"
+    # GitHub METADATA noise (commit dates, "2 forks", the "send" action word) must
+    # still be rejected. "memfs" is a real library, not metadata, so it now survives:
+    # the old tech-only validity gate dropped every skill absent from the ~77-alias
+    # taxonomy, which was precisely the field-agnostic defect being removed. Filtering
+    # metadata (the test's real intent) still holds.
+    skill_names = {s["name"] for s in cleaned["skills"]}
+    assert skill_names == {"TypeScript", "memfs"}
+    assert "maintained through 2026-03-06" not in skill_names
+    assert "2 forks" not in skill_names and "send" not in skill_names
+    assert cleaned["projects"][0]["stack"] == "TypeScript, memfs"
     assert cleaned["projects"][0]["impact"] == "AI email draft tool"
 
     fallback = _fallback_project(
