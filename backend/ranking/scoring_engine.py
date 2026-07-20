@@ -838,7 +838,21 @@ def _semantic_criterion(jd: str, candidate_data: dict, weight: int) -> Criterion
     return CriterionScore("Semantic fit", score, weight, reason)
 
 
+def _cgfe_enabled() -> bool:
+    """Opt-in switch for the Coverage-Grounded Fit Engine (field-agnostic v2).
+
+    Off by default so the incumbent rubric stays the shipped path until CGFE clears
+    its comparability/ordering gates. Enable per-process with ``JHM_FIT_ENGINE=cgfe``
+    to shadow or evaluate it. See docs/FIT_EVALUATION_ALGORITHM.md."""
+    import os
+    return os.environ.get("JHM_FIT_ENGINE", "").strip().lower() == "cgfe"
+
+
 def score_job_lead(jd: str, candidate_data: dict) -> ScoreResult:
+    if _cgfe_enabled():
+        from ranking.fit import score_fit
+        return score_fit(jd, candidate_data)
+
     from ranking.criteria.evidence import evaluate_evidence
     from ranking.criteria.logistics import evaluate_logistics
     from ranking.criteria.role_alignment import evaluate_role_alignment
