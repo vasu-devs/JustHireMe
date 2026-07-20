@@ -28,6 +28,27 @@ from ranking.fit.extract import (
 )
 from ranking.fit.text import overlap_coeff, phrase_match, tokens
 
+# Generic competency / soft-skill / boilerplate words that are shared ACROSS professions
+# and therefore carry no occupation signal. Excluded from the occupation facet so a
+# software engineer and a nurse who both mention "communication" and "documentation" are
+# not judged the same occupation. Field-neutral: these are cross-field filler, not any
+# one field's vocabulary. Discriminative role nouns (nurse, welder, engineer, analyst)
+# are deliberately KEPT so two real same-role titles still match.
+_OCC_STOPWORDS: frozenset[str] = frozenset({
+    "communication", "documentation", "leadership", "teamwork", "collaboration",
+    "planning", "management", "organization", "organizational", "problem", "solving",
+    "analysis", "reporting", "coordination", "administration", "support", "service",
+    "customer", "provide", "provided", "providing", "essential", "detail", "detailed",
+    "quality", "process", "processes", "improvement", "stakeholder", "stakeholders",
+    "budget", "budgeting", "interpersonal", "written", "verbal", "presentation",
+    "multitasking", "deadlines", "fast", "paced", "passionate", "motivated", "driven",
+    "results", "oriented", "proactive", "reliable", "flexible", "adaptable",
+})
+
+
+def _occ_tokens(phrases_text) -> set[str]:
+    return {t for t in phrases_text if t not in _OCC_STOPWORDS}
+
 # ── Fusion weights (SEED; design §6.3 F2-remapped Gaussian prior mean) ──────────
 _W = {"cov": 0.34, "proof": 0.20, "occ": 0.24, "sem": 0.10, "log": 0.12}
 
@@ -124,8 +145,8 @@ def _coverage_and_proof(reqs: RequirementSet, caps: CapabilitySet):
     covered: list[tuple[str, float, str]] = []
     missing: list[str] = []
     for r in reqs.items:
-        best_pres = 0.0
-        best_e = 0.0
+        best_pres = 0.0     # presence: is the requirement addressed at all? (phi_cov)
+        best_e = 0.0        # evidence: presence x strongest tier behind it (phi_proof)
         best_cap = None
         via = "none"
         for cap in cap_list:
@@ -135,9 +156,12 @@ def _coverage_and_proof(reqs: RequirementSet, caps: CapabilitySet):
                 pres, v = phrase_match(r.display, cap.display), "lexical"
             if pres <= 0:
                 continue
-            e = pres * cap.tier
-            if e > best_e:
-                best_e, best_pres, best_cap, via = e, pres, cap, v
+            # Track presence and evidence INDEPENDENTLY: a requirement exactly present
+            # (pres=1.0) stays fully covered even if a different, stronger-tier capability
+            # only partially matches it. Conflating them under-reported coverage.
+            if pres > best_pres:
+                best_pres, best_cap, via = pres, cap, v
+            best_e = max(best_e, pres * cap.tier)
         pres_acc += r.importance * best_pres
         proof_acc += r.importance * best_e
         if best_pres >= 0.5 and best_cap is not None:
@@ -164,14 +188,14 @@ def _occupation(reqs: RequirementSet, caps: CapabilitySet) -> Facet:
     capability token overlap. High when both sides are the same KIND of work; ~0
     across genuinely different professions. Drives the cross-field gate.
     """
-    title_sim = overlap_coeff(reqs.title_tokens, caps.role_tokens)
+    title_sim = overlap_coeff(_occ_tokens(reqs.title_tokens), _occ_tokens(caps.role_tokens))
     cap_tokens: set[str] = set()
     for cap in caps.phrases():
         cap_tokens |= tokens(cap.display)
     req_tokens: set[str] = set()
     for r in reqs.items:
         req_tokens |= tokens(r.display)
-    field_sim = overlap_coeff(req_tokens, cap_tokens)
+    field_sim = overlap_coeff(_occ_tokens(req_tokens), _occ_tokens(cap_tokens))
     phi = max(title_sim, field_sim)
     return Facet("occ", phi, 1.0, f"occupation proximity (title {title_sim:.2f}, field {field_sim:.2f})")
 
@@ -198,9 +222,11 @@ def _logistics() -> Facet:
 def _credential_satisfied(reqs: RequirementSet, caps: CapabilitySet) -> bool:
     if not reqs.licence_tokens:
         return True
+    # Only credentials the candidate actually HOLDS satisfy a legally-hard gate: tokens
+    # from their certification/education titles and their role titles. NOT arbitrary
+    # skill/project phrase tokens - a "progress bar" project must not satisfy a "bar
+    # admission" requirement, nor "React Native" (rn) an "RN license".
     holder = caps.credential_tokens | caps.role_tokens
-    for cap in caps.phrases():
-        holder |= tokens(cap.display)
     return bool(reqs.licence_tokens & holder)
 
 
@@ -253,15 +279,20 @@ def _calibrate(q_gated: float) -> int:
     return max(0, min(100, round(100.0 / (1.0 + math.exp(-_CAL_K * (q_gated - _CAL_Q0))))))
 
 
-def _band(score: int, facets: list[Facet]) -> str:
-    # Uncertainty-widened edges: low-confidence coverage routes a near-advance lead
-    # to REVIEW rather than auto-advancing or auto-discarding (design §8).
+def _band(score: int, facets: list[Facet], hard_gated: bool) -> str:
+    # Uncertainty-widened edges (design §8): low-confidence coverage (thin/uncleanly
+    # parsed JD) routes a near-advance lead DOWN to REVIEW and a would-be discard UP to
+    # REVIEW - a terse-but-maybe-good posting reaches a human instead of being deleted.
+    # A hard gate (cross-field / credential) still discards: that is a decision, not
+    # uncertainty.
     cov = next((f for f in facets if f.key == "cov"), None)
     uncertain = bool(cov and cov.kappa < 0.75)
     if score >= _B_HIGH and not uncertain:
         return "advance"
-    if score >= _B_LOW or (score >= _B_HIGH and uncertain):
+    if score >= _B_LOW:
         return "review"
+    if uncertain and not hard_gated and score >= _B_LOW - 20:
+        return "review"  # thin posting we cannot confidently reject -> human triage
     return "discard"
 
 
@@ -282,7 +313,8 @@ def evaluate_fit(jd: str, candidate_data: dict, settings: dict | None = None) ->
     g_total, gates = _gates(reqs, caps, cov.value, proof.value, occ.value)
     q_gated = q * g_total
     score = _calibrate(q_gated)
-    band = _band(score, facets)
+    hard_gated = any(g["gate"] in {"cross_field", "credential"} for g in gates)
+    band = _band(score, facets, hard_gated)
 
     reason = _summarize(cov, proof, occ, covered, missing, gates, band)
     provenance = {

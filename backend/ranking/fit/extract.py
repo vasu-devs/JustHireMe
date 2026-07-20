@@ -85,7 +85,10 @@ class RequirementSet:
 
 
 # ── candidate side ─────────────────────────────────────────────────────────────
-def _add(caps: dict[str, Capability], phrase: str, tier: float, source: str) -> None:
+def _add(caps: dict[str, Capability], phrase: object, tier: float, source: str) -> None:
+    # Coerce first: tolerant imports can hand us a non-string role/skill (int, list),
+    # and .strip() on those raised and aborted the whole scoring pass.
+    phrase = str(phrase or "")
     key = canon(phrase)
     disp = phrase.strip()
     if not key or len(key) < 2:
@@ -120,9 +123,18 @@ def _period_months(period: str) -> int:
             sy_i, ey_i = int(sy), int(ey)
         except ValueError:
             continue
-        s_m = _MONTHS.get((sm or "jan")[:4], 1)
-        e_m = _MONTHS.get((em or "dec")[:4], 12)
-        delta = (ey_i - sy_i) * 12 + (e_m - s_m) + 1
+        if sm or em:
+            # At least one month is stated - use the precise span.
+            s_m = _MONTHS.get((sm or "jan")[:4], 1)
+            e_m = _MONTHS.get((em or "dec")[:4], 12)
+            delta = (ey_i - sy_i) * 12 + (e_m - s_m) + 1
+        elif ey_i > sy_i:
+            # Year-only range ("2020 to 2024"): estimate whole years, no Dec/Jan +1
+            # inflation (that turned a ~4y span into 60 months and flipped seniority).
+            delta = (ey_i - sy_i) * 12
+        else:
+            # Same bare year ("2023 - 2023"): a partial year, estimate ~6 months.
+            delta = 6
         if delta > 0:
             months += min(delta, 600)
     if not pairs:
@@ -236,6 +248,31 @@ _LICENCE_CUES = (
     "valid certification", "state license", "rn license", "practising certificate",
 )
 _YEARS_RE = re.compile(r"(\d{1,2})\s*\+?\s*(?:years?|yrs?|yoe)", re.I)
+# Company-history cues that precede a NON-requirement year ("serving the community for
+# over 20 years"). A year following one of these is not an experience requirement.
+_HISTORY_CUES = (
+    "served", "serving", "founded", "established", "since", "for over", "over the",
+    "in business", "operating", "history", "anniversary", "years ago", "est.", "trading",
+)
+
+
+def _harvest_req_years(text: str) -> int:
+    """The stated years-of-experience REQUIREMENT, if any. Only counts "N years" forms
+    that are not preceded by a company-history cue — so marketing prose ("serving the
+    community for 20 years") never fabricates a seniority requirement. Title level-words
+    (Senior/Lead/Manager) are deliberately NOT read as a level here (design §4.4): they
+    misfire on "Senior Care Assistant"/"Junior School Teacher"."""
+    low = text.lower()
+    best = 0
+    for m in _YEARS_RE.finditer(low):
+        pre = low[max(0, m.start() - 25):m.start()]
+        if any(cue in pre for cue in _HISTORY_CUES):
+            continue
+        try:
+            best = max(best, int(m.group(1)))
+        except ValueError:
+            continue
+    return best
 
 # Credential-MARKER tokens: the words that denote holding a licence/registration, as
 # opposed to the profession itself. The credential gate is satisfied only when the
@@ -332,14 +369,7 @@ def build_requirement_set(jd: str) -> RequirementSet:
                 if tokens(cue) & tokens(r.display):
                     r.is_credential = True
 
-    years = [int(m) for m in _YEARS_RE.findall(jd)]
-    # senior/lead/principal/manager imply a years floor even when unstated
-    senior_floor = 0
-    if re.search(r"\b(senior|sr\.?|lead|staff|principal)\b", low):
-        senior_floor = 5
-    if re.search(r"\b(manager|head of|director)\b", low):
-        senior_floor = max(senior_floor, 6)
-    req_years = max([*years, senior_floor]) if (years or senior_floor) else 0
+    req_years = _harvest_req_years(clean)
 
     thin = len(re.sub(r"\s+", " ", body)) < 160 or len(reqs) < 2
 

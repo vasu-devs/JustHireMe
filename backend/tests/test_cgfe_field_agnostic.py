@@ -236,6 +236,62 @@ class TestDiscrimination:
         assert "wrong-field" not in r.cap_kinds
 
 
+class TestReviewRegressions:
+    """Concrete defects found by the adversarial review — each must stay fixed."""
+
+    def test_company_history_years_do_not_fabricate_seniority(self):
+        # "served the community for over 20 years" must not become a 20-year requirement.
+        barista = {"s": "Barista", "skills": [{"n": "coffee"}, {"n": "customer service"}],
+                   "exp": [{"role": "Barista", "co": "Cafe", "period": "2024-2025", "d": "Made coffee and served customers"}]}
+        jd = ("Job Title: Junior Barista\nDescription: Make coffee and serve customers. Our cafe has "
+              "proudly served the community for over 20 years.")
+        r = score_fit(jd, barista)
+        assert "seniority" not in r.cap_kinds
+        assert r.score >= 60
+
+    def test_credential_gate_not_bypassed_by_incidental_tokens(self):
+        # A "progress bar" project must not satisfy a "bar admission" requirement.
+        lawgrad = {"s": "Law graduate: legal research, contract drafting, litigation",
+                   "skills": [{"n": "legal research"}, {"n": "contract drafting"}, {"n": "litigation"}],
+                   "exp": [{"role": "Legal Assistant", "co": "Firm", "period": "2021-2024",
+                            "d": "legal research, drafted contracts, litigated cases"}],
+                   "projects": [{"title": "Personal site", "stack": "HTML",
+                                 "impact": "Added a progress bar and status bar to the reading view"}]}
+        jd = "Job Title: Attorney\nDescription: Bar admission required. Draft contracts, conduct legal research, litigate."
+        assert "credential" in score_fit(jd, lawgrad).cap_kinds
+
+    def test_generic_shared_words_do_not_defeat_cross_field(self):
+        # SWE vs a terse RN posting: shared generic tokens (care/communication/
+        # documentation) must not lift occupation above the cross-field floor.
+        swe = {"s": "Software engineer, patient documentation systems and communication",
+               "skills": [{"n": "communication"}, {"n": "documentation"}, {"n": "python"}, {"n": "java"}],
+               "exp": [{"role": "Software Engineer", "co": "HealthTech", "period": "2019-2024",
+                        "d": "Built patient documentation and communication tools"}]}
+        jd = "Job Title: Registered Nurse\nDescription: Provide patient care and documentation. Communication essential."
+        r = score_fit(jd, swe)
+        assert "wrong-field" in r.cap_kinds
+        assert r.score <= 40
+
+    def test_non_string_role_does_not_crash(self):
+        prof = {"skills": [{"n": "python"}], "exp": [{"role": 123, "co": "Acme", "period": "2020-2024", "d": "built things"}]}
+        assert 0 <= score_fit("Job Title: Developer\nDescription: python required", prof).score <= 100
+
+    def test_year_only_period_not_inflated(self):
+        from ranking.fit.extract import _period_months
+        assert 44 <= _period_months("2020 to 2024") <= 52   # ~4 years, not 60 months
+
+    def test_richer_profile_not_penalized_on_own_field(self):
+        # More real nursing evidence must not LOWER the own-field score vs a sparse nurse.
+        sparse = {"s": "Nurse", "skills": [{"n": "Patient Care"}],
+                  "exp": [{"role": "Registered Nurse", "co": "H", "period": "2019 - Present", "d": "patient care"}]}
+        rich = {"s": "Registered Nurse, 6 years ICU",
+                "skills": [{"n": "IV Therapy"}, {"n": "ACLS"}, {"n": "Patient Assessment"}, {"n": "Wound Care"}, {"n": "Triage"}],
+                "exp": [{"role": "Registered Nurse", "co": "City Hospital", "period": "2019 - Present",
+                         "d": "ICU patient care wound care medication administration"}]}
+        jd = "Job Title: Registered Nurse\nDescription: Provide patient care and documentation. Communication essential."
+        assert score_fit(jd, rich).score >= score_fit(jd, sparse).score - 8
+
+
 class TestRobustness:
     def test_deterministic(self):
         a = score_fit(J_NURSE, NURSE).score

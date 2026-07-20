@@ -82,13 +82,16 @@ def overlap_coeff(a: set[str], b: set[str]) -> float:
 
 
 def phrase_match(req: str, cand: str) -> float:
-    """Embedding-free match strength in [0,1] between a requirement phrase and a
-    candidate capability phrase. Symmetric, field-agnostic:
+    """Directional, embedding-free match strength in [0,1] between a REQUIREMENT phrase
+    and a candidate CAPABILITY phrase. Field-agnostic:
 
-    1.0  exact normalized equality
-    0.85 one phrase's tokens fully contain the other's (e.g. "iv therapy" ⊂
-         "peripheral iv therapy")
-    else token Jaccard (partial lexical overlap)
+    1.0   exact normalized equality
+    0.9   requirement fully contained in the capability ("patient care" ⊂ "icu patient
+          care") — the requirement is fully addressed by a richer capability
+    0.75  capability is a subset of a broader requirement — the candidate has only part
+    0.55/0.5  a SINGLE shared token — weak and coincidental ("planning" in "sprint
+          planning"), so it earns little
+    else  token Jaccard (partial lexical overlap)
     """
     rn, cn = normalize_phrase(req), normalize_phrase(cand)
     if not rn or not cn:
@@ -98,8 +101,10 @@ def phrase_match(req: str, cand: str) -> float:
     rt, ct = tokens(req), tokens(cand)
     if not rt or not ct:
         return 0.0
-    if rt <= ct or ct <= rt:
-        return 0.85
+    if rt <= ct:          # requirement fully present inside the capability
+        return 0.9 if len(rt) >= 2 else 0.55
+    if ct <= rt:          # candidate covers only a subset of the requirement
+        return 0.75 if len(ct) >= 2 else 0.5
     return jaccard(rt, ct)
 
 
