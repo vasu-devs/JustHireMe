@@ -1211,3 +1211,35 @@ footer {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---------- cloud waitlist ---------- */
+.waitlist-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
+  gap: 42px;
+  align-items: start;
+}
+
+.waitlist-card { border-top: 3px solid var(--accent); }
+
+.waitlist-note {
+  margin: 18px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.waitlist-count {
+  font: 700 12px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  align-self: center;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .waitlist-grid { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+}

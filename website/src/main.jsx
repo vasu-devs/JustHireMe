@@ -12,7 +12,7 @@ const releaseNotice = {
   copy: "The newest build is being prepared by GitHub Actions. Download buttons unlock when direct installer assets are available.",
 };
 
-const navItems = ["Workflow", "Why local", "Features", "Feedback", "Release"];
+const navItems = ["Workflow", "Why local", "Features", "Cloud", "Feedback", "Release"];
 
 const features = [
   {
@@ -485,6 +485,145 @@ function useFeedbackForm(kind) {
   return { state, status, submitting, update, submit };
 }
 
+function useWaitlist() {
+  const [email, setEmail] = React.useState("");
+  const [website, setWebsite] = React.useState("");
+  const [status, setStatus] = React.useState({ type: "idle", message: "" });
+  const [submitting, setSubmitting] = React.useState(false);
+  const [count, setCount] = React.useState(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch("/api/waitlist")
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!cancelled && typeof payload.count === "number") setCount(payload.count);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const submit = React.useCallback(async (event) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setStatus({ type: "idle", message: "" });
+
+    try {
+      const response = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, website }),
+      });
+      // The API always answers JSON, but a proxy/preview environment without the
+      // serverless runtime can answer 404 HTML — never surface a parser error.
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Couldn't save that right now — try again in a minute.");
+      }
+
+      if (payload.joined === false) {
+        setStatus({
+          type: "warning",
+          message: "Form works, but the waitlist store isn't configured on this deployment.",
+        });
+        return;
+      }
+
+      if (typeof payload.count === "number") setCount(payload.count);
+      setStatus({
+        type: "success",
+        message: payload.already
+          ? "You're already on the list — good instincts."
+          : "You're in. You'll get one email when the cloud beta opens. Nothing else.",
+      });
+      setEmail("");
+    } catch (error) {
+      setStatus({ type: "error", message: error.message || "Couldn't save that right now — try again in a minute." });
+    } finally {
+      setSubmitting(false);
+    }
+  }, [email, website]);
+
+  return { email, setEmail, website, setWebsite, status, submitting, submit, count };
+}
+
+const cloudPoints = [
+  { term: "Instant scans", copy: "A central jobs database does the crawling continuously — results in seconds instead of a 7-minute local run." },
+  { term: "Everywhere you are", copy: "Your pipeline and matches, synced across devices. No installer, nothing to update." },
+  { term: "The promise stays", copy: "Your profile and documents stay on your machine. The cloud holds public job postings — not your life." },
+];
+
+function WaitlistSection() {
+  const { email, setEmail, website, setWebsite, status, submitting, submit, count } = useWaitlist();
+  const displayCount = useCountUp(count != null && count >= 25 ? count : null);
+
+  return (
+    <section id="cloud" className="section band">
+      <div className="section-head">
+        <span className="eyebrow">Coming next</span>
+        <h2>JustHireMe Cloud. Same engine, zero setup.</h2>
+      </div>
+      <Reveal className="waitlist-grid">
+        <div className="principle-list">
+          {cloudPoints.map((item) => (
+            <div className="principle" key={item.term}>
+              <span className="principle-mark"><Icon name="check" /></span>
+              <div>
+                <strong>{item.term}</strong>
+                <p>{item.copy}</p>
+              </div>
+            </div>
+          ))}
+          <p className="waitlist-note">The local app stays free and open-source, forever. Cloud is for people who want it to just work.</p>
+        </div>
+        <form className="feedback-card waitlist-card" onSubmit={submit}>
+          <div className="feedback-card-head">
+            <span className="feature-icon tone-orange"><Icon name="spark" /></span>
+            <div>
+              <h3>Join the cloud waitlist</h3>
+              <p>One email when the beta opens. No newsletter, no drip, no spam.</p>
+            </div>
+          </div>
+          <label className="span-full">
+            <span>Email</span>
+            <input
+              name="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@example.com"
+              type="email"
+              autoComplete="email"
+              required
+            />
+          </label>
+          <input
+            className="hidden-field"
+            name="website"
+            value={website}
+            onChange={(event) => setWebsite(event.target.value)}
+            tabIndex="-1"
+            autoComplete="off"
+            aria-hidden="true"
+          />
+          <div className="feedback-actions">
+            <button className="button primary" type="submit" disabled={submitting}>
+              <Icon name={submitting ? "pulse" : "arrow"} />
+              {submitting ? "Joining" : "Join the waitlist"}
+            </button>
+            {displayCount != null && (
+              <span className="waitlist-count">{displayCount.toLocaleString()} waiting</span>
+            )}
+          </div>
+          {status.message && <p className={`form-status ${status.type}`}>{status.message}</p>}
+        </form>
+      </Reveal>
+    </section>
+  );
+}
+
 function FeedbackCard({ kind, title, copy, tone }) {
   const { state, status, submitting, update, submit } = useFeedbackForm(kind);
   const isReview = kind === "review";
@@ -910,6 +1049,8 @@ function App() {
             ))}
           </Reveal>
         </section>
+
+        <WaitlistSection />
 
         <section id="feedback" className="section band paper-2">
           <div className="section-head">
