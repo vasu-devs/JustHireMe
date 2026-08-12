@@ -52,7 +52,7 @@
     "package:macos": "tauri build --bundles app,dmg"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.3.0",
+    "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@tauri-apps/plugin-process": "^2.3.1",
@@ -60,24 +60,24 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "d3-force": "^3.0.0",
     "framer-motion": "^12.40.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2.11.1",
     "@types/d3-force": "^3.0.10",
-    "@types/react": "^19.2.15",
-    "@types/react-dom": "^19.1.6",
-    "@vitejs/plugin-react": "^6.0.2",
-    "@vitest/coverage-v8": "^4.1.7",
-    "eslint": "^10.5.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^10.8.1",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "globals": "^17.6.0",
+    "globals": "^17.9.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.59.4",
-    "vite": "^8.0.13",
+    "typescript-eslint": "^8.66.0",
+    "vite": "^8.2.1",
     "vitest": "^4.1.7"
   }
 }
