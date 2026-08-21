@@ -106,7 +106,12 @@ npm install
 cd backend
 uv sync --dev
 cd ..
+node scripts/prepare-sidecar-placeholder.mjs
 ```
+
+The last step creates empty sidecar placeholder files under
+`src-tauri/resources/backend/` that the Tauri build script requires even in
+dev (the real sidecar is only produced by `npm run build:sidecar`).
 
 ### Run The App
 

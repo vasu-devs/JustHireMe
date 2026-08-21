@@ -29,3 +29,12 @@ if (!existsSync(sidecar)) {
   writeFileSync(sidecar, "");
   console.log(`Created temporary sidecar placeholder: ${sidecar}`);
 }
+
+// tauri.conf.json also lists this manifest as a bundled resource, so the Tauri
+// build script fails on a fresh clone without it. The app reads it leniently
+// (only an optional runtimePackVersion), so an empty object is a valid stub.
+const manifest = join(sidecarDir, "sidecar-manifest.json");
+if (!existsSync(manifest)) {
+  writeFileSync(manifest, "{}\n");
+  console.log(`Created temporary sidecar manifest placeholder: ${manifest}`);
+}
