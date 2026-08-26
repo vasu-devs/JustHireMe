@@ -21,9 +21,10 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timezone
 
 from discovery.normalizer import strip_html_text
-from discovery.sources.common import retry_after_seconds
+from discovery.sources.common import current_listing_active_hint, retry_after_seconds
 from discovery.sources.net import guarded_async_client
 
 _log = logging.getLogger(__name__)
@@ -92,49 +93,88 @@ def _muse_category(role_terms: list[str]) -> str:
     return ""
 
 
-def _desc(*parts: str, limit: int = 1800) -> str:
+def _desc(*parts: str, limit: int = 50_000) -> str:
     text = "\n".join(p.strip() for p in parts if p and p.strip())
     return text[:limit]
 
 
-async def _fetch_arbeitnow(role_terms: list[str]) -> list[dict]:
+def _arbeitnow_lead(job: dict, role_terms: list[str]) -> dict | None:
+    """Normalize one row from Arbeitnow's documented public current-jobs feed."""
+    title = str(job.get("title") or "").strip()
+    url = str(job.get("url") or "").strip()
+    if not title or not url or not _matches_role(title, role_terms):
+        return None
+
+    tags = job.get("tags") or []
+    location = str(job.get("location") or "").strip()
+    is_remote = bool(job.get("remote"))
+    posted = ""
+    try:
+        if job.get("created_at"):
+            posted = datetime.fromtimestamp(
+                int(job["created_at"]), tz=timezone.utc
+            ).isoformat()
+    except (TypeError, ValueError, OSError, OverflowError):
+        posted = ""
+
+    return {
+        "title": title,
+        "company": str(job.get("company_name") or "").strip(),
+        "url": url,
+        "platform": "arbeitnow",
+        "description": _desc(
+            strip_html_text(str(job.get("description") or "")),
+            f"Location: {location}" if location else "",
+            "Workplace: remote" if is_remote else "Workplace: onsite",
+        ),
+        "posted_date": posted,
+        "location": location,
+        "workplace": "remote" if is_remote else "onsite",
+        # Presence in this hourly-refreshed current-jobs feed is affirmative
+        # liveness evidence. It is not inferred from the publication timestamp.
+        "active_hint": current_listing_active_hint("arbeitnow"),
+        "_fresh_source": "aggregator",
+        "source_meta": {
+            "source": "arbeitnow",
+            "slug": str(job.get("slug") or "").strip(),
+            "location": location,
+            "remote": is_remote,
+            "job_types": [str(t) for t in (job.get("job_types") or []) if t],
+            "tags": [str(t) for t in tags if t],
+        },
+    }
+
+
+async def _fetch_arbeitnow(role_terms: list[str], *, max_pages: int = 10) -> list[dict]:
+    """Page through Arbeitnow instead of silently indexing only its first page."""
     out: list[dict] = []
     async with guarded_async_client(timeout=30, headers=_HEADERS, follow_redirects=True) as cx:
-        r = await cx.get("https://www.arbeitnow.com/api/job-board-api")
-        if r.status_code == 429:
-            import asyncio
-            await asyncio.sleep(retry_after_seconds(r.headers.get("Retry-After")))
+        for page in range(1, max(1, max_pages) + 1):
+            r = await cx.get(
+                "https://www.arbeitnow.com/api/job-board-api",
+                params={"page": str(page)},
+            )
+            if r.status_code == 429:
+                import asyncio
+
+                await asyncio.sleep(retry_after_seconds(r.headers.get("Retry-After")))
+                r.raise_for_status()
             r.raise_for_status()
-        r.raise_for_status()
-        data = r.json()
-    rows = data.get("data", []) if isinstance(data, dict) else []
-    for job in rows:
-        if not isinstance(job, dict):
-            continue
-        title = str(job.get("title") or "").strip()
-        url = str(job.get("url") or "").strip()
-        if not title or not url:
-            continue
-        tags = job.get("tags") or []
-        # Match the TITLE (not tags): Arbeitnow is a broad, Germany-heavy feed and a
-        # tag-based match let unrelated roles ("Technical Sales Support" tagged
-        # "engineering") through. The role phrase must be in the actual job title.
-        if not _matches_role(title, role_terms):
-            continue
-        location = str(job.get("location") or "").strip()
-        remote = "remote" if job.get("remote") else ""
-        out.append({
-            "title": title,
-            "company": str(job.get("company_name") or "").strip(),
-            "url": url,
-            "platform": "arbeitnow",
-            "description": _desc(strip_html_text(str(job.get("description") or "")),
-                                 f"Location: {location}" if location else "",
-                                 remote),
-            "posted_date": "",  # arbeitnow created_at is a unix ts; treat as fresh feed
-            "_fresh_source": "aggregator",
-            "source_meta": {"source": "arbeitnow", "location": location, "tags": [str(t) for t in tags if t]},
-        })
+            data = r.json()
+            rows = data.get("data", []) if isinstance(data, dict) else []
+            if not rows:
+                break
+            for job in rows:
+                if not isinstance(job, dict):
+                    continue
+                # Match the TITLE (not tags): Arbeitnow is a broad, Germany-heavy
+                # feed and tag matching admits unrelated technical-sales roles.
+                lead = _arbeitnow_lead(job, role_terms)
+                if lead is not None:
+                    out.append(lead)
+            links = data.get("links") if isinstance(data, dict) else None
+            if not isinstance(links, dict) or not links.get("next"):
+                break
     return out
 
 
@@ -189,6 +229,7 @@ async def _fetch_themuse(role_terms: list[str]) -> list[dict]:
                     "description": _desc(strip_html_text(str(job.get("contents") or "")),
                                          f"Location: {loc_names}" if loc_names else ""),
                     "posted_date": "",
+                    "active_hint": current_listing_active_hint("themuse"),
                     "_fresh_source": "aggregator",
                     "source_meta": {"source": "themuse", "location": loc_names,
                                     "published": str(job.get("publication_date") or "")},
@@ -224,3 +265,22 @@ async def scrape_aggregator_target(target: str) -> list[dict]:
     body = target.split(":", 1)[1] if ":" in target else target
     role_query, _, location = body.partition("@@")
     return await scrape_aggregator(role_query.strip(), location.strip())
+
+
+def _provider_target_query(target: str, provider: str) -> str:
+    prefix = f"aggregator:{provider}:"
+    body = target[len(prefix):] if target.lower().startswith(prefix) else target
+    role_query, _, _location = body.partition("@@")
+    return role_query.strip()
+
+
+async def scrape_arbeitnow_target(target: str) -> list[dict]:
+    """Fetch Arbeitnow independently so source health can detect its outages."""
+    query = _provider_target_query(target, "arbeitnow")
+    return await _fetch_arbeitnow(_role_terms(query))
+
+
+async def scrape_themuse_target(target: str) -> list[dict]:
+    """Fetch The Muse independently so source health is provider-specific."""
+    query = _provider_target_query(target, "themuse")
+    return await _fetch_themuse(_role_terms(query))

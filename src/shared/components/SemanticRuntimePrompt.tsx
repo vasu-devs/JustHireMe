@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { relaunch } from "@tauri-apps/plugin-process";
 import type { ApiFetch } from "../../types";
+import { runtimeApi } from "../../api";
 
 type RuntimeProgress = {
   status?: string;
@@ -151,7 +152,7 @@ export function SemanticRuntimePrompt({ api }: { api: ApiFetch }) {
     const requestId = statusRequestRef.current + 1;
     statusRequestRef.current = requestId;
     try {
-      const response = await api("/api/v1/runtime/vector", { timeoutMs: RUNTIME_STATUS_TIMEOUT_MS });
+      const response = await runtimeApi.vector(api, { timeoutMs: RUNTIME_STATUS_TIMEOUT_MS });
       if (!response.ok) throw new Error(`Runtime check failed with HTTP ${response.status}.`);
       const next = await response.json() as RuntimePayload;
       if (requestId !== statusRequestRef.current) return;
@@ -195,7 +196,7 @@ export function SemanticRuntimePrompt({ api }: { api: ApiFetch }) {
     setError("");
     setDismissed(false);
     try {
-      const response = await api("/api/v1/runtime/vector/install", { method: "POST", timeoutMs: 30000 });
+      const response = await runtimeApi.installVector(api, { timeoutMs: 30000 });
       const next = await response.json().catch(() => ({})) as RuntimePayload & { detail?: string };
       if (!response.ok) throw new Error(next.detail || `Runtime install failed with HTTP ${response.status}.`);
       applyPayload(next);

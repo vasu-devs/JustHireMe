@@ -5,7 +5,9 @@ import json
 import html
 import re
 
+from core.tenancy import LOCAL_TENANT_ID
 from data.sqlite.connection import DEFAULT_DB_PATH, get_connection
+from data.sqlite.events import record_event
 
 # Compatibility for older tests and integrations that monkeypatch this module's
 # connection factory. Runtime code uses get_connection directly.
@@ -18,7 +20,8 @@ LEAD_SELECT_COLUMNS = (
     "signal_reason,signal_tags,outreach_reply,outreach_dm,source_meta,feedback,"
     "feedback_note,followup_due_at,last_contacted_at,outreach_email,proposal_draft,"
     "fit_bullets,followup_sequence,proof_snippet,tech_stack,location,urgency,"
-    "base_signal_score,learning_delta,learning_reason,created_at,resume_version,base_score"
+    "base_signal_score,learning_delta,learning_reason,created_at,resume_version,base_score,"
+    "seniority_level,opportunity_id"
 )
 LEAD_COLUMN_NAMES = tuple(part.strip() for part in LEAD_SELECT_COLUMNS.split(","))
 
@@ -127,6 +130,8 @@ def lead_row_dict(row) -> dict:
         "created_at": row_get(row, "created_at") or "",
         "resume_version": row_get(row, "resume_version") or 0,
         "base_score": row_get(row, "base_score") or 0,
+        "seniority_level": row_get(row, "seniority_level") or "",
+        "opportunity_id": row_get(row, "opportunity_id") or "",
     }
 
 
@@ -142,7 +147,7 @@ def url_exists(job_id: str, db_path: str = DEFAULT_DB_PATH) -> bool:
 def save_lead(lead: dict, db_path: str = DEFAULT_DB_PATH) -> None:
     conn = get_connection(db_path)
     try:
-        conn.execute(
+        cur = conn.execute(
             """
             INSERT OR IGNORE INTO leads(
                 job_id,title,company,url,platform,description,kind,budget,
@@ -180,7 +185,63 @@ def save_lead(lead: dict, db_path: str = DEFAULT_DB_PATH) -> None:
                 json.dumps(lead.get("source_meta") or {}, ensure_ascii=False),
             ),
         )
+        # Audit trail: only the leads genuinely INSERTed (rowcount==1) are new --
+        # INSERT OR IGNORE silently no-ops on a job_id already known, and logging
+        # an event for every re-scrape of an already-seen lead would make
+        # "lead discovered" meaningless noise in the activity feed. Routed
+        # through record_event() (tenant-scoped, see event_store.py) rather
+        # than a raw INSERT so this doesn't grow the unscoped-query count
+        # tests/unit/architecture/test_tenant_scoping.py ratchets down.
+        if getattr(cur, "rowcount", 0) == 1:
+            record_event(lead.get("job_id") or "", f"discovered platform={lead.get('platform') or 'unknown'}", db_path)
         conn.commit()
+    finally:
+        conn.close()
+
+
+def classify_pending_seniority(classify_fn, db_path: str = DEFAULT_DB_PATH) -> int:
+    """Persist seniority_level for every job lead that doesn't have one yet
+    (newly scraped, or predating this column) -- classifying is a pure
+    function of title/description, so caching it in a column means GET
+    /api/v1/leads pays the cost once per lead instead of on every request.
+
+    `classify_fn(lead_dict) -> str` is injected by the caller (leads.service)
+    rather than imported here: this module is in the `data` layer, which
+    docs/LAYERS.md forbids from importing `discovery`/`gateway` (business
+    layer). Mirrors reporting.service._classify_pending_leads' geo_band/
+    ai_relevant backfill -- unbounded on purpose, the cost is paid once per
+    lead ever (the first request after this ships classifies the whole
+    existing backlog; every request after that only classifies whatever the
+    last scrape cycle added). Returns the number of leads classified.
+    """
+    conn = get_connection(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT job_id, title, description, source_meta FROM leads "
+            "WHERE seniority_level IS NULL AND (kind IS NULL OR kind = '' OR kind = 'job') "
+            "AND tenant_id = ?",
+            (LOCAL_TENANT_ID,),
+        ).fetchall()
+        if not rows:
+            return 0
+        updates = []
+        for row in rows:
+            meta = json_dict(row_get(row, "source_meta") or "{}")
+            cached = str(meta.get("seniority_level") or "").strip().lower()
+            if cached in {"fresher", "junior", "mid", "senior", "unknown"}:
+                level = cached
+            else:
+                level = classify_fn({
+                    "title": row_get(row, "title") or "",
+                    "description": row_get(row, "description") or "",
+                })
+            updates.append((level, row_get(row, "job_id")))
+        conn.executemany(
+            "UPDATE leads SET seniority_level = ? WHERE job_id = ? AND tenant_id = ?",
+            [(level, job_id, LOCAL_TENANT_ID) for level, job_id in updates],
+        )
+        conn.commit()
+        return len(updates)
     finally:
         conn.close()
 
@@ -518,6 +579,7 @@ def update_lead_status(job_id: str, status: str, db_path: str = DEFAULT_DB_PATH)
         "discovered", "evaluating", "tailoring", "approved",
         "applied", "interviewing", "rejected", "accepted", "discarded",
         "matched", "bidding", "proposal_sent", "awarded", "completed",
+        "draft_ready", "offer",
     }
     if status not in valid:
         raise ValueError(f"Invalid status: {status}")
@@ -675,6 +737,11 @@ def save_lead_feedback(
         "not_freelance", "already_contacted",
         "relevant", "not_relevant", "duplicate",
         "low_quality", "incorrect_category",
+        # Real application outcomes, written by scripts/review.py -- feeds the
+        # SAME feedback-learning model (ranking/feedback_ranker.py) as the
+        # manual lead-quality labels above, so "roles like ones that reached
+        # interview rank higher" without a second ranking system.
+        "interview", "offer", "app_rejected",
     }
     if feedback not in valid:
         raise ValueError(f"Invalid feedback: {feedback}")

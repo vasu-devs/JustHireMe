@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from core.logging import get_logger
+from core import env
 
 _log = get_logger(__name__)
 
@@ -244,7 +245,7 @@ def _openai_api_key() -> str | None:
         key = get_setting("openai_api_key", "")
         return key if key else None
     except Exception:
-        return os.environ.get("OPENAI_API_KEY")
+        return env.openai_api_key() or None
 
 
 def _openai_embed(texts: list[str]) -> list[list[float]]:

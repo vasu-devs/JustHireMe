@@ -18,7 +18,7 @@ describe("FIX.md frontend stability contracts", () => {
     expect(app).toContain("ErrorBoundary");
     expect(app).toContain("SubsystemBanner");
     expect(app).toContain("SemanticRuntimePrompt");
-    expect(app).toContain("/api/v1/health/subsystems");
+    expect(app).toContain("healthApi.subsystems");
   });
 
   it("keeps dashboard primary operations wired", () => {
@@ -33,11 +33,11 @@ describe("FIX.md frontend stability contracts", () => {
   it("keeps job cards actionable from the pipeline", () => {
     expect(jobCard).toContain("onDelete");
     expect(jobCard).toContain("showGenerate");
-    expect(jobCard).toContain("/generate");
+    expect(jobCard).toContain("generationApi.generate");
   });
 
   it("keeps the profile dossier read surface wired", () => {
-    expect(profile).toContain("/api/v1/profile");
+    expect(profile).toContain("profileApi.get");
     expect(profile).toContain("Recheck profile");
     expect(profile).not.toContain("deleteQueueRef");
   });
@@ -48,20 +48,22 @@ describe("FIX.md frontend stability contracts", () => {
     // contention), so deletion must stay behind a same-tick flight guard.
     expect(profile).toContain("deleteFlightRef");
     expect(profile).toContain("window.confirm");
-    expect(profile).toContain("profileDeletePath");
+    expect(profile).toContain("profileApi.deleteEntity");
   });
 
   it("keeps profile and ingestion flows connected to their API contracts", () => {
-    expect(profile).toContain("/api/v1/profile");
-    expect(ingestion).toContain("/api/v1/ingest");
-    expect(ingestion).toContain("/api/v1/template");
+    // Components reach the backend through the service layer (src/api), so the
+    // contract they must keep is the client call, not a hand-built URL string.
+    expect(profile).toContain("profileApi.get");
+    expect(ingestion).toContain("ingestionApi.upload");
+    expect(ingestion).toContain("settingsApi.getTemplate");
   });
 
   it("keeps error reporting and approval workflow controls present", () => {
     expect(errorBoundary).toContain("getDerivedStateFromError");
-    expect(errorBoundary).toContain("/api/v1/errors");
-    expect(approvalDrawer).toContain("/status");
-    expect(approvalDrawer).toContain("/feedback");
+    expect(errorBoundary).toContain("diagnosticsApi.reportError");
+    expect(approvalDrawer).toContain("leadsApi.updateStatus");
+    expect(approvalDrawer).toContain("leadsApi.saveFeedback");
     expect(approvalDrawer).toContain("Mark as applied");
   });
 
@@ -69,8 +71,8 @@ describe("FIX.md frontend stability contracts", () => {
     // Simplified compact banner: still a mandatory install/restart flow, just
     // with terse button copy. Assert the guarantees the UI must keep, not the
     // old verbose strings.
-    expect(semanticRuntimePrompt).toContain("/api/v1/runtime/vector");
-    expect(semanticRuntimePrompt).toContain("/api/v1/runtime/vector/install");
+    expect(semanticRuntimePrompt).toContain("runtimeApi.vector");
+    expect(semanticRuntimePrompt).toContain("runtimeApi.installVector");
     expect(semanticRuntimePrompt).toContain("installInFlightRef");
     expect(semanticRuntimePrompt).toContain("Runtime pack required for semantic matching.");
     expect(semanticRuntimePrompt).toContain("restart_required");

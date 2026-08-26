@@ -272,7 +272,7 @@ Ranking work should preserve these principles:
 - Prefer direct evidence from projects/experience.
 - Make reasons useful to users and contributors.
 
-If you change scoring behavior, update or add tests in `backend/tests/test_regressions.py`.
+If you change scoring behavior, update or add tests in `backend/tests/regression/test_regressions.py`.
 
 ## Frontend Contribution Guidelines
 

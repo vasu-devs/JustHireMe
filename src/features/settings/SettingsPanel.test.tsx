@@ -13,8 +13,10 @@ describe("Settings UI contracts", () => {
   });
 
   it("submits settings through the API client", () => {
-    expect(modal).toContain("/api/v1/settings");
-    expect(modal).toContain("method: \"POST\"");
+    // Goes through the service layer (src/api/settings.ts), which owns the URL
+    // and the POST — the modal must not hand-build either.
+    expect(modal).toContain("settingsApi.save");
+    expect(modal).not.toContain("/api/v1/settings");
   });
 
   it("keeps LLM provider fields in the global panel", () => {

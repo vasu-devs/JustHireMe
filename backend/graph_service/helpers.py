@@ -3,24 +3,8 @@ import logging
 
 import math
 
+from core.vector_labels import is_bad_vector_label
 from data.repository import Repository
-
-
-BAD_VECTOR_LABEL_PATTERNS = (
-    "404:",
-    "not_found",
-    "not found",
-    "error code",
-    "failed to fetch",
-    "server returned",
-    "traceback",
-)
-
-
-def is_bad_vector_label(value: object) -> bool:
-    text = str(value or "").strip()
-    lower = text.lower()
-    return not text or any(pattern in lower for pattern in BAD_VECTOR_LABEL_PATTERNS)
 
 
 def safe_graph_step(fn, label: str, errors: list[str], default=None):

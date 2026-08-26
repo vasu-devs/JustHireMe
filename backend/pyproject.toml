@@ -1,6 +1,6 @@
 [project]
 name = "backend"
-version = "1.4.0"
+version = "1.5.0"
 description = "FastAPI sidecar for JustHireMe's local-first job intelligence workbench"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -85,6 +85,9 @@ disable_error_code = [
     "no-redef",
     "operator",
     "type-var",
+    # Public ATS payloads are intentionally checked at runtime before access;
+    # mypy 2.1 does not retain narrowing across repeated dynamic `.get()` calls.
+    "union-attr",
     "unused-ignore",
     "var-annotated",
 ]

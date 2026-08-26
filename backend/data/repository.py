@@ -23,6 +23,14 @@ class Repository:
         return import_module("data.sqlite.leads")
 
     @property
+    def opportunities(self):
+        return import_module("data.sqlite.opportunities")
+
+    @property
+    def paid_sources(self):
+        return import_module("data.sqlite.paid_sources")
+
+    @property
     def profile(self):
         return import_module("data.graph.profile")
 

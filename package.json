@@ -1,7 +1,7 @@
 {
   "name": "justhireme",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Local-first AI job intelligence workbench for scraping, ranking, and tailoring applications.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -19,6 +19,7 @@
     "dev:local": "node scripts/setup-local-runtime.mjs && npm run tauri dev",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
+    "check:rust": "cd src-tauri && cargo test --lib && cargo check",
     "test": "vitest run",
     "test:behavioral": "vitest run src/features/behavioralRender.test.tsx",
     "test:coverage": "vitest run --coverage --exclude src/features/behavioralRender.test.tsx",
@@ -39,6 +40,7 @@
     "smoke:windows-update": "node scripts/smoke-windows-update.mjs",
     "smoke:live-sources": "node scripts/smoke-live-sources.mjs",
     "smoke:llm-cli": "node scripts/smoke-llm-cli.mjs",
+    "smoke:web-ui": "node scripts/smoke-web-ui.mjs",
     "release:smoke": "node scripts/run-parallel.mjs release:smoke && cd src-tauri && cargo build --release && cd .. && npm run smoke:sidecar",
     "release": "npm run release:windows",
     "release:windows": "npm run version:check && npm run build && npm run build:sidecar && npm run build:runtime-pack && npm run package:windows",
@@ -49,7 +51,11 @@
     "package:windows:all": "tauri build --bundles nsis msi",
     "package:windows:msi": "tauri build --bundles msi",
     "package:linux": "tauri build --bundles deb appimage",
-    "package:macos": "tauri build --bundles app,dmg"
+    "package:macos": "tauri build --bundles app,dmg",
+    "web:dev": "vite --config vite.web.config.ts",
+    "web:build": "vite build --config vite.web.config.ts",
+    "web:preview": "vite preview --config vite.web.config.ts",
+    "web": "node scripts/web-dev.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",
@@ -75,6 +81,7 @@
     "eslint": "^10.5.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.6.0",
+    "playwright": "^1.62.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.4",
     "vite": "^8.0.13",

@@ -74,6 +74,13 @@ MAX_PHRASE_SHARE = 0.30
 MIN_CORPUS_FOR_SHARE_CEILING = 20
 MAX_MINED_GAPS = 4  # taxonomy gaps keep priority in the merged ranking
 MAX_MINING_CHARS = 8000  # per-posting cap so pathological descriptions can't blow up the phrase table
+# Rank-then-cap before the expensive per-phrase checks (role/taxonomy regex,
+# candidate-vocabulary regex, and the batched embed): a real 500-lead corpus
+# produced 600+ phrases past the cheap postings/company/share filters, and
+# running those expensive checks plus embedding on all of them cost ~9-10s of
+# the Learn endpoint's latency to populate at most MAX_MINED_GAPS(4) rows.
+# Generous headroom over 4 keeps the same winners in practice.
+MAX_MINING_CANDIDATES = 60
 MINED_FIRST_STEP = (
     "This keeps appearing in postings near your profile — find what it involves and add one piece of evidence."
 )
@@ -207,7 +214,7 @@ def mine_market_phrases(
                 row["companies"].add(company)
 
     total_postings = max(1, len(lead_phrases))
-    pending: dict[str, dict] = {}
+    cheap_survivors: dict[str, dict] = {}
     for phrase, row in stats.items():
         if row["postings"] < MIN_PHRASE_POSTINGS or len(row["companies"]) < MIN_PHRASE_COMPANIES:
             continue
@@ -216,6 +223,15 @@ def mine_market_phrases(
             # postings ("help build", "join our team") is how postings are
             # written, however semantically near the candidate's field it sits.
             continue
+        cheap_survivors[phrase] = row
+
+    # Rank-then-cap BEFORE the expensive per-phrase checks (role/taxonomy regex,
+    # candidate-vocabulary regex, and the batched embed below) -- see
+    # MAX_MINING_CANDIDATES's module-level docstring for why.
+    ranked_candidates = sorted(cheap_survivors, key=lambda phrase: -cheap_survivors[phrase]["weight"])
+    pending: dict[str, dict] = {}
+    for phrase in ranked_candidates[:MAX_MINING_CANDIDATES]:
+        row = cheap_survivors[phrase]
         if _is_role_phrase(phrase):
             continue  # a role name ("software engineer") is not a learnable gap
         if _find_terms(phrase):

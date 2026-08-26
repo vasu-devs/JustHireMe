@@ -5,6 +5,7 @@ import platform
 from pathlib import Path
 
 from data.vector.runtime import browser_runtime_dir, browser_runtime_ready, install_vector_runtime
+from core import env
 
 
 _RELEASE_DOWNLOAD_BASE = "https://github.com/vasu-devs/JustHireMe/releases/latest/download"
@@ -24,8 +25,8 @@ def browser_runtime_asset_name() -> str:
 
 
 def browser_runtime_url() -> str:
-    return os.environ.get(
-        "JHM_BROWSER_RUNTIME_URL",
+    return env.get(
+        env.BROWSER_RUNTIME_URL,
         f"{_RELEASE_DOWNLOAD_BASE}/{browser_runtime_asset_name()}",
     )
 
@@ -88,7 +89,7 @@ def _system_browser_candidates() -> list[str]:
 
 def chromium_executable() -> str | None:
     candidates = [
-        os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE", ""),
+        env.text(env.PLAYWRIGHT_CHROMIUM_EXECUTABLE),
         _runtime_chromium_executable() or "",
         *_system_browser_candidates(),
     ]
@@ -137,7 +138,7 @@ async def launch_chromium(playwright, *, headless: bool = True, **kwargs):
                     **kwargs,
                 )
             runtime_dir = ensure_browser_runtime()
-            os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(runtime_dir)
+            env.set_value(env.PLAYWRIGHT_BROWSERS_PATH, str(runtime_dir))
             return await playwright.chromium.launch(headless=headless, **kwargs)
 
         executable = chromium_executable()

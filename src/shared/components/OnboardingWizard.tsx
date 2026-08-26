@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import Icon from "./Icon";
 import type { ApiFetch } from "../../types";
+import { ingestionApi, settingsApi } from "../../api";
 
 export function OnboardingWizard({ api, onFinish, onOpenSettings }: { api: ApiFetch; onFinish: (draft: string) => void; onOpenSettings: () => void }) {
   const [step, setStep] = useState(0);
@@ -111,7 +112,7 @@ export function OnboardingWizard({ api, onFinish, onOpenSettings }: { api: ApiFe
     if (file) fd.append("file", file);
     else fd.append("raw", rawResume.trim());
     try {
-      const r = await api(`/api/v1/ingest`, { method: "POST", body: fd });
+      const r = await ingestionApi.upload(api, fd, { timeoutMs: 30000 });
       if (!r.ok) {
         const detail = await r.json().then(d => d.detail).catch(() => "");
         throw new Error(detail || `Resume import returned ${r.status}`);
@@ -150,11 +151,7 @@ export function OnboardingWizard({ api, onFinish, onOpenSettings }: { api: ApiFe
     const modelKey = modelField[provider];
     if (modelKey && model.trim()) payload[modelKey] = model.trim();
     try {
-      const r = await api(`/api/v1/settings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const r = await settingsApi.save(api, payload);
       if (!r.ok) throw new Error(`Preferences returned ${r.status}`);
       setStep(2);
     } catch (e) {

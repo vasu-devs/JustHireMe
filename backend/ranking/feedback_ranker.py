@@ -10,6 +10,11 @@ POSITIVE_LABELS = {
     "good": 1.0,
     "relevant": 1.0,
     "already_contacted": 0.7,
+    # Real application outcomes (scripts/review.py), stronger than a manual
+    # "good" tag: an employer's own interview/offer decision is harder
+    # evidence of genuine fit than a self-reported lead rating.
+    "interview": 1.3,
+    "offer": 1.6,
 }
 
 NEGATIVE_LABELS = {
@@ -20,6 +25,10 @@ NEGATIVE_LABELS = {
     "too_generic": -0.8,
     "not_ai": -1.1,
     "duplicate": -0.45,
+    # Application-stage rejection (scripts/review.py): rejected WITHOUT ever
+    # reaching an interview. Milder than "trash" -- the lead itself may still
+    # be a legitimate role, just not one this profile converts on.
+    "app_rejected": -0.6,
 }
 
 FEATURE_WEIGHTS = {

@@ -390,7 +390,7 @@ cd ..
 | Frontend tests | `npm test` |
 | Frontend build | `npm run build` |
 | Backend tests | `cd backend && uv run python -m pytest tests -q` |
-| Backend regression smoke | `cd backend && uv run python -m pytest tests/test_regressions.py tests/test_api.py::TestAuthGate` |
+| Backend regression smoke | `cd backend && uv run python -m pytest tests/regression/test_regressions.py tests/unit/service/test_api.py::TestAuthGate` |
 | Keyless LLM CLI smoke (Ollama/Claude Code/Codex CLI) | `npm run smoke:llm-cli` |
 | Live source connectivity smoke | `npm run smoke:live-sources` |
 | Rust tests | `cd src-tauri && cargo test --lib` |
@@ -639,7 +639,12 @@ Start here:
 | --- | --- |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution rules and development workflow |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design (overview) |
+| [docs/HLD.md](docs/HLD.md) | High-level design: context, components, pipeline, failure modes |
+| [docs/LLD.md](docs/LLD.md) | Low-level design: module-by-module, schemas, hazards |
+| [docs/SRS.md](docs/SRS.md) | Requirements, each traced to the test that verifies it |
+| [docs/UML.md](docs/UML.md) | Use case, component, class, sequence, state, ER, deployment diagrams |
+| [docs/LAYERS.md](docs/LAYERS.md) | The layered architecture and its enforced rules |
 | [docs/source-adapters.md](docs/source-adapters.md) | Scraper adapter contract |
 | [docs/FEATURE_TEST_MATRIX.md](docs/FEATURE_TEST_MATRIX.md) | Which features are verified and how |
 | [docs/MAINTAINER_RELEASE_CHECKLIST.md](docs/MAINTAINER_RELEASE_CHECKLIST.md) | Release and safety checklist |

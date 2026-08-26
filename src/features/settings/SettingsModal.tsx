@@ -9,7 +9,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { EMPTY, type Cfg } from "./panels/shared";
 import { SectionLabel } from "./panels/shared";
 import { useTheme, type ThemePref } from "../../shared/lib/theme";
-import { settingsApi } from "../../api/settings";
+import { settingsApi } from "../../api";
 import type { ApiFetch } from "../../types";
 
 const LEGAL_BASE = "https://github.com/vasu-devs/JustHireMe/blob/main/docs/legal";
@@ -150,7 +150,7 @@ export default function SettingsModal({ api, onClose }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    api("/api/v1/settings")
+    settingsApi.get(api)
       .then(r => r.json())
       .then(d => setCfg(c => ({ ...c, ...d })))
       .catch(() => {});
@@ -166,9 +166,7 @@ export default function SettingsModal({ api, onClose }: Props) {
     setSaving(true);
     setSaveError(null);
     try {
-      const response = await api("/api/v1/settings", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cfg),
-      });
+      const response = await settingsApi.save(api, cfg);
       if (!response.ok) {
         const detail = await response.json().then(data => data.detail).catch(() => "");
         throw new Error(detail || "Settings could not be saved");

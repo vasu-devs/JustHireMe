@@ -19,6 +19,7 @@ from functools import lru_cache
 
 from core.types import CandidateEvidence, CriterionScore, ScoreResult
 from core.logging import get_logger
+from core import env
 from ranking.taxonomy import (
     COMMERCIAL_TERMS,
     DELIVERABLE_KEYWORDS,
@@ -204,6 +205,14 @@ def _squash(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
+# lru_cache, not just python's own re.compile cache: that cache clears itself
+# entirely once past ~512 distinct patterns (CPython's re._compile), and a
+# single learning-insights pass alone compiles ~700+ distinct aliases (own
+# profile phrases x leads, mined market phrases) -- enough to thrash it and
+# repeatedly pay full compilation. Profiled on the real 500-lead corpus:
+# _alias_regex/re.compile accounted for ~1.3s of the endpoint's cost from pure
+# recompilation of patterns this call had already built once.
+@lru_cache(maxsize=4096)
 def _alias_regex(alias: str) -> re.Pattern[str]:
     alias = alias.lower().strip()
     escaped = re.escape(alias)
@@ -844,8 +853,7 @@ def _cgfe_enabled() -> bool:
     Off by default so the incumbent rubric stays the shipped path until CGFE clears
     its comparability/ordering gates. Enable per-process with ``JHM_FIT_ENGINE=cgfe``
     to shadow or evaluate it. See docs/FIT_EVALUATION_ALGORITHM.md."""
-    import os
-    return os.environ.get("JHM_FIT_ENGINE", "").strip().lower() == "cgfe"
+    return env.fit_engine() == "cgfe"
 
 
 def score_job_lead(jd: str, candidate_data: dict) -> ScoreResult:

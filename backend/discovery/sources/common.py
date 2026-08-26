@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar
 
 import httpx
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
@@ -19,6 +20,27 @@ from discovery.normalizer import (
     tech_stack_from_text,
     urgency_from_text,
 )
+
+
+opportunity_scan_mode: ContextVar[bool] = ContextVar("opportunity_scan_mode", default=False)
+
+# Each listed endpoint is a board's current/open-job collection, not a historical
+# search index. Presence is authoritative active evidence at observation time;
+# it does not imply that a role remains active after the next refresh.
+_CURRENT_OPEN_LIST_PROVIDERS = frozenset({
+    "arbeitnow",
+    "himalayas",
+    "jobicy",
+    "remoteok",
+    "remotive",
+    "themuse",
+    "weworkremotely",
+    "workingnomads",
+})
+
+
+def current_listing_active_hint(provider: str) -> str:
+    return "active" if str(provider or "").strip().lower() in _CURRENT_OPEN_LIST_PROVIDERS else "unknown"
 
 
 def _is_retryable_source_error(exc: BaseException) -> bool:
@@ -56,6 +78,17 @@ def retry_after_seconds(value, default: int = 15) -> int:
 
 def text_lead(item: dict, default_kind: str = "job") -> dict:
     text = "\n".join(str(item.get(k, "")) for k in ("title", "company", "description", "url"))
+    if opportunity_scan_mode.get():
+        meta = dict(item.get("source_meta") or {})
+        location = item.get("location") or location_from_text(text)
+        if location:
+            meta.setdefault("location", location)
+        return {
+            **item,
+            "kind": item.get("kind") or default_kind,
+            "location": location,
+            "source_meta": meta,
+        }
     quality = signal_quality(text, default_kind=default_kind)
     kind = item.get("kind") or quality["kind"]
     budget = item.get("budget") or budget_from_text(text)
@@ -114,6 +147,62 @@ async def json_get(url: str, params: dict | None = None) -> dict | list:
             r.raise_for_status()
         r.raise_for_status()
         return r.json()
+
+
+@retry(
+    retry=retry_if_exception(_is_retryable_source_error),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    stop=stop_after_attempt(2),
+    reraise=True,
+)
+async def json_post(url: str, body: dict) -> dict | list:
+    """POST-and-parse-JSON twin of :func:`json_get`.
+
+    Workday — the ATS most enterprise and consultancy employers use, and the
+    one that carries the .NET/Java/enterprise roles the Greenhouse startups do
+    not — only exposes search over POST. Same guarded client and retry policy.
+    """
+    headers = {
+        "User-Agent": "JustHireMe free-source scout",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    async with guarded_async_client(timeout=30, headers=headers, follow_redirects=True) as cx:
+        r = await cx.post(url, json=body)
+        if r.status_code == 429:
+            retry_after = retry_after_seconds(r.headers.get("Retry-After"))
+            await asyncio.sleep(retry_after)
+            r.raise_for_status()
+        r.raise_for_status()
+        return r.json()
+
+
+@retry(
+    retry=retry_if_exception(_is_retryable_source_error),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    stop=stop_after_attempt(2),
+    reraise=True,
+)
+async def text_get(
+    url: str,
+    params: dict | None = None,
+    *,
+    request_headers: dict[str, str] | None = None,
+) -> str:
+    """Fetch public text/HTML through the same SSRF guard and retry policy."""
+    headers = {
+        "User-Agent": "JustHireMe free-source scout",
+        "Accept": "text/html, text/plain, application/json",
+        **(request_headers or {}),
+    }
+    async with guarded_async_client(timeout=30, headers=headers, follow_redirects=True) as cx:
+        r = await cx.get(url, params=params)
+        if r.status_code == 429:
+            retry_after = retry_after_seconds(r.headers.get("Retry-After"))
+            await asyncio.sleep(retry_after)
+            r.raise_for_status()
+        r.raise_for_status()
+        return r.text
 
 
 @retry(

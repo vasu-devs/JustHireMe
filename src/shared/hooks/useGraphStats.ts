@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { isAbortLikeError } from "../../api/client";
+import { graphApi, isAbortLikeError } from "../../api";
 import type { ApiFetch, GraphStats } from "../../types";
 
 export function useGraphStats(api: ApiFetch | null) {
@@ -17,7 +17,7 @@ export function useGraphStats(api: ApiFetch | null) {
       const requestId = ++requestSequence;
       setStats(prev => ({ ...prev, loading: true, request_error: "" }));
       try {
-        const response = await api(`/api/v1/graph${repair ? "?repair=true" : ""}`, { signal: controller.signal, timeoutMs: repair ? 45000 : undefined });
+        const response = await graphApi.stats(api, repair, { signal: controller.signal, timeoutMs: repair ? 45000 : undefined });
         if (!response.ok) {
           const detail = await response.text().catch(() => "");
           throw new Error(`Graph request failed (${response.status})${detail ? `: ${detail.slice(0, 240)}` : ""}`);

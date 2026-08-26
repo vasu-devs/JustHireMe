@@ -32,7 +32,7 @@ from data.graph.profile_vectors import (
     skill_text,
     vec_table_dim,
 )
-from graph_service.helpers import is_bad_vector_label
+from core.vector_labels import is_bad_vector_label
 
 
 def purge_profile_deletion_tombstones(db_path: str | None = None) -> dict:

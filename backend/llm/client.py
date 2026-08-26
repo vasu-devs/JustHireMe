@@ -1,7 +1,6 @@
 import asyncio
 import concurrent.futures
 import logging
-import os
 import threading
 import time
 from urllib.parse import urlparse
@@ -13,6 +12,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 from data.repository import Repository, create_repository
 from core.logging import get_logger
+from core import env
 
 _log = get_logger(__name__)
 
@@ -285,7 +285,7 @@ def _provider_base_url(provider: str) -> str:
     if provider == "azure":
         base = (
             get_setting("azure_openai_endpoint", "")
-            or os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+            or env.azure_openai_endpoint()
         ).strip().rstrip("/")
         if not base:
             raise ValueError("Azure OpenAI endpoint is required")
@@ -295,7 +295,7 @@ def _provider_base_url(provider: str) -> str:
     if provider == "custom":
         return _validate_base_url(
             get_setting("custom_base_url", "")
-            or os.environ.get("OPENAI_COMPAT_BASE_URL", "")
+            or env.openai_compat_base_url()
             or "https://api.openai.com/v1"
         )
     return _OPENAI_COMPAT_BASE_URLS[provider]
@@ -322,8 +322,8 @@ def _resolve(step: str | None = None) -> tuple[str, str, str]:
         k = sk
     else:
         k = (get_setting(_KEY_NAMES.get(p, ""), "")
-             or os.environ.get(_ENV_NAMES.get(p, ""), "")
-             or (os.environ.get("GOOGLE_API_KEY", "") if p == "gemini" else ""))
+             or env.get(_ENV_NAMES.get(p, ""))
+             or (env.google_api_key() if p == "gemini" else ""))
 
     # Model: step-specific > provider-level setting > default
     if sm:

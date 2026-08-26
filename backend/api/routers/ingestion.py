@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-import asyncio
 import json
-import os
-import tempfile
-import contextlib
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
@@ -12,9 +8,9 @@ from pydantic import Field
 
 from api.rate_limit import RateLimiter, require_rate_limit
 from api.dependencies import get_profile_service
+from api.uploads import MAX_UPLOAD_SIZE, read_capped as _read_capped, temp_upload as _temp_upload
 from core.types import StrictBody
 
-MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 # Serialized-JSON ceiling for the profile-import body: generous for any real
 # profile (a rich profile is a few hundred KB) while refusing an abusive blob
 # before it is parsed/normalized. Kept separate from MAX_UPLOAD_SIZE (files).
@@ -84,52 +80,6 @@ def _default_profile_template() -> dict:
         "certifications": [{"title": ""}],
         "achievements": [{"title": ""}],
     }
-
-
-async def _read_capped(file: UploadFile, max_bytes: int) -> bytes:
-    """Read an upload in chunks, rejecting at the real byte ceiling.
-
-    file.size is client-declared multipart metadata (absent or spoofable), so the
-    cap is enforced on actual bytes read — not by trusting the declared size.
-    """
-    chunks: list[bytes] = []
-    total = 0
-    while True:
-        chunk = await file.read(1024 * 1024)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > max_bytes:
-            raise HTTPException(status_code=413, detail="Upload too large")
-        chunks.append(chunk)
-    return b"".join(chunks)
-
-
-@contextlib.asynccontextmanager
-async def _temp_upload(file: UploadFile | None):
-    if not file or not file.filename:
-        yield None
-        return
-    suffix = Path(file.filename).suffix.lower()
-    if suffix not in {".pdf", ".doc", ".docx", ".txt", ".md"}:
-        suffix = ".txt"
-    tmp_name = ""
-    try:
-        # L1: read the upload asynchronously and write the temp file off the
-        # event loop so a large upload can't block other coroutines.
-        content = await _read_capped(file, MAX_UPLOAD_SIZE)
-
-        def _write() -> str:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                tmp.write(content)
-                return tmp.name
-
-        tmp_name = await asyncio.to_thread(_write)
-        yield tmp_name
-    finally:
-        if tmp_name:
-            with contextlib.suppress(OSError):
-                os.unlink(tmp_name)
 
 
 def create_router(manager, logger) -> APIRouter:

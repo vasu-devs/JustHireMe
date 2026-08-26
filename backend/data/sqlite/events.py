@@ -1,33 +1,24 @@
+"""Back-compat shim over the tenant-scoped event store.
+
+The SQL now lives in ``event_store.SqliteEventStore``, which carries a
+``TenantContext``. These module functions remain so the desktop build (single
+tenant) and existing call sites keep working unchanged; they resolve to the
+local tenant. The hosted build constructs the store with a real tenant instead
+and never comes through here.
+"""
+
 from __future__ import annotations
 
-from data.sqlite.connection import DEFAULT_DB_PATH, get_connection
+from core.tenancy import LOCAL_TENANT
+from data.sqlite.connection import DEFAULT_DB_PATH
+from data.sqlite.event_store import SqliteEventStore, create_event_store
+
+__all__ = ["SqliteEventStore", "create_event_store", "get_events", "record_event"]
 
 
 def record_event(job_id: str | None, action: str, db_path: str = DEFAULT_DB_PATH) -> None:
-    conn = get_connection(db_path)
-    try:
-        conn.execute(
-            "INSERT INTO events(job_id,action) VALUES(?,?)",
-            ((job_id or "__system__")[:160], str(action or "")[:1000]),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    SqliteEventStore(LOCAL_TENANT, db_path).record_event(job_id, action)
 
 
 def get_events(limit: int = 50, job_id: str | None = None, db_path: str = DEFAULT_DB_PATH) -> list[dict]:
-    conn = get_connection(db_path)
-    try:
-        if job_id:
-            rows = conn.execute(
-                "SELECT job_id, action, ts FROM events WHERE job_id=? ORDER BY ts DESC LIMIT ?",
-                (job_id, int(limit)),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT job_id, action, ts FROM events ORDER BY ts DESC LIMIT ?",
-                (int(limit),),
-            ).fetchall()
-    finally:
-        conn.close()
-    return [{"job_id": row["job_id"], "action": row["action"], "ts": row["ts"]} for row in rows]
+    return SqliteEventStore(LOCAL_TENANT, db_path).get_events(limit, job_id)

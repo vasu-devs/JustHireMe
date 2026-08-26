@@ -1,32 +1,25 @@
 from __future__ import annotations
 import logging
 
-import os
 import re
 
-from .company_seeds import ats_seed_targets
+from . import env
+from .company_seeds import ats_seed_targets, workday_seed_targets
 
 
 DEFAULT_JOB_TARGETS = [
+    # Direct feeds and APIs only. `site:` entries were removed: they require a
+    # paid search API, and keyless they returned nothing while still consuming a
+    # scan slot each — which is why greenhouse/lever/ashby/LinkedIn produced zero
+    # leads despite the connectors working. Company-direct ATS boards now arrive
+    # from core.company_seeds.ats_seed_targets(profile).
     "hn-hiring",
     "https://remoteok.com/api",
     "https://remotive.com/api/remote-jobs",
     "https://jobicy.com/api/v2/remote-jobs?count=50",
     "https://jobicy.com/feed/newjobs",
     "https://weworkremotely.com/remote-jobs.rss",
-    "site:boards.greenhouse.io",
-    "site:jobs.lever.co",
-    "site:jobs.ashbyhq.com",
-    "site:apply.workable.com",
-    "site:wellfound.com/jobs",
-    "site:linkedin.com/jobs",
-    "site:indeed.com/jobs",
-    "site:glassdoor.com/Job",
-    "site:jobs.smartrecruiters.com",
-    "site:workdayjobs.com",
-    "site:naukri.com",
-    "site:instahyre.com",
-    "site:cutshort.io/jobs",
+    "https://www.arbeitnow.com/api/job-board-api",
 ]
 
 INDIA_JOB_TARGETS = [
@@ -320,6 +313,10 @@ def profile_free_source_targets(profile: dict) -> str:
     # to the candidate's field + region, so the keyless structured backbone fires with
     # zero manual watchlist config.
     lines.extend(ats_seed_targets(profile))
+    # Workday boards — the enterprise/consultancy/financial employers the startup
+    # ATS pool structurally misses (and the only place .NET, SQL Server and
+    # enterprise-cloud roles are posted in volume).
+    lines.extend(workday_seed_targets(profile))
     return "\n".join(lines)
 
 
@@ -341,7 +338,7 @@ def profile_x_queries(profile: dict, market_focus: str = "global") -> str:
 
 
 def has_x_token(cfg: dict) -> bool:
-    return bool(cfg.get("x_bearer_token") or os.environ.get("X_BEARER_TOKEN") or os.environ.get("TWITTER_BEARER_TOKEN"))
+    return bool(cfg.get("x_bearer_token") or env.x_bearer_token())
 
 
 def int_cfg(cfg: dict, key: str, default: int, min_value: int, max_value: int) -> int:

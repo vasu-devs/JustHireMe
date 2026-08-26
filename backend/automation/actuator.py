@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from core.logging import get_logger
 from core.url_guard import assert_public_url, block_private_route
+from core import env
 
 _log = get_logger(__name__)
 
@@ -16,7 +17,7 @@ _log = get_logger(__name__)
 # page can't pin the single-worker sidecar and make the backend look unreachable.
 READ_FORM_DEADLINE_S = 45
 
-_AUTO_APPLY_ENABLED = os.environ.get("JHM_AUTO_APPLY", "false").lower() == "true"
+_AUTO_APPLY_ENABLED = env.auto_apply_enabled()
 
 _TYPE_TO_CANDIDATE_KEY = {
     "first_name":      lambda c: (c.get("name") or "").split()[0] if c.get("name") else c.get("first_name", ""),

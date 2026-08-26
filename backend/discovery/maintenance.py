@@ -58,8 +58,12 @@ def normalize_stored_leads(db_path: str | None = None) -> dict:
                     continue
                 company, new_title = hn_company_role(description or title)
                 if new_title and new_title != title:
+                    # Title feeds reporting.service's persisted AI-relevance/geo
+                    # classification (leads.geo_band) -- null it out so a changed
+                    # title gets reclassified instead of keeping a stale band.
                     conn.execute(
-                        "UPDATE leads SET title = ?, company = ? WHERE job_id = ?",
+                        "UPDATE leads SET title = ?, company = ?, ai_relevant = NULL, geo_band = NULL "
+                        "WHERE job_id = ?",
                         (new_title, company or str(row["company"] or ""), job_id),
                     )
                     counts["titles_fixed"] += 1
@@ -74,7 +78,10 @@ def normalize_stored_leads(db_path: str | None = None) -> dict:
                 # leaves behind is safe and keeps the pass idempotent.
                 cleaned = re.sub(r"\n{2,}", "\n", cleaned).strip()
                 if cleaned != description:
-                    conn.execute("UPDATE leads SET description = ? WHERE job_id = ?", (cleaned, job_id))
+                    conn.execute(
+                        "UPDATE leads SET description = ?, ai_relevant = NULL, geo_band = NULL WHERE job_id = ?",
+                        (cleaned, job_id),
+                    )
                     counts["descriptions_cleaned"] += 1
         conn.commit()
     except Exception:

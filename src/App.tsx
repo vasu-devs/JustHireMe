@@ -3,7 +3,7 @@ import { AnimatePresence } from "framer-motion";
 import SettingsModal from "./features/settings/SettingsModal";
 import "./index.css";
 import type { ApiFetch, PipelineTab, View } from "./types";
-import { createApiFetch } from "./api/client";
+import { createApiFetch, discoveryApi, healthApi, leadsApi } from "./api";
 import { useAppShellState } from "./shared/context/AppContext";
 import { ONBOARDING_KEY } from "./shared/lib/leadUtils";
 import { useWS } from "./shared/hooks/useWS";
@@ -22,6 +22,8 @@ import { ActivityView } from "./features/activity/ActivityView";
 import { ProfileView } from "./features/profile/ProfileView";
 import { IngestionView } from "./features/profile/IngestionView";
 import { LearnView } from "./features/learning/LearnView";
+import { OpportunitiesView } from "./features/opportunities/OpportunitiesView";
+import { Report } from "./web/screens/Report";
 import { ApprovalDrawer } from "./features/pipeline/components/ApprovalDrawer";
 import { OnboardingWizard } from "./shared/components/OnboardingWizard";
 import { HelpChat } from "./shared/components/HelpChat";
@@ -49,7 +51,7 @@ function isActionableSubsystemIssue(name: string, value: SubsystemHealth[string]
   return true;
 }
 
-export default function App() {
+export default function App({ showReport = false }: { showReport?: boolean } = {}) {
   const { resolved } = useTheme();
   const { conn, port, apiToken, sidecarError, logs, addLog: wsAddLog, progress, resetProgress } = useWS();
   const api = useMemo<ApiFetch | null>(() => {
@@ -125,7 +127,7 @@ export default function App() {
     let stopped = false;
     const load = async () => {
       try {
-        const response = await api("/api/v1/health/subsystems", { timeoutMs: 10000 });
+        const response = await healthApi.subsystems(api, { timeoutMs: 10000 });
         if (!response.ok) return;
         const payload = await response.json();
         if (!stopped) setSubsystems(payload);
@@ -171,7 +173,7 @@ export default function App() {
     if (!port || !api || scanning) return;
     setScanning(true); setScanErr(null);
     try {
-      const r = await api(`/api/v1/scan`, { method: "POST" });
+      const r = await discoveryApi.scan(api);
       if (!r.ok) {
         const detail = await r.json().then(d => d.detail).catch(() => "");
         throw new Error(detail || "Backend unreachable");
@@ -184,7 +186,7 @@ export default function App() {
   const onStopScan = useCallback(async () => {
     if (!port || !api) return;
     try {
-      const r = await api(`/api/v1/scan/stop`, { method: "POST" });
+      const r = await discoveryApi.stopScan(api);
       if (!r.ok) {
         const detail = await r.json().then(d => d.detail).catch(() => "");
         throw new Error(detail || "Stop scan failed");
@@ -200,7 +202,7 @@ export default function App() {
     if (!port || !api || reevaluating || scanning) return;
     setReevaluating(true); setScanErr(null);
     try {
-      const r = await api(`/api/v1/leads/reevaluate`, { method: "POST" });
+      const r = await discoveryApi.reevaluate(api);
       if (!r.ok) {
         const detail = await r.json().then(d => d.detail).catch(() => "");
         throw new Error(detail || "Re-evaluation failed");
@@ -215,7 +217,7 @@ export default function App() {
   const onStopReevaluate = useCallback(async () => {
     if (!port || !api) return;
     try {
-      const r = await api(`/api/v1/leads/reevaluate/stop`, { method: "POST" });
+      const r = await discoveryApi.stopReevaluate(api);
       if (!r.ok) {
         const detail = await r.json().then(d => d.detail).catch(() => "");
         throw new Error(detail || "Stop re-evaluation failed");
@@ -233,7 +235,7 @@ export default function App() {
     if (!ok) return;
     setCleaning(true); setScanErr(null);
     try {
-      const r = await api(`/api/v1/leads/cleanup`, { method: "POST" });
+      const r = await discoveryApi.cleanup(api);
       if (!r.ok) {
         const detail = await r.json().then(d => d.detail).catch(() => "");
         throw new Error(detail || "Cleanup failed");
@@ -252,7 +254,7 @@ export default function App() {
 
   const deleteLead = useCallback(async (jobId: string) => {
     if (!port || !api) return;
-    const r = await api(`/api/v1/leads/${jobId}`, { method: "DELETE" });
+    const r = await leadsApi.delete(api, jobId);
     // Only remove it locally on a real success — a swallowed HTTP error left the
     // lead deleted in the UI (and broke bulkDelete's failure counting).
     if (!r.ok) throw new Error(`Delete failed (${r.status})`);
@@ -297,6 +299,7 @@ export default function App() {
           collapsed={sidebarCollapsed}
           onToggleCollapsed={() => setSidebarCollapsed(value => !value)}
           onSettings={() => setShowSettings(true)}
+          showReport={showReport}
         />
         <div className="product-shell app-main">
           <Topbar
@@ -312,12 +315,14 @@ export default function App() {
           <main id="product-content" className="product-content production-live-content">
             {view === "apply"     && <ErrorBoundary label="Apply" api={api ?? undefined}><ApplyJobView port={port} api={api} leads={leads} openDrawer={setSel} initialInput={applyDraft} autoFocus={applyAutoFocus} /></ErrorBoundary>}
             {view === "dashboard" && <ErrorBoundary label="Dashboard" api={api ?? undefined}><DashboardView leads={leads} dueFollowups={dueFollowups} logs={logs} setView={setView} openDrawer={setSel} scanning={scanning} reevaluating={reevaluating} cleaning={cleaning} progress={progress} onScan={onScan} onStopScan={onStopScan} onReevaluate={onReevaluateJobs} onStopReevaluate={onStopReevaluate} onCleanup={onCleanupLeads} scanErr={scanErr} api={api} /></ErrorBoundary>}
+            {view === "opportunities" && <ErrorBoundary label="Opportunities" api={api ?? undefined}><OpportunitiesView api={api} /></ErrorBoundary>}
             {isPipelineView  && <ErrorBoundary label="Pipeline" api={api ?? undefined}><PipelineView leads={leads} openDrawer={setSel} deleteLead={deleteLead} port={port} api={api} scanning={scanning} reevaluating={reevaluating} cleaning={cleaning} onReevaluate={onReevaluateJobs} onStopReevaluate={onStopReevaluate} onCleanup={onCleanupLeads} loading={leadsLoading || !port || !api} error={leadsError} tab={pipelineTab} setView={setView} /></ErrorBoundary>}
             {view === "graph"     && <ErrorBoundary label="Graph" api={api ?? undefined}><GraphView stats={stats} /></ErrorBoundary>}
             {view === "activity"  && <ErrorBoundary label="Activity" api={api ?? undefined}><ActivityView logs={logs} /></ErrorBoundary>}
             {view === "profile"   && (api ? <ErrorBoundary label="Profile" api={api ?? undefined}><ProfileView api={api} setView={setView} stats={stats} /></ErrorBoundary> : <BackendUnavailable title="Profile" conn={conn} port={port} />)}
             {view === "ingestion" && (api ? <ErrorBoundary label="Ingestion" api={api ?? undefined}><IngestionView api={api} /></ErrorBoundary> : <BackendUnavailable title="Add Context" conn={conn} port={port} />)}
             {view === "learn"     && (api ? <ErrorBoundary label="Learn" api={api ?? undefined}><LearnView api={api} /></ErrorBoundary> : <BackendUnavailable title="Learn" conn={conn} port={port} />)}
+            {view === "report"    && showReport && (api ? <ErrorBoundary label="Report" api={api ?? undefined}><Report api={api} /></ErrorBoundary> : <BackendUnavailable title="Report" conn={conn} port={port} />)}
           </main>
         </div>
 

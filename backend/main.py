@@ -8,13 +8,18 @@ import socket
 import sys
 import time
 
-from fastapi import WebSocket
+from core.paths import adopt_tauri_app_data_dir_if_unset
 
-from api.app import create_app
-from api.auth import create_api_token, require_ws_token
-from api.scheduler import create_ghost_tick, create_lifespan, create_scheduler
-from api.websocket import ConnectionManager, agent_event_action as _agent_event_action  # noqa: F401
-from core.logging import get_logger
+
+adopt_tauri_app_data_dir_if_unset()
+
+from fastapi import WebSocket  # noqa: E402
+
+from api.app import create_app  # noqa: E402
+from api.auth import create_api_token, require_ws_token  # noqa: E402
+from api.scheduler import create_ghost_tick, create_lifespan, create_scheduler  # noqa: E402
+from api.websocket import ConnectionManager, agent_event_action as _agent_event_action  # noqa: E402,F401
+from core.logging import get_logger  # noqa: E402
 
 _log = get_logger(__name__)
 

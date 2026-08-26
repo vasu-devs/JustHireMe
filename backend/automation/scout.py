@@ -436,6 +436,16 @@ async def _scrape_jobicy_api(u: str) -> list:
     return await rss_sources.scrape_jobicy_api(u)
 
 
+@retry(
+    retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    stop=stop_after_attempt(2),
+    reraise=True,
+)
+async def _scrape_working_nomads() -> list:
+    return await rss_sources.scrape_working_nomads()
+
+
 def _strip_html_text(text: str) -> str:
     return hn_sources.strip_html_text(text)
 
@@ -508,6 +518,8 @@ def run(
                 processed_leads.extend(asyncio.run(_scrape_remotive(target)))
             elif "jobicy.com/api" in target:
                 processed_leads.extend(asyncio.run(_scrape_jobicy_api(target)))
+            elif "workingnomads.com/api" in target:
+                processed_leads.extend(asyncio.run(_scrape_working_nomads()))
             elif _is_rss_target(target):
                 processed_leads.extend(asyncio.run(_scrape_rss(target)))
             elif target.startswith("site:"):

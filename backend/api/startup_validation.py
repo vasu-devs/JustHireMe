@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
 from urllib.parse import urlparse
 
 from data.repository import Repository
 from gateway.discovery_config import has_x_token, job_targets, truthy
+from core import env
 
 
 def startup_warnings(repo: Repository) -> list[str]:
@@ -33,7 +33,7 @@ def startup_warnings(repo: Repository) -> list[str]:
     if provider and provider_needs_key(provider):
         key_name = _KEY_NAMES.get(provider, "")
         env_name = _ENV_NAMES.get(provider, "")
-        if not (cfg.get(key_name) or os.environ.get(env_name or "")):
+        if not (cfg.get(key_name) or env.get(env_name or "")):
             warnings.append(f"LLM provider '{provider}' is selected but no API key is configured.")
 
     raw_job_boards = str(cfg.get("job_boards", "") or "")

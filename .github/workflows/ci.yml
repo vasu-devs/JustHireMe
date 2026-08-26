@@ -114,7 +114,7 @@ jobs:
       - run: cd backend && uv sync --dev --frozen
       - run: cd backend && uv run ruff check .
       - run: cd backend && uv run mypy . --ignore-missing-imports
-      - run: cd backend && uv run python -m pytest tests/test_import_boundaries.py -q
+      - run: cd backend && uv run python -m pytest tests/unit/architecture -q
       - run: cd backend && uv run python -m pytest tests -q --cov=. --cov-report=term-missing --cov-fail-under=60
 
   release-smoke:
@@ -209,11 +209,14 @@ jobs:
       - name: Run focused domain tests
         run: |
           cd backend
-          files=$(ls tests/test_${{ matrix.domain }}*.py 2>/dev/null || true)
+          # Tests live in tests/unit/<layer>/ and tests/regression/, so match by
+          # filename anywhere under tests/ rather than by a flat path prefix.
+          files=$(find tests -name "test_${{ matrix.domain }}*.py")
           if [ -n "$files" ]; then
-            uv run python -m pytest tests/test_import_boundaries.py $files -q
+            uv run python -m pytest tests/unit/architecture $files -q
           else
-            uv run python -m pytest tests/test_import_boundaries.py -q
+            echo "No test files matched domain '${{ matrix.domain }}'" >&2
+            exit 1
           fi
 
   rust:

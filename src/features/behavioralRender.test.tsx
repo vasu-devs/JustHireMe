@@ -6,6 +6,8 @@ import { JobCard } from "./pipeline/components/JobCard";
 import { ApprovalDrawer } from "./pipeline/components/ApprovalDrawer";
 import { IngestionView } from "./profile/IngestionView";
 import { ProfileView } from "./profile/ProfileView";
+import { OpportunitiesView } from "./opportunities/OpportunitiesView";
+import { hasRequiredApplicationIdentity } from "./opportunities/opportunityIdentity";
 import ErrorBoundary from "../shared/components/ErrorBoundary";
 import type { ApiFetch, Lead } from "../types";
 
@@ -86,6 +88,40 @@ describe("high-risk component behavioral render coverage", () => {
 
     expect(profileHtml).toContain("Profile");
     expect(ingestionHtml).toContain("Resume");
+  });
+
+  it("exposes degree and spoken-language eligibility in the candidate opportunity setup", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+    });
+    try {
+      const html = renderToStaticMarkup(<OpportunitiesView api={api} />);
+      expect(html).toContain("Current degree level");
+      expect(html).toContain("Bachelor&#x27;s");
+      expect(OpportunitiesView.toString()).toContain("minimum degree:");
+      expect(OpportunitiesView.toString()).toContain("required_language_groups");
+      expect(html).toContain("Spoken languages");
+      expect(html).toContain("Used only to verify explicit job-language requirements.");
+      expect(html).toContain("Candidate consent confirmed");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps candidate profile confirmation locked until contact identity is complete", () => {
+    expect(hasRequiredApplicationIdentity({
+      email: "candidate@example.com", phone: "+91 98765 43210",
+      city: "", linkedin_url: "", github_url: "", website_url: "",
+    })).toBe(true);
+    expect(hasRequiredApplicationIdentity({
+      email: "candidate@example.com", phone: "   ",
+      city: "", linkedin_url: "", github_url: "", website_url: "",
+    })).toBe(false);
+    expect(hasRequiredApplicationIdentity({
+      email: " ", phone: "+91 98765 43210",
+      city: "", linkedin_url: "", github_url: "", website_url: "",
+    })).toBe(false);
   });
 
   it("renders apply and approval workflows with mocked API surface", () => {

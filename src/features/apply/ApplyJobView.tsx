@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Icon from "../../shared/components/Icon";
 import type { ApiFetch, ContactLookup, KeywordCoverage, Lead } from "../../types";
+import { generationApi, leadsApi } from "../../api";
 import { roleFromLead } from "../../shared/lib/leadUtils";
 import { ProductionViewIntro } from "../../shared/components/ProductionViewIntro";
 
@@ -43,8 +44,8 @@ export function ApplyJobView({ port, api, leads, openDrawer, initialInput, autoF
   const resumeReady = Boolean(liveLead?.resume_asset || liveLead?.asset);
   const coverReady = Boolean(liveLead?.cover_letter_asset);
   const generating = Boolean(liveLead && (!resumeReady || !coverReady) && (liveLead.status === "tailoring" || liveLead.status === "approved"));
-  const resumeDocPath = liveLead && resumeReady ? `/api/v1/leads/${liveLead.job_id}/pdf?kind=resume` : null;
-  const coverDocPath = liveLead && coverReady ? `/api/v1/leads/${liveLead.job_id}/pdf?kind=cover_letter` : null;
+  const resumeDocPath = liveLead && resumeReady ? leadsApi.pdfPath(liveLead.job_id, "resume") : null;
+  const coverDocPath = liveLead && coverReady ? leadsApi.pdfPath(liveLead.job_id, "cover_letter") : null;
   const coverage = (liveLead?.keyword_coverage || liveLead?.source_meta?.keyword_coverage || {}) as KeywordCoverage;
   const contactLookup = (liveLead?.contact_lookup || liveLead?.source_meta?.contact_lookup || {}) as ContactLookup;
   const primaryContact = contactLookup.primary_contact;
@@ -139,7 +140,7 @@ export function ApplyJobView({ port, api, leads, openDrawer, initialInput, autoF
     let alive = true;
     const timer = window.setInterval(async () => {
       try {
-        const res = await api(`/api/v1/leads/${lead.job_id}`, { timeoutMs: 10000 });
+        const res = await leadsApi.get(api, lead.job_id, { timeoutMs: 10000 });
         if (!res.ok) return;
         const latest = await res.json();
         if (alive && latest?.job_id === lead.job_id) setLead(latest);
@@ -178,10 +179,7 @@ export function ApplyJobView({ port, api, leads, openDrawer, initialInput, autoF
       const trimmed = input.trim();
       const url = trimmed.match(/https?:\/\/\S+/)?.[0] || "";
       const r = await withDeadline(
-        api(`/api/v1/leads/manual/generate/start`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind: "job", url, text: trimmed }),
+        generationApi.startFromManual(api, { kind: "job", url, text: trimmed }, {
           signal: controller.signal,
           timeoutMs: CUSTOMIZE_START_TIMEOUT_MS,
         }),

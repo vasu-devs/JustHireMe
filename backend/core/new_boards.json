@@ -1,0 +1,112 @@
+[
+  {
+    "provider": "rippling",
+    "slug": "rippling",
+    "jobs": 765
+  },
+  {
+    "provider": "rippling",
+    "slug": "opendoor",
+    "jobs": 71
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "wrknest",
+    "jobs": 65
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "doodle",
+    "jobs": 15
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "remarkable",
+    "jobs": 10
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "quinyx",
+    "jobs": 8
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "anyfin",
+    "jobs": 8
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "storytel",
+    "jobs": 7
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "vipps",
+    "jobs": 7
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "brite",
+    "jobs": 6
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "lunar",
+    "jobs": 5
+  },
+  {
+    "provider": "pinpoint",
+    "slug": "improbable",
+    "jobs": 5
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "hemnet",
+    "jobs": 4
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "detectify",
+    "jobs": 4
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "getaccept",
+    "jobs": 4
+  },
+  {
+    "provider": "pinpoint",
+    "slug": "cazoo",
+    "jobs": 4
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "vivino",
+    "jobs": 3
+  },
+  {
+    "provider": "breezy",
+    "slug": "breezy",
+    "jobs": 3
+  },
+  {
+    "provider": "pinpoint",
+    "slug": "fundingcircle",
+    "jobs": 3
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "qasa",
+    "jobs": 2
+  },
+  {
+    "provider": "bamboohr",
+    "slug": "multiplier",
+    "jobs": 2
+  },
+  {
+    "provider": "teamtailor",
+    "slug": "yepstr",
+    "jobs": 1
+  }
+]

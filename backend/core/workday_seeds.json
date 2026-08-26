@@ -1,0 +1,80 @@
+[
+  {
+    "tenant": "pnc",
+    "host": "wd5",
+    "site": "External",
+    "total": 2000
+  },
+  {
+    "tenant": "accenture",
+    "host": "wd103",
+    "site": "AccentureCareers",
+    "total": 2000
+  },
+  {
+    "tenant": "target",
+    "host": "wd5",
+    "site": "Targetcareers",
+    "total": 2000
+  },
+  {
+    "tenant": "salesforce",
+    "host": "wd12",
+    "site": "External_Career_Site",
+    "total": 1481
+  },
+  {
+    "tenant": "cisco",
+    "host": "wd5",
+    "site": "Cisco_Careers",
+    "total": 1029
+  },
+  {
+    "tenant": "truist",
+    "host": "wd1",
+    "site": "Careers",
+    "total": 1028
+  },
+  {
+    "tenant": "regions",
+    "host": "wd5",
+    "site": "Regions_Careers",
+    "total": 519
+  },
+  {
+    "tenant": "autodesk",
+    "host": "wd1",
+    "site": "EXT",
+    "total": 501
+  },
+  {
+    "tenant": "allstate",
+    "host": "wd5",
+    "site": "Allstate_Careers",
+    "total": 438
+  },
+  {
+    "tenant": "fiserv",
+    "host": "wd5",
+    "site": "EXT",
+    "total": 423
+  },
+  {
+    "tenant": "travelers",
+    "host": "wd5",
+    "site": "External",
+    "total": 333
+  },
+  {
+    "tenant": "centene",
+    "host": "wd5",
+    "site": "Centene_External",
+    "total": 134
+  },
+  {
+    "tenant": "dell",
+    "host": "wd1",
+    "site": "External",
+    "total": 0
+  }
+]

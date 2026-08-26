@@ -8,8 +8,8 @@
 // behind `import.meta.env.DEV`.
 //
 // URL contract (for humans and Playwright alike):
-//   /?preview=1&view=dashboard|pipeline|graph|activity|profile|ingestion|apply
-//              &theme=light|dark   &drawer=1   &chrome=0
+//   /?preview=1&view=dashboard|opportunities|pipeline|graph|activity|profile|ingestion|apply
+//              &theme=light|dark   &drawer=1   &settings=1   &chrome=0
 
 import { useEffect, useMemo, useState } from "react";
 import type { ApiFetch, Lead, LogLine, View, GraphStats, OperationProgress } from "../types";
@@ -24,6 +24,8 @@ import { ProfileView } from "../features/profile/ProfileView";
 import { IngestionView } from "../features/profile/IngestionView";
 import { LearnView } from "../features/learning/LearnView";
 import { ApplyJobView } from "../features/apply/ApplyJobView";
+import { OpportunitiesView } from "../features/opportunities/OpportunitiesView";
+import SettingsModal from "../features/settings/SettingsModal";
 import { ApprovalDrawer } from "../features/pipeline/components/ApprovalDrawer";
 import { HelpChat } from "../shared/components/HelpChat";
 
@@ -198,6 +200,47 @@ const PROFILE = {
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 
+const OPPORTUNITY_PROFILE = {
+  candidate_id: "default", home_country: "IN", graduation_year: 2027,
+  currently_enrolled: true, current_degree_level: "bachelors", accepted_india_cities: ["Bengaluru", "Hyderabad", "Pune"],
+  technical_skills: ["Python", "FastAPI", "React", "PostgreSQL", "Docker", "Machine Learning"],
+  project_keywords: ["REST API", "RAG", "LLM", "CI/CD"],
+  preferred_technical_tracks: ["backend", "ai_ml", "data"],
+  accepted_opportunity_types: ["internship", "new_grad", "entry_level_full_time"],
+  allow_india_onsite: true, allow_india_hybrid: true, allow_india_remote: true, allow_worldwide_remote: true,
+  allow_unpaid: false, allow_bond: false, professional_experience_years: 0,
+  minimum_monthly_compensation_inr: 25_000, maximum_internship_months: 6,
+};
+
+const OPPORTUNITIES = [
+  {
+    opportunity_id: "opp_preview_1", employer_name: "Enterpret", title: "Backend Software Engineering Intern",
+    location_text: "Bengaluru, India · onsite", canonical_apply_url: "https://example.com/apply/enterpret",
+    lifecycle: { status: "active", last_verified_active_at: "2026-08-24T12:00:00Z", evidence: ["active_source_observation"] },
+    source_count: 1, providers: ["greenhouse"], updated_at: "2026-08-24T12:00:00Z",
+    applicability: {
+      decision: "apply_now", eligibility: "eligible", opportunity_type: "internship", technical_track: "backend",
+      workplace_scope: "india_onsite", india_eligible: true, paid_status: "paid", hard_blockers: [], safety_blockers: [],
+      safety_warnings: [], unknowns: [], evidence: {}, career_growth_score: 85, hiring_confidence_score: 90,
+      priority_score: 96, career_signals: ["mentorship", "production_impact", "end_to_end_ownership", "conversion_path"],
+      candidate_fit_score: 88, matched_skills: ["Python", "FastAPI", "REST API"], posting_skills: ["Python", "FastAPI", "REST API", "Docker"], candidate_evidence_missing: false,
+    },
+  },
+  {
+    opportunity_id: "opp_preview_2", employer_name: "epiFi", title: "AI Engineering Intern",
+    location_text: "Bangalore, India", canonical_apply_url: "https://example.com/apply/epifi",
+    lifecycle: { status: "active", last_verified_active_at: "2026-08-24T12:00:00Z", evidence: ["active_source_observation"] },
+    source_count: 2, providers: ["lever", "aggregator"], updated_at: "2026-08-24T12:00:00Z",
+    applicability: {
+      decision: "apply_now", eligibility: "eligible", opportunity_type: "internship", technical_track: "ai_ml",
+      workplace_scope: "india_onsite", india_eligible: true, paid_status: "paid", hard_blockers: [], safety_blockers: [],
+      safety_warnings: [], unknowns: [], evidence: {}, career_growth_score: 70, hiring_confidence_score: 90,
+      priority_score: 93, career_signals: ["production_impact", "end_to_end_ownership", "conversion_path"],
+      candidate_fit_score: 82, matched_skills: ["Machine Learning", "RAG", "LLM"], posting_skills: ["Python", "Machine Learning", "RAG", "LLM"], candidate_evidence_missing: false,
+    },
+  },
+];
+
 const LEARNING_INSIGHTS = {
   generated_at: "2026-07-19T12:00:00+00:00",
   sample_size: 214,
@@ -220,6 +263,42 @@ const LEARNING_INSIGHTS = {
 };
 
 const mockApi: ApiFetch = async (path) => {
+  if (path.includes("/application-profile/snapshot")) return json({ candidate_id: "default", ready: true, has_identity: true, has_summary: true, skill_count: 6, project_count: 3, evidence_count: 12, updated_at: "2026-08-24T12:00:00Z" });
+  if (path.includes("/application-profile")) return json({ candidate_id: "default", ready: true, has_identity: true, has_summary: true, skill_count: 6, project_count: 3, evidence_count: 12, updated_at: "2026-08-24T12:00:00Z" });
+  if (path.startsWith("/api/v1/opportunities/candidate/")) return json(OPPORTUNITY_PROFILE);
+  if (path.startsWith("/api/v1/opportunities/candidates")) return json([
+    { candidate_id: "default", graduation_year: 2027, preferred_technical_tracks: ["backend", "ai_ml", "data"], accepted_opportunity_types: ["internship", "new_grad"], profile_updated_at: "2026-08-24T12:00:00Z" },
+    { candidate_id: "friend-2", graduation_year: 2027, preferred_technical_tracks: ["frontend", "mobile"], accepted_opportunity_types: ["internship"], profile_updated_at: "2026-08-23T12:00:00Z" },
+  ]);
+  if (path.startsWith("/api/v1/opportunities/scan/status")) return json({ status: "completed", target_count: 160, targets_completed: 160, opportunities: 389, source_failures: 0, decision_counts: { apply_now: 4 } });
+  if (path.startsWith("/api/v1/opportunities/providers")) return json({
+    master_enabled: false, secrets_redacted: true,
+    retention_rule: "Retain after >=10 successful requests only when net-new eligible yield is >=10%.",
+    providers: ["serpapi", "adzuna", "jooble"].map(provider => ({
+      provider, state: "master_disabled", enabled: false, configured: false, alert: "normal",
+      limits: { daily_requests: 5, monthly_requests: 100, daily_spend_usd: 0, monthly_spend_usd: 0, estimated_cost_per_request_usd: 0 },
+      usage: { requests_today: 0, requests_month: 0, estimated_spend_today_usd: 0, estimated_spend_month_usd: 0, response_rows: 0, successful_requests: 0, failed_requests: 0, eligible_opportunities: 0, net_new_eligible_opportunities: 0, net_new_eligible_yield_percent: 0 },
+      remaining: { daily_requests: 5, monthly_requests: 100 }, experiment: { benchmark: "insufficient_data" },
+    })),
+  });
+  if (path.startsWith("/api/v1/opportunities/cohort/metrics")) return json({
+    candidate_count: 5,
+    funnel: { tracked: 31, application_started: 25, application_submitted: 20, outreach_sent: 9, meaningful_contacts: 4, screening_processes: 3, interviews: 2, offers: 0, rejections: 7, withdrawn: 1 },
+    rates: { meaningful_contacts_per_20_applications: 4, interviews_per_20_applications: 2, offers_per_20_applications: 0 },
+    candidates_with_traction: 3,
+    targets: { candidate_count: 5, application_submitted: 100, meaningful_contacts: 10, interviews: 5, candidates_with_traction: 3, stretch_offers: 1 },
+    progress_percent: { candidate_count: 100, application_submitted: 20, meaningful_contacts: 40, interviews: 40, candidates_with_traction: 100 },
+  });
+  if (path.startsWith("/api/v1/opportunities/metrics")) return json({
+    candidate_id: "default", queue_counts: { apply_now: 4 },
+    funnel: { tracked: 8, application_started: 7, application_submitted: 6, outreach_sent: 3, meaningful_contacts: 2, screening_processes: 1, interviews: 1, offers: 0, rejections: 2, withdrawn: 0 },
+    rates: { completion_from_tracked_percent: 75, meaningful_contacts_per_20_applications: 6.67, interviews_per_20_applications: 3.33, offers_per_20_applications: 0 },
+    source_outcomes: [], first_event_at: "2026-08-18T12:00:00Z", latest_event_at: "2026-08-24T12:00:00Z",
+  });
+  if (path.includes("/track")) return json({ status: "discovered" });
+  if (path.includes("/outcomes")) return json({ event_type: "application_submitted" });
+  if (path.startsWith("/api/v1/opportunities/scan")) return json({ status: "running", target_count: 160, targets_completed: 0 });
+  if (path.startsWith("/api/v1/opportunities?")) return json(OPPORTUNITIES);
   if (path.startsWith("/api/v1/profile")) return json(PROFILE);
   if (path.startsWith("/api/v1/learning/insights")) return json(LEARNING_INSIGHTS);
   if (path.startsWith("/api/v1/leads")) return json(LEADS);
@@ -232,13 +311,14 @@ const mockApi: ApiFetch = async (path) => {
 
 const PROGRESS: OperationProgress = { active: false, mode: null, total: 0, completed: 0, current: "", updatedAt: 0 };
 
-const VIEWS: View[] = ["dashboard", "pipeline", "graph", "activity", "profile", "ingestion", "apply", "learn"];
+const VIEWS: View[] = ["dashboard", "opportunities", "pipeline", "graph", "activity", "profile", "ingestion", "apply", "learn"];
 
 export default function PreviewHarness() {
   const params = new URLSearchParams(window.location.search);
   const [view, setView] = useState<View>((params.get("view") as View) || "dashboard");
   const [theme, setTheme] = useState(params.get("theme") === "dark" ? "dark" : "light");
   const [drawerOpen, setDrawerOpen] = useState(params.get("drawer") === "1");
+  const [settingsOpen, setSettingsOpen] = useState(params.get("settings") === "1");
   const [sel, setSel] = useState<Lead | null>(null);
   const showChrome = params.get("chrome") !== "0";
 
@@ -292,7 +372,7 @@ export default function PreviewHarness() {
     <div className="product-app app-production" data-theme={theme}>
       <Sidebar
         view={view} setView={setView} leadCounts={leadCounts}
-        collapsed={false} onToggleCollapsed={noop} onSettings={noop}
+        collapsed={false} onToggleCollapsed={noop} onSettings={() => setSettingsOpen(true)}
       />
       <div className="product-shell app-main">
         <Topbar view={view} progress={params.get("running") === "1" ? { ...PROGRESS, active: true, mode: "scan", total: 19, completed: 7, current: "Scanning greenhouse boards…" } : PROGRESS} onRun={noop} onStop={noop} onCommand={noop} onNavigate={setView} />
@@ -318,6 +398,7 @@ export default function PreviewHarness() {
               />
             </ErrorBoundary>
           )}
+          {view === "opportunities" && <ErrorBoundary label="Opportunities"><OpportunitiesView api={mockApi} /></ErrorBoundary>}
           {view === "graph"     && <ErrorBoundary label="Graph"><GraphView stats={STATS} /></ErrorBoundary>}
           {view === "activity"  && <ErrorBoundary label="Activity"><ActivityView logs={LOGS} /></ErrorBoundary>}
           {view === "profile"   && <ErrorBoundary label="Profile"><ProfileView api={mockApi} setView={setView} stats={STATS} /></ErrorBoundary>}
@@ -336,7 +417,8 @@ export default function PreviewHarness() {
       </ErrorBoundary>
 
       <ErrorBoundary label="Help chat">
-        <HelpChat api={mockApi} />
+      <HelpChat api={mockApi} />
+      {settingsOpen && <SettingsModal api={mockApi} onClose={() => setSettingsOpen(false)} />}
       </ErrorBoundary>
 
       {showChrome && (

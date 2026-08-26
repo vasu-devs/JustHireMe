@@ -4,8 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { openExternalUrl } from "../../../shared/lib/openExternal";
 import Icon from "../../../shared/components/Icon";
 import type { ApiFetch, KeywordCoverage, Lead } from "../../../types";
-import { isAbortLikeError } from "../../../api/client";
-import { GENERATION_TIMEOUT_MS } from "../../../api/generation";
+import { GENERATION_TIMEOUT_MS, generationApi, isAbortLikeError, leadsApi, templatesApi } from "../../../api";
 import { cleanLeadText, getTone, leadDisplayHeading } from "../../../shared/lib/leadUtils";
 import { FormReader } from "../../apply/components/FormReader";
 
@@ -48,7 +47,24 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
   const [templateId, setTemplateId] = useState<string>("");
   const generateControllerRef = useRef<AbortController | null>(null);
   const pipelineControllerRef = useRef<AbortController | null>(null);
+  const [fullDescription, setFullDescription] = useState<string | null>(null);
   const j = generatedLead ? { ...initialLead, ...generatedLead } : initialLead;
+
+  // GET /api/v1/leads truncates `description` to a short preview (see
+  // leads/service.py's _preview_lead -- the list payload was ~50MB, mostly
+  // full job descriptions the list view never renders past a 3-line clamp).
+  // The drawer is the real detail view, so fetch the untruncated lead once
+  // per job_id opened; falls back to the (possibly truncated) preview text
+  // until this resolves, and silently keeps the preview if the fetch fails.
+  useEffect(() => {
+    let alive = true;
+    setFullDescription(null);
+    leadsApi.get(api, initialLead.job_id)
+      .then(r => r.ok ? r.json() : null)
+      .then(full => { if (alive && full?.description) setFullDescription(full.description); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [api, initialLead.job_id]);
 
   useEffect(() => () => {
     generateControllerRef.current?.abort();
@@ -79,7 +95,7 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
   // backend resolves default -> legacy setting -> built-in layout).
   useEffect(() => {
     let alive = true;
-    api("/api/v1/templates")
+    templatesApi.list(api)
       .then(r => r.json())
       .then(d => {
         if (!alive) return;
@@ -102,7 +118,7 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
     ? Boolean(activeDoc === "resume" ? selectedVersionRecord.resume : selectedVersionRecord.cover_letter)
     : activeDoc === "resume" ? resumeReady : coverReady;
   const activeDocPath = activeReady
-    ? `/api/v1/leads/${j.job_id}/pdf?kind=${activeDoc === "resume" ? "resume" : "cover_letter"}${selectedVersionRecord ? `&version=${selectedVersionRecord.version}` : ""}`
+    ? leadsApi.pdfPath(j.job_id, activeDoc === "resume" ? "resume" : "cover_letter", selectedVersionRecord?.version)
     : null;
   const selectedProjects = j.selected_projects || [];
   const coverage = (j.keyword_coverage || j.source_meta?.keyword_coverage || {}) as KeywordCoverage;
@@ -118,7 +134,7 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
     : null;
   const display = leadDisplayHeading(j);
   const originalTitle = cleanLeadText(j.title);
-  const descriptionText = cleanLeadText(j.description);
+  const descriptionText = cleanLeadText(fullDescription ?? j.description);
   const jobDescription = [
     originalTitle && originalTitle !== display.role ? `Original listing title:\n${originalTitle}` : "",
     descriptionText ? `Description:\n${descriptionText}` : "",
@@ -127,7 +143,7 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
   const loadVersions = useCallback(async (signal?: AbortSignal) => {
     setVersionErr(null);
     try {
-      const r = await api(`/api/v1/leads/${j.job_id}/versions`, { signal });
+      const r = await leadsApi.versions(api, j.job_id, { signal });
       if (!r.ok) throw new Error(`Server returned ${r.status}`);
       const items = await r.json() as VersionEntry[];
       setVersions(items);
@@ -141,7 +157,7 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
   }, [api, j.job_id]);
 
   const refreshLead = useCallback(async (signal?: AbortSignal) => {
-    const r = await api(`/api/v1/leads/${initialLead.job_id}`, { signal });
+    const r = await leadsApi.get(api, initialLead.job_id, { signal });
     if (!r.ok) throw new Error(`Lead refresh returned ${r.status}`);
     const lead = await r.json() as Lead;
     setGeneratedLead(lead);
@@ -208,8 +224,7 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
     const controller = new AbortController();
     generateControllerRef.current = controller;
     try {
-      const query = templateId ? `?template_id=${encodeURIComponent(templateId)}` : "";
-      const r = await api(`/api/v1/leads/${j.job_id}/generate${query}`, { method: "POST", signal: controller.signal, timeoutMs: GENERATION_TIMEOUT_MS });
+      const r = await generationApi.generate(api, j.job_id, templateId, { signal: controller.signal, timeoutMs: GENERATION_TIMEOUT_MS });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.detail || `Server returned ${r.status}`);
       if (body.lead) setGeneratedLead(body.lead as Lead);
@@ -237,7 +252,7 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
     const controller = new AbortController();
     pipelineControllerRef.current = controller;
     try {
-      const r = await api(`/api/v1/leads/${j.job_id}/pipeline/run`, { method: "POST", signal: controller.signal, timeoutMs: 15000 });
+      const r = await generationApi.runPipeline(api, j.job_id, { signal: controller.signal, timeoutMs: 15000 });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.detail || `Server returned ${r.status}`);
       setPipelineMsg("Pipeline started. You can keep working while it finishes.");
@@ -265,11 +280,7 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
     setFeedbackBusy(feedback);
     setFeedbackErr(null);
     try {
-      const r = await api(`/api/v1/leads/${j.job_id}/feedback`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ feedback }),
-      });
+      const r = await leadsApi.saveFeedback(api, j.job_id, feedback);
       if (!r.ok) {
         const detail = await r.json().then(d => d.detail).catch(() => "");
         throw new Error(detail || `Server returned ${r.status}`);
@@ -290,11 +301,7 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
     setStatusBusy(status);
     setStatusErr(null);
     try {
-      const r = await api(`/api/v1/leads/${j.job_id}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
+      const r = await leadsApi.updateStatus(api, j.job_id, status);
       if (!r.ok) {
         const detail = await r.json().then(d => d.detail).catch(() => "");
         throw new Error(detail || `Server returned ${r.status}`);
@@ -312,11 +319,7 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
     setFollowupBusy(days);
     setFeedbackErr(null);
     try {
-      const r = await api(`/api/v1/leads/${j.job_id}/followup`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ days }),
-      });
+      const r = await leadsApi.setFollowup(api, j.job_id, days);
       if (!r.ok) {
         const detail = await r.json().then(d => d.detail).catch(() => "");
         throw new Error(detail || `Server returned ${r.status}`);

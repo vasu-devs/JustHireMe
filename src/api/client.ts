@@ -1,6 +1,21 @@
-import type { ApiFetch } from "./types";
+import type { ApiFetch, ApiFetchOptions } from "./types";
 
 const DEFAULT_TIMEOUT_MS = 30000;
+
+/** Build a JSON request body. Every feature module goes through this. */
+export function json(method: string, body: unknown): ApiFetchOptions {
+  return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+}
+
+/** Merge a call site's options (signal, timeoutMs) over a module's defaults. */
+export function withOpts(base: ApiFetchOptions, opts?: ApiFetchOptions): ApiFetchOptions {
+  if (!opts) return base;
+  return {
+    ...base,
+    ...opts,
+    headers: { ...(base.headers as Record<string, string>), ...(opts.headers as Record<string, string>) },
+  };
+}
 
 export function isAbortLikeError(error: unknown) {
   if (error instanceof DOMException && error.name === "AbortError") return true;

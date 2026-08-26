@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { DemoIcon } from "../../demo/DemoIcon";
 import type { ApiFetch, Lead, LogLine, OperationProgress, View } from "../../types";
 import { leadDisplayHeading, leadSignal } from "../../shared/lib/leadUtils";
+import { profileApi } from "../../api";
 
 function JournalRole({ lead, index, openDrawer }: { lead: Lead; index: number; openDrawer: (lead: Lead) => void }) {
   const { role, company } = leadDisplayHeading(lead);
@@ -34,7 +36,28 @@ export function DashboardView(props: {
   scanErr: string | null;
   api?: ApiFetch | null;
 }) {
-  const { leads, dueFollowups, logs, setView, openDrawer, scanning, reevaluating, cleaning, progress, onScan, onStopScan, scanErr } = props;
+  const { leads, dueFollowups, logs, setView, openDrawer, scanning, reevaluating, cleaning, progress, onScan, onStopScan, scanErr, api } = props;
+
+  // The greeting used to hardcode "Vasudev" -- stale even after the stored
+  // profile (settings.profile_snapshot_json, `n` field) changed to a
+  // different candidate. Read it directly: this is the same shape ProfileView
+  // fetches (profile.n), just first-name-only for a greeting, with no
+  // personalization at all (not a wrong name) if the profile hasn't loaded
+  // or was never set.
+  const [candidateFirstName, setCandidateFirstName] = useState("");
+  useEffect(() => {
+    if (!api) return;
+    let alive = true;
+    profileApi.get(api)
+      .then(r => (r.ok ? r.json() : null))
+      .then(body => {
+        const name = String(body?.n || "").trim();
+        if (alive && name) setCandidateFirstName(name.split(/\s+/)[0]);
+      })
+      .catch(() => { /* greeting just stays generic */ });
+    return () => { alive = false; };
+  }, [api]);
+
   const active = leads.filter(lead => lead.status !== "discarded");
   const queue = [...active].sort((a, b) => leadSignal(b) - leadSignal(a) || (b.score || 0) - (a.score || 0)).slice(0, 3);
   const ready = active.filter(lead => lead.status === "approved" || lead.status === "tailoring").length;
@@ -46,7 +69,7 @@ export function DashboardView(props: {
 
   return <div className="overview-view journal-home product-enter production-dashboard-exact scroll">
     <header className="journal-welcome">
-      <div><span>{date}</span><h2>Good morning, Vasudev.</h2></div>
+      <div><span>{date}</span><h2>Good morning{candidateFirstName ? `, ${candidateFirstName}` : ""}.</h2></div>
       <p><i /> Scout kept watch overnight. <strong>{queue.length || "No"} roles</strong> deserve a real look.</p>
     </header>
 

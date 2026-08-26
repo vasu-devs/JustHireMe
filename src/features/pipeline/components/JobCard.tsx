@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { openExternalUrl } from "../../../shared/lib/openExternal";
 import Icon from "../../../shared/components/Icon";
 import type { ApiFetch, Lead } from "../../../types";
-import { GENERATION_TIMEOUT_MS } from "../../../api/generation";
+import { GENERATION_TIMEOUT_MS, generationApi } from "../../../api";
 import { getMark, getTone, leadDisplayHeading, leadSeniority, seniorityLabel, seniorityTone } from "../../../shared/lib/leadUtils";
 
 export function JobCard({ lead, onOpen, onDelete, showScore = false, showGenerate = false, port, api }: {
@@ -32,7 +32,7 @@ export function JobCard({ lead, onOpen, onDelete, showScore = false, showGenerat
     const controller = new AbortController();
     requestRef.current = controller;
     try {
-      const response = await api(`/api/v1/leads/${lead.job_id}/generate`, { method: "POST", signal: controller.signal, timeoutMs: GENERATION_TIMEOUT_MS });
+      const response = await generationApi.generate(api, lead.job_id, "", { signal: controller.signal, timeoutMs: GENERATION_TIMEOUT_MS });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.detail || `Generation returned ${response.status}`);
       if (body.lead) window.dispatchEvent(new CustomEvent("lead-updated", { detail: body.lead }));
@@ -205,7 +205,7 @@ export function PipelineJobCard({ lead, onOpen, onDelete, showGenerate = false, 
     const controller = new AbortController();
     requestRef.current = controller;
     try {
-      const response = await api(`/api/v1/leads/${lead.job_id}/generate`, { method: "POST", signal: controller.signal, timeoutMs: GENERATION_TIMEOUT_MS });
+      const response = await generationApi.generate(api, lead.job_id, "", { signal: controller.signal, timeoutMs: GENERATION_TIMEOUT_MS });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.detail || `Generation returned ${response.status}`);
       if (body.lead) window.dispatchEvent(new CustomEvent("lead-updated", { detail: body.lead }));

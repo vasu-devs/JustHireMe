@@ -1,0 +1,106 @@
+{
+  "schema_version": 2,
+  "candidate_id": "local-pseudonymous-id",
+  "profile_source": {
+    "resume_imported": false,
+    "profile_confirmed_at": null
+  },
+  "application_identity": {
+    "required_for_submission": [
+      "email",
+      "phone"
+    ],
+    "email": null,
+    "phone": null,
+    "city": null,
+    "linkedin_url": null,
+    "github_url": null,
+    "website_url": null,
+    "stored_in_private_candidate_snapshot_only": true
+  },
+  "education": {
+    "degree": "B.Tech",
+    "branch": "Computer Science and Engineering",
+    "current_degree_level": "bachelors",
+    "graduation_year": 2027,
+    "currently_enrolled": true
+  },
+  "candidate_evidence": {
+    "technical_skills": [],
+    "project_keywords": [],
+    "spoken_languages": [],
+    "professional_experience_years": 0
+  },
+  "location_and_authorization": {
+    "home_country": "IN",
+    "timezone": "Asia/Kolkata",
+    "citizenships": [],
+    "work_authorizations": ["IN"],
+    "accepted_india_cities": [
+      "Bengaluru",
+      "Hyderabad",
+      "Pune",
+      "Gurugram",
+      "Noida",
+      "Chennai",
+      "Mumbai"
+    ],
+    "relocation_within_india": true
+  },
+  "availability": {
+    "earliest_start_date": null,
+    "hours_per_week_min": 20,
+    "hours_per_week_max": 40,
+    "minimum_duration_weeks": 8,
+    "maximum_duration_weeks": 52,
+    "required_timezone_overlap_hours": 4
+  },
+  "opportunity_preferences": {
+    "types": [
+      "internship",
+      "new_grad",
+      "entry_level_full_time",
+      "stretch_full_time"
+    ],
+    "workplaces": [
+      "india_onsite",
+      "india_hybrid",
+      "india_remote",
+      "worldwide_remote"
+    ],
+    "technical_tracks": [
+      "software",
+      "backend",
+      "frontend",
+      "fullstack",
+      "ai_ml",
+      "data",
+      "cloud_devops",
+      "security",
+      "mobile",
+      "qa_automation",
+      "embedded_systems"
+    ]
+  },
+  "candidate_policies": {
+    "allow_unpaid": false,
+    "allow_undisclosed_compensation": true,
+    "allow_service_bond": false,
+    "allow_application_or_training_fee": false,
+    "allow_contract_remote": false,
+    "minimum_monthly_internship_compensation": null,
+    "minimum_annual_full_time_compensation": null,
+    "compensation_currency": "INR",
+    "maximum_internship_months": 12
+  },
+  "application_state": {
+    "existing_application_urls": [],
+    "companies_to_exclude": [],
+    "cooldown_days_after_rejection": 180
+  },
+  "consent": {
+    "candidate_data_stays_local": true,
+    "share_anonymous_outcomes": false,
+    "confirmed_at": null
+  }
+}

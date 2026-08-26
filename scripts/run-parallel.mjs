@@ -17,8 +17,7 @@ const groups = {
     ["frontend build", npm, ["run", "build"], npmOptions()],
     ["website build", npm, ["run", "build"], npmOptions({ cwd: "website" })],
     ["backend tests", backendPython, ["-m", "pytest", "tests", "-q"], { cwd: "backend", fallback: [systemPython, ["-m", "pytest", "tests", "-q"]] }],
-    ["rust tests", "cargo", ["test", "--lib"], { cwd: "src-tauri" }],
-    ["rust check", "cargo", ["check"], { cwd: "src-tauri" }],
+    ["rust validation", npm, ["run", "check:rust"], npmOptions()],
   ],
   "build:all": [
     ["frontend build", npm, ["run", "build"], npmOptions()],

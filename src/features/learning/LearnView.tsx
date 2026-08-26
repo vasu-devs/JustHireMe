@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { DemoIcon } from "../../demo/DemoIcon";
 import type { ApiFetch } from "../../types";
+import { learningApi } from "../../api";
 
 interface ExampleRole {
   title: string;
@@ -48,7 +49,7 @@ export function LearnView({ api }: { api: ApiFetch }) {
       try {
         // First read over a big corpus computes for several seconds before the
         // server-side cache warms — give it more room than the default 30s.
-        const response = await api("/api/v1/learning/insights", { timeoutMs: 60000 });
+        const response = await learningApi.insights(api, { timeoutMs: 60000 });
         if (!response.ok) throw new Error(`Insights failed (${response.status})`);
         const data = (await response.json()) as LearningInsights;
         if (!cancelled) setInsights(data);

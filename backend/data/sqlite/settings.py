@@ -12,6 +12,19 @@ SETTINGS_SCHEMA = {
     # How many board-scan batches run at once. Each in-flight batch can hold a
     # live browser, so the ceiling stays deliberately small.
     "board_scan_concurrency": {"type": "int", "min": 1, "max": 8, "default": 3},
+    # Paid market APIs are always opt-in. Request caps are the authoritative
+    # guardrail; spend limits use the operator-supplied per-request estimate.
+    "paid_sources_enabled": {"type": "str", "allowed": ["true", "false"], "default": "false"},
+    "serpapi_jobs_enabled": {"type": "str", "allowed": ["true", "false"], "default": "false"},
+    "adzuna_jobs_enabled": {"type": "str", "allowed": ["true", "false"], "default": "false"},
+    "jooble_jobs_enabled": {"type": "str", "allowed": ["true", "false"], "default": "false"},
+    "paid_provider_daily_request_cap": {"type": "int", "min": 1, "max": 500, "default": 5},
+    "paid_provider_monthly_request_cap": {"type": "int", "min": 1, "max": 10000, "default": 100},
+    "paid_provider_daily_spend_cap_usd": {"type": "float", "min": 0, "max": 10000, "default": 0},
+    "paid_provider_monthly_spend_cap_usd": {"type": "float", "min": 0, "max": 100000, "default": 0},
+    "serpapi_estimated_cost_per_request_usd": {"type": "float", "min": 0, "max": 1000, "default": 0},
+    "adzuna_estimated_cost_per_request_usd": {"type": "float", "min": 0, "max": 1000, "default": 0},
+    "jooble_estimated_cost_per_request_usd": {"type": "float", "min": 0, "max": 1000, "default": 0},
     "x_hot_lead_threshold": {"type": "int", "min": 1, "max": 100, "default": 80},
     "llm_provider": {
         "type": "str",
@@ -56,6 +69,13 @@ def validate_setting(key: str, value: object) -> tuple[bool, str]:
     if schema["type"] == "int":
         try:
             parsed = int(text)
+        except (TypeError, ValueError):
+            return False, f"{key} must be a number"
+        if parsed < schema["min"] or parsed > schema["max"]:
+            return False, f"{key} must be between {schema['min']} and {schema['max']}"
+    elif schema["type"] == "float":
+        try:
+            parsed = float(text)
         except (TypeError, ValueError):
             return False, f"{key} must be a number"
         if parsed < schema["min"] or parsed > schema["max"]:

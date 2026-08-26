@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyProfileDeleteMarkers, entryTitle, mergeProfileWithGraphFallback, normalizeProfileResponse, profileDeleteKey, profileDeletePath, profileFromGraphStats, profileHasDeleteMarker, removeProfileItem } from "./profileUtils";
+import { applyProfileDeleteMarkers, entryTitle, mergeProfileWithGraphFallback, normalizeProfileResponse, profileDeleteKey, profileFromGraphStats, profileHasDeleteMarker, removeProfileItem } from "./profileUtils";
 
 const fieldText = (item: unknown, key: string): string =>
   item && typeof item === "object" && key in item
@@ -23,12 +23,6 @@ describe("normalizeProfileResponse", () => {
     expect(profile.achievements).toEqual(["Shipped"]);
     expect(profile.identity.email).toBe("vasu@example.com");
     expect(profile.identity.github_url).toBe("");
-  });
-});
-
-describe("profileDeletePath", () => {
-  it("encodes text profile entries so slashes and spaces survive routing", () => {
-    expect(profileDeletePath("education", "B.Tech / MBA")).toBe("/api/v1/profile/education/B.Tech%20%2F%20MBA");
   });
 });
 

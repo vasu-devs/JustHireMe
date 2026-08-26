@@ -1,11 +1,11 @@
 import logging
-import os
 import sys
 import json
 import time
 import functools
 import re
 from collections.abc import Mapping
+from . import env
 
 
 SENSITIVE_KEY_RE = re.compile(
@@ -79,7 +79,7 @@ def get_logger(name: str) -> logging.Logger:
     if logger.handlers:
         return logger
 
-    level_str = os.environ.get("JHM_LOG_LEVEL", "INFO").upper()
+    level_str = env.log_level().upper()
     level = getattr(logging, level_str, logging.INFO)
     logger.setLevel(level)
 

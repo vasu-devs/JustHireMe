@@ -28,6 +28,12 @@ export interface Cfg {
   x_max_requests_per_scan: string; x_max_results_per_query: string; x_min_signal_score: string; x_hot_lead_threshold: string; x_enable_notifications: string;
   free_sources_enabled: string; free_source_targets: string; company_watchlist: string; free_source_max_requests: string; free_source_min_signal_score: string;
   custom_connectors_enabled: string; custom_connectors: string; custom_connector_headers: string;
+  paid_sources_enabled: string;
+  serpapi_jobs_enabled: string; serpapi_api_key: string; serpapi_estimated_cost_per_request_usd: string;
+  adzuna_jobs_enabled: string; adzuna_app_id: string; adzuna_app_key: string; adzuna_estimated_cost_per_request_usd: string;
+  jooble_jobs_enabled: string; jooble_api_key: string; jooble_api_domain: string; jooble_estimated_cost_per_request_usd: string;
+  paid_provider_daily_request_cap: string; paid_provider_monthly_request_cap: string;
+  paid_provider_daily_spend_cap_usd: string; paid_provider_monthly_spend_cap_usd: string;
   desired_position: string; onboarding_target_role: string; job_boards: string; job_market_focus: string;
   ghost_mode: string; auto_apply: string; headed_browser: string;
 }
@@ -57,6 +63,12 @@ export const EMPTY: Cfg = {
   x_max_requests_per_scan: "5", x_max_results_per_query: "50", x_min_signal_score: "60", x_hot_lead_threshold: "80", x_enable_notifications: "false",
   free_sources_enabled: "", free_source_targets: "", company_watchlist: "", free_source_max_requests: "20", free_source_min_signal_score: "60",
   custom_connectors_enabled: "false", custom_connectors: "", custom_connector_headers: "",
+  paid_sources_enabled: "false",
+  serpapi_jobs_enabled: "false", serpapi_api_key: "", serpapi_estimated_cost_per_request_usd: "0",
+  adzuna_jobs_enabled: "false", adzuna_app_id: "", adzuna_app_key: "", adzuna_estimated_cost_per_request_usd: "0",
+  jooble_jobs_enabled: "false", jooble_api_key: "", jooble_api_domain: "in.jooble.org", jooble_estimated_cost_per_request_usd: "0",
+  paid_provider_daily_request_cap: "5", paid_provider_monthly_request_cap: "100",
+  paid_provider_daily_spend_cap_usd: "0", paid_provider_monthly_spend_cap_usd: "0",
   desired_position: "", onboarding_target_role: "", job_boards: "", job_market_focus: "global",
   ghost_mode: "false", auto_apply: "false", headed_browser: "false",
 };

@@ -21,9 +21,19 @@ def valid_token(candidate: str, expected: str) -> bool:
     return bool(candidate) and bool(expected) and secrets.compare_digest(candidate, expected)
 
 
-async def require_http_token(request: Request, call_next, token_getter: Callable[[], str]):
+async def check_http_token(request: Request, token_getter: Callable[[], str]) -> JSONResponse | None:
+    """Reject an absent/invalid bearer token; ``None`` means "let it through".
+
+    Deliberately decoupled from ``call_next``/``BaseHTTPMiddleware``: that
+    plumbing buffers the *entire* downstream response through an async queue
+    to hand it back as an inspectable object, which is fine for small JSON
+    bodies but adds seconds of pure middleware overhead for a large one (GET
+    /api/v1/leads ships ~48MB -- measured turning a ~1s query into a 10-15s
+    request). api.app wires this into a plain ASGI middleware instead, which
+    never touches the response body.
+    """
     if request.method == "OPTIONS" or request.url.path == "/health":
-        return await call_next(request)
+        return None
 
     creds = await _bearer(request)
     if creds is None or not valid_token(creds.credentials, token_getter()):
@@ -31,7 +41,7 @@ async def require_http_token(request: Request, call_next, token_getter: Callable
             {"detail": "invalid token"},
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
-    return await call_next(request)
+    return None
 
 
 WS_TOKEN_SUBPROTOCOL = "jhm.bearer"

@@ -20,7 +20,7 @@ from data.graph.profile_base import (
     stack_list,
 )
 from data.graph.profile_deletions import apply_profile_deletions
-from graph_service.helpers import is_bad_vector_label
+from core.vector_labels import is_bad_vector_label
 
 _log = get_logger(__name__)
 

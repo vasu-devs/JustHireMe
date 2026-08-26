@@ -425,6 +425,7 @@ async function requestShutdown(port, token) {
     const response = await fetch(`http://127.0.0.1:${port}/api/v1/shutdown`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
     });
     if (!response.ok) {
       console.warn(`/api/v1/shutdown returned HTTP ${response.status}: ${await response.text()}`);

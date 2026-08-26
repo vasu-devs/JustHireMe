@@ -1,0 +1,205 @@
+"""Ghost mode — the unattended scan → score → generate → apply cycle.
+
+Business orchestration that a scheduler triggers on a timer. It lives here, not
+in ``api/scheduler.py``, because nothing about it is transport: the API layer
+only owns the APScheduler instance and hands this a `manager` to broadcast with.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from functools import lru_cache
+
+from data.repository import Repository, create_repository
+from discovery.orchestrator import run_free_source_scan, run_x_signal_scan
+from gateway.discovery_config import (
+    free_sources_enabled,
+    has_explicit_discovery_targets,
+    has_profile_discovery_signal,
+    has_x_token,
+    job_targets,
+    profile_for_discovery,
+)
+from gateway.jobs import get_job_store
+
+from automation.service import fire_blocker
+
+
+@lru_cache
+def _default_repo() -> Repository:
+    return create_repository()
+
+
+def _default_automation_service(repo: Repository):
+    from automation.service import create_automation_service
+
+    return create_automation_service(repo)
+
+
+def _default_discovery_service():
+    from discovery.service import create_discovery_service
+
+    return create_discovery_service()
+
+
+def _default_ranking_service():
+    from ranking.service import create_ranking_service
+
+    return create_ranking_service()
+
+
+def _default_generation_service():
+    from generation.service import create_generation_service
+
+    return create_generation_service()
+
+
+def create_ghost_tick(manager):
+    async def ghost_tick():
+        repo = _default_repo()
+        automation_service = _default_automation_service(repo)
+        discovery_service = _default_discovery_service()
+        ranking_service = _default_ranking_service()
+        generation_service = _default_generation_service()
+        job_store = get_job_store()
+
+        cfg = repo.settings.get_settings()
+        if repo.settings.get_setting("ghost_mode") != "true":
+            return
+        ghost_job = job_store.create("ghost_cycle", {})
+        job_store.update(ghost_job.job_id, status="running", progress=5)
+
+        profile = profile_for_discovery(await asyncio.to_thread(repo.profile.get_profile), cfg)
+        if not has_profile_discovery_signal(profile) and not has_explicit_discovery_targets(cfg):
+            msg = "Ghost Mode: add a target role, profile skills, work history, or explicit job source before scanning"
+            await manager.broadcast({"type": "agent", "event": "ghost_warn", "msg": msg})
+            job_store.update(ghost_job.job_id, status="cancelled", progress=100, error=msg)
+            return
+
+        boards = job_targets(cfg.get("job_boards", ""), cfg.get("job_market_focus", "global"))
+        has_x = has_x_token(cfg)
+        has_free = free_sources_enabled(cfg)
+        if has_x:
+            await run_x_signal_scan(manager, cfg, "job", profile)
+        if has_free:
+            await run_free_source_scan(manager, cfg, "job", profile)
+        if not boards and not has_x and not has_free:
+            await manager.broadcast({"type": "agent", "event": "ghost_warn", "msg": "Ghost Mode: no job boards configured - skipping"})
+            job_store.update(ghost_job.job_id, status="cancelled", error="no job boards configured")
+            return
+
+        await manager.broadcast({"type": "agent", "event": "ghost_scout", "msg": "Ghost Mode: scout cycle starting"})
+        try:
+            boards = await discovery_service.plan_board_targets(profile, boards, cfg.get("job_market_focus", "global"))
+            result = await discovery_service.scan_job_boards(boards, cfg)
+            leads = result.leads
+            await manager.broadcast({"type": "agent", "event": "ghost_scout", "msg": f"Ghost scout complete - {len(leads)} new leads found"})
+        except Exception as exc:
+            logging.getLogger(__name__).warning('suppressed exception in automation/ghost.py:ghost_tick: %s', exc)
+            await manager.broadcast({"type": "agent", "event": "ghost_error", "msg": f"Scout failed: {exc}"})
+            job_store.update(ghost_job.job_id, status="failed", error=str(exc))
+            return
+
+        profile = profile_for_discovery(await asyncio.to_thread(repo.profile.get_profile), cfg)
+        discovered = await asyncio.to_thread(repo.leads.get_discovered_leads)
+        await manager.broadcast({"type": "agent", "event": "ghost_eval", "msg": f"Ghost Mode: evaluating {len(discovered)} leads"})
+
+        # Token gate: the background cycle LLM-evaluates only the top-K by the cheap
+        # deterministic score, so an unattended Ghost run can't quietly burn tokens on
+        # the whole backlog.
+        from core.config import int_cfg
+        ghost_max_llm = int_cfg(cfg, "ghost_max_llm_evaluations", 15, 0, 500)
+        llm_ids = await ranking_service.select_llm_eval_ids(discovered, profile, max_llm=ghost_max_llm)
+
+        approved = []
+        for lead in discovered:
+            try:
+                result = await ranking_service.evaluate_lead(lead, profile, cfg, use_llm=lead["job_id"] in llm_ids)
+                # H1: background re-scoring must not overwrite a status the user
+                # changed (approved/applied/interviewing) during this slow eval
+                # loop. preserve_status keeps the lead's current status; the
+                # in-memory `approved` list below drives the rest of the cycle.
+                await asyncio.to_thread(
+                    repo.leads.update_lead_score,
+                    lead["job_id"], result["score"], result["reason"],
+                    result.get("match_points", []), result.get("gaps", []),
+                    preserve_status=True, scored_by=result.get("scored_by", ""),
+                )
+                await manager.broadcast({"type": "LEAD_UPDATED", "data": {**lead, **result}})
+                if result["score"] >= 85:
+                    approved.append({**lead, **result})
+                    await manager.broadcast({
+                        "type": "agent",
+                        "event": "ghost_approved",
+                        "msg": f"Approved: {lead.get('title','')} @ {lead.get('company','')} [{result['score']}/100]",
+                    })
+            except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in automation/ghost.py:ghost_tick: %s', exc)
+                await manager.broadcast({"type": "agent", "event": "ghost_error", "msg": f"Eval failed for {lead.get('title','?')}: {exc}"})
+
+        await manager.broadcast({"type": "agent", "event": "ghost_eval", "msg": f"Evaluation done - {len(approved)}/{len(discovered)} approved"})
+
+        if not approved:
+            await manager.broadcast({"type": "agent", "event": "ghost_done", "msg": "Ghost Mode: no approved leads this cycle"})
+            job_store.update(ghost_job.job_id, status="succeeded", progress=100, result={"approved": 0})
+            return
+
+        await manager.broadcast({"type": "agent", "event": "ghost_gen", "msg": f"Ghost Mode: generating assets for {len(approved)} leads"})
+        generated = []
+        for lead in approved:
+            try:
+                package = await generation_service.generate_package(lead)
+                await asyncio.to_thread(
+                    repo.leads.save_asset_package,
+                    lead["job_id"],
+                    package["resume"],
+                    package["cover_letter"],
+                    package.get("selected_projects", []),
+                    package.get("keyword_coverage", {}),
+                )
+                generated.append({
+                    **lead,
+                    "asset": package["resume"],
+                    "resume_asset": package["resume"],
+                    "cover_letter_asset": package["cover_letter"],
+                    "selected_projects": package.get("selected_projects", []),
+                    "keyword_coverage": package.get("keyword_coverage", {}),
+                })
+                await manager.broadcast({"type": "agent", "event": "ghost_gen", "msg": f"Generated resume and cover letter for {lead.get('title','?')}"})
+            except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in automation/ghost.py:ghost_tick: %s', exc)
+                await manager.broadcast({"type": "agent", "event": "ghost_error", "msg": f"Generation failed for {lead.get('title','?')}: {exc}"})
+
+        if repo.settings.get_setting("auto_apply", "false") != "true":
+            await manager.broadcast({
+                "type": "agent",
+                "event": "ghost_done",
+                "msg": f"Ghost cycle complete - {len(generated)} leads ready. Auto-apply is OFF - waiting for manual approval in Sniper view.",
+            })
+            job_store.update(ghost_job.job_id, status="succeeded", progress=100, result={"approved": len(approved), "generated": len(generated)})
+            return
+
+        await manager.broadcast({"type": "agent", "event": "ghost_apply", "msg": f"Ghost Mode: auto-applying to {len(generated)} leads"})
+        for item in generated:
+            try:
+                lead, asset = await automation_service.get_lead_for_fire(item["job_id"])
+                _status, detail = fire_blocker(lead, asset)
+                if detail:
+                    await manager.broadcast({"type": "agent", "event": "ghost_error", "msg": f"Submission blocked: {item.get('title','?')} - {detail}"})
+                    continue
+
+                ok = await automation_service.submit_application(lead, asset)
+                if ok:
+                    await automation_service.mark_applied(item["job_id"])
+                    await manager.broadcast({"type": "agent", "event": "ghost_applied", "msg": f"Applied: {item.get('title','?')} @ {item.get('company','?')}"})
+                else:
+                    await manager.broadcast({"type": "agent", "event": "ghost_error", "msg": f"Submission failed: {item.get('title','?')}"})
+            except Exception as exc:
+                logging.getLogger(__name__).warning('suppressed exception in automation/ghost.py:ghost_tick: %s', exc)
+                await manager.broadcast({"type": "agent", "event": "ghost_error", "msg": f"Actuator error for {item.get('title','?')}: {exc}"})
+
+        await manager.broadcast({"type": "agent", "event": "ghost_done", "msg": "Ghost cycle complete."})
+        job_store.update(ghost_job.job_id, status="succeeded", progress=100, result={"approved": len(approved), "generated": len(generated)})
+
+    return ghost_tick

@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent } from "react";
 import type { Cfg } from "./shared";
-import { BigToggle, GLOBAL_SOURCE_PRESET, INDIA_SOURCE_PRESET, LabelledField, SectionLabel } from "./shared";
+import { BigToggle, GLOBAL_SOURCE_PRESET, INDIA_SOURCE_PRESET, LabelledField, SECRET_MASKS, SectionLabel } from "./shared";
 
 export function DiscoverySettings({ cfg, set, onChange }: { cfg: Cfg; set: (k: keyof Cfg) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void; onChange: (k: keyof Cfg, v: string) => void }) {
   const [siteDraft, setSiteDraft] = useState("");
@@ -125,6 +125,66 @@ export function DiscoverySettings({ cfg, set, onChange }: { cfg: Cfg; set: (k: k
                   sub="Desktop alert when an X lead crosses the hot score"
                   tone="orange"
                 />
+              </div>
+              <div style={{ padding: 13, borderRadius: 13, background: "var(--paper-2)", border: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 10 }}>
+                <SectionLabel label="Paid Market APIs" sub="Opt-in expansion with hard request and estimated-spend caps" />
+                <BigToggle
+                  active={cfg.paid_sources_enabled === "true"}
+                  onToggle={() => onChange("paid_sources_enabled", cfg.paid_sources_enabled === "true" ? "false" : "true")}
+                  icon="shield"
+                  label="Paid source master switch"
+                  badge={cfg.paid_sources_enabled === "true" ? "armed" : "zero spend"}
+                  sub="No paid request can run while this is off; every call is reserved against local caps first"
+                  tone="purple"
+                />
+                {([
+                  { id: "serpapi", label: "SerpApi Google Jobs", credential: (
+                    <LabelledField label="SerpApi API key" hint="server-side; returned masked">
+                      <input type="password" value={SECRET_MASKS.has(cfg.serpapi_api_key) ? "" : cfg.serpapi_api_key} onChange={set("serpapi_api_key")} className="mono field-input" placeholder={SECRET_MASKS.has(cfg.serpapi_api_key) ? "Key saved" : "private key"} />
+                    </LabelledField>
+                  ) },
+                  { id: "adzuna", label: "Adzuna India", credential: (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <LabelledField label="Adzuna app ID"><input value={cfg.adzuna_app_id} onChange={set("adzuna_app_id")} className="mono field-input" /></LabelledField>
+                      <LabelledField label="Adzuna app key"><input type="password" value={SECRET_MASKS.has(cfg.adzuna_app_key) ? "" : cfg.adzuna_app_key} onChange={set("adzuna_app_key")} className="mono field-input" placeholder={SECRET_MASKS.has(cfg.adzuna_app_key) ? "Key saved" : ""} /></LabelledField>
+                    </div>
+                  ) },
+                  { id: "jooble", label: "Jooble regional API", credential: (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <LabelledField label="Jooble API key" hint="regional key"><input type="password" value={SECRET_MASKS.has(cfg.jooble_api_key) ? "" : cfg.jooble_api_key} onChange={set("jooble_api_key")} className="mono field-input" placeholder={SECRET_MASKS.has(cfg.jooble_api_key) ? "Key saved" : ""} /></LabelledField>
+                      <LabelledField label="Jooble domain" hint="key must match region"><input value={cfg.jooble_api_domain} onChange={set("jooble_api_domain")} className="mono field-input" placeholder="in.jooble.org" /></LabelledField>
+                    </div>
+                  ) },
+                ] as const).map(provider => {
+                  const enabledKey = `${provider.id}_jobs_enabled` as keyof Cfg;
+                  const costKey = `${provider.id}_estimated_cost_per_request_usd` as keyof Cfg;
+                  return (
+                    <div key={provider.id} style={{ padding: 11, borderRadius: 10, border: "1px solid var(--line)", background: "var(--card)", display: "flex", flexDirection: "column", gap: 8 }}>
+                      <BigToggle
+                        active={cfg[enabledKey] === "true"}
+                        onToggle={() => onChange(enabledKey, cfg[enabledKey] === "true" ? "false" : "true")}
+                        icon="search"
+                        label={provider.label}
+                        badge={cfg[enabledKey] === "true" ? "enabled" : "off"}
+                        sub="Results pass through canonical dedupe, liveness, safety, and candidate eligibility"
+                        tone="blue"
+                      />
+                      {provider.credential}
+                      <LabelledField label="Estimated USD / request" hint="used for spend caps; set from your plan">
+                        <input type="number" min={0} step="0.0001" value={cfg[costKey]} onChange={set(costKey)} className="mono field-input" />
+                      </LabelledField>
+                    </div>
+                  );
+                })}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
+                  <LabelledField label="Daily requests" hint="hard cap per provider"><input type="number" min={1} max={500} value={cfg.paid_provider_daily_request_cap} onChange={set("paid_provider_daily_request_cap")} className="mono field-input" /></LabelledField>
+                  <LabelledField label="Monthly requests" hint="hard cap per provider"><input type="number" min={1} max={10000} value={cfg.paid_provider_monthly_request_cap} onChange={set("paid_provider_monthly_request_cap")} className="mono field-input" /></LabelledField>
+                  <LabelledField label="Daily USD" hint="0 disables spend cap"><input type="number" min={0} step="0.01" value={cfg.paid_provider_daily_spend_cap_usd} onChange={set("paid_provider_daily_spend_cap_usd")} className="mono field-input" /></LabelledField>
+                  <LabelledField label="Monthly USD" hint="0 disables spend cap"><input type="number" min={0} step="0.01" value={cfg.paid_provider_monthly_spend_cap_usd} onChange={set("paid_provider_monthly_spend_cap_usd")} className="mono field-input" /></LabelledField>
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.45 }}>
+                  Keep a provider only after at least 10 successful calls and ≥10% net-new eligible yield. Credentials are never included in scan targets, logs, or provider-status responses.
+                </div>
               </div>
               <div style={{ padding: 13, borderRadius: 13, background: "var(--paper-2)", border: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 10 }}>
                 <SectionLabel label="Free Source Stack" sub="Optional job-only ATS, GitHub, HN, and Reddit sources" />

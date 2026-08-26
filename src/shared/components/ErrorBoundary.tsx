@@ -1,4 +1,5 @@
 import React from "react";
+import { diagnosticsApi } from "../../api";
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode; label: string; api?: (path: string, opts?: RequestInit) => Promise<Response> },
@@ -12,16 +13,14 @@ class ErrorBoundary extends React.Component<
 
   componentDidCatch(e: Error, info: React.ErrorInfo) {
     console.error(`[ErrorBoundary:${this.props.label}]`, e, info);
-    this.props.api?.("/api/v1/errors", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const api = this.props.api;
+    if (api) {
+      diagnosticsApi.reportError(api, {
         error: e.message,
-        stack: e.stack,
-        component: info.componentStack,
+        componentStack: info.componentStack ?? "",
         label: this.props.label,
-      }),
-    }).catch(() => {});
+      }).catch(() => {});
+    }
   }
 
   render() {

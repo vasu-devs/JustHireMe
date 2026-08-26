@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import inspect
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.dependencies import get_profile_service
 from core.types import CandidateBody, ExperienceBody, IdentityBody, ProfileEntryBody, ProjectBody, SkillBody
-from data.graph.connection import run_graph
+from profile.service import call_on_graph as _call_service
 
 
 router = APIRouter(prefix="/api/v1", tags=["profile"])
@@ -15,6 +14,11 @@ router = APIRouter(prefix="/api/v1", tags=["profile"])
 @router.get("/profile")
 async def get_profile_endpoint(service=Depends(get_profile_service)):
     return await _call_service(service.get_profile)
+
+
+@router.get("/profile/identity")
+async def get_identity_endpoint(service=Depends(get_profile_service)):
+    return await _call_service(service.get_identity)
 
 
 @router.put("/profile/candidate")
@@ -126,17 +130,7 @@ async def add_achievement_endpoint(body: ProfileEntryBody, service=Depends(get_p
         raise HTTPException(status_code=422, detail="Achievement title is required")
     return await _call_service(service.add_achievement, body.title)
 
-
 @router.delete("/profile/achievement/{entry:path}")
 async def delete_achievement_endpoint(entry: str, service=Depends(get_profile_service)):
     await _call_service(service.delete_achievement, entry)
     return {"ok": True}
-
-
-async def _call_service(method, *args, **kwargs):
-    if inspect.iscoroutinefunction(method):
-        return await method(*args, **kwargs)
-    result = await run_graph(method, *args, **kwargs)
-    if inspect.isawaitable(result):
-        return await result
-    return result

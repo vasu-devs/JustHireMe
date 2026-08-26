@@ -14,6 +14,7 @@ type RailItem = {
 
 const ITEMS: RailItem[] = [
   { label: "Overview", hint: "Home board", icon: "overview", tone: "peach", view: "dashboard", active: view => view === "dashboard" },
+  { label: "Opportunities", hint: "Verified early-career roles", icon: "radar", tone: "mint", view: "opportunities", active: view => view === "opportunities" },
   { label: "Pipeline", hint: "Application flow", icon: "inbox", tone: "blue", view: "pipeline", badge: "total", active: view => view === "pipeline" || view.startsWith("pipeline-") },
   { label: "Scout", hint: "Agent journal", icon: "radar", tone: "mint", view: "activity", badge: "hot", active: view => view === "activity" },
   { label: "Tailor", hint: "Asset workshop", icon: "tailor", tone: "pink", view: "apply", active: view => view === "apply" },
@@ -23,11 +24,16 @@ const ITEMS: RailItem[] = [
   { label: "Context", hint: "Add evidence", icon: "context", tone: "peach", view: "ingestion", active: view => view === "ingestion" },
 ];
 
+// No desktop equivalent — the audit-report screen (leads funnel, per-source
+// confirm rate) only App's web entry opts into via `showReport`.
+const REPORT_ITEM: RailItem = { label: "Report", hint: "Audit numbers", icon: "file", tone: "lilac", view: "report", active: view => view === "report" };
+
 export function Sidebar({
   view,
   setView,
   leadCounts,
   onSettings,
+  showReport = false,
 }: {
   view: View;
   setView: (v: View) => void;
@@ -35,7 +41,9 @@ export function Sidebar({
   collapsed: boolean;
   onToggleCollapsed: () => void;
   onSettings: () => void;
+  showReport?: boolean;
 }) {
+  const items = showReport ? [...ITEMS, REPORT_ITEM] : ITEMS;
   return <aside className="product-sidebar production-product-sidebar">
     <div className="product-logo">
       <span className="product-brand-mark"><img src={brandMark} alt="JustHireMe" /></span>
@@ -43,8 +51,8 @@ export function Sidebar({
     </div>
 
     <nav aria-label="Product navigation">
-      <p><span>Workspace</span><i>7 rooms</i></p>
-      {ITEMS.map(item => {
+      <p><span>Workspace</span><i>9 rooms</i></p>
+      {items.map(item => {
         const selected = item.active(view);
         const badge = item.badge ? Number(leadCounts[item.badge] || 0) : 0;
         return <button

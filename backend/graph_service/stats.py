@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import logging
 import re
 from typing import Any
 
-from data.repository import create_repository
-from graph_service.helpers import embedding_space, safe_graph_step, sync_vectors_from_graph
+from data.graph.connection import run_graph
+from data.repository import Repository
+from graph_service.helpers import embedding_space, sync_vectors_from_graph
+
+_log = logging.getLogger(__name__)
 
 
 def _hash_id(value: str) -> str:
@@ -132,47 +137,104 @@ def filter_stale_profile_nodes(graph: dict, profile_graph: dict) -> dict:
     return {**graph, "nodes": nodes, "edges": edges}
 
 
-def graph_stats_payload(*, repair: bool = False) -> dict:
-    repo = create_repository()
+async def _safe_graph_step(fn, label: str, errors: list[str], default=None):
+    """Run one graph step on the graph executor, recording (never raising) failures."""
+    try:
+        return await run_graph(fn)
+    except Exception as exc:
+        _log.warning("suppressed exception in graph_service.stats:%s: %s", label, exc)
+        errors.append(f"{label}: {exc}")
+        if default is not None:
+            return default
+        return {"status": "error", "error": str(exc)}
+
+
+def _apply_graph_deletions(graph: dict) -> dict:
+    # Keep the Knowledge page (raw Kùzu snapshot) consistent with the deletion
+    # tombstones the Profile page applies. Failsafe: never break the endpoint.
+    try:
+        from data.graph.profile import filter_graph_deletions
+
+        return filter_graph_deletions(graph)
+    except Exception as exc:
+        _log.warning("suppressed exception in graph_service.stats:_apply_graph_deletions: %s", exc)
+        return graph
+
+
+def _apply_embedding_deletions(embedding: dict) -> dict:
+    # Same as above for the raw LanceDB embedding-space points.
+    try:
+        from data.graph.profile import filter_embedding_deletions
+
+        return filter_embedding_deletions(embedding)
+    except Exception as exc:
+        _log.warning("suppressed exception in graph_service.stats:_apply_embedding_deletions: %s", exc)
+        return embedding
+
+
+class GraphService:
+    """Business facade for the Knowledge page, so the router holds no repo."""
+
+    def __init__(self, repo: Repository) -> None:
+        self._repo = repo
+
+    async def stats(self, *, repair: bool = False) -> dict:
+        return await graph_stats_payload(self._repo, repair=repair)
+
+
+def create_graph_service(repo: Repository) -> GraphService:
+    return GraphService(repo)
+
+
+async def graph_stats_payload(repo: Repository, *, repair: bool = False) -> dict:
+    """Build the Knowledge-page payload: counts, graph snapshot and embedding space.
+
+    ``repair=True`` additionally purges deletion tombstones and re-syncs leads,
+    profile relationships and vectors — expensive, so the default read path stays
+    a pure read-only snapshot.
+    """
     errors: list[str] = []
     profile_repo = getattr(repo, "profile", None)
-    if profile_repo and hasattr(profile_repo, "purge_profile_deletion_tombstones"):
-        safe_graph_step(profile_repo.purge_profile_deletion_tombstones, "profile deletion purge", errors, default={"status": "skipped"})
-    profile_snapshot = {}
-    if profile_repo:
-        profile_snapshot = safe_graph_step(
-            lambda: profile_repo.get_profile() or profile_repo.load_profile_snapshot(),
-            "profile snapshot",
-            errors,
-            default={},
-        )
     if repair:
-        if profile_repo and hasattr(profile_repo, "materialize_profile_snapshot"):
-            safe_graph_step(
-                lambda: profile_repo.materialize_profile_snapshot(profile_snapshot),
-                "profile materialize",
-                errors,
-                default={"status": "skipped"},
-            )
-        sync = safe_graph_step(lambda: repo.graph.sync_job_leads(repo.leads.get_all_leads()), "lead sync", errors)
-        profile_sync = safe_graph_step(
+        # The hard purge (DETACH DELETE of tombstoned nodes) is expensive and
+        # only needed to physically clean the graph. Read-time filtering
+        # (_apply_graph_deletions / _apply_embedding_deletions below) already
+        # hides deleted items, so keep the common read path fast and purge only
+        # on an explicit repair (and during ingest vector sync).
+        if profile_repo and hasattr(profile_repo, "purge_profile_deletion_tombstones"):
+            await _safe_graph_step(profile_repo.purge_profile_deletion_tombstones, "profile deletion purge", errors, default={"status": "skipped"})
+        leads = await asyncio.to_thread(repo.leads.get_all_leads)
+        sync = await _safe_graph_step(lambda: repo.graph.sync_job_leads(leads), "lead sync", errors)
+        profile_sync = await _safe_graph_step(
             lambda: repo.graph.sync_profile_relationships() if hasattr(repo.graph, "sync_profile_relationships") else {"status": "skipped"},
             "profile sync",
             errors,
         )
-        vector_sync = sync_vectors_from_graph()
+        vector_sync = await run_graph(sync_vectors_from_graph)
         if vector_sync.get("status") == "error" and vector_sync.get("error"):
             errors.append(f"vector sync: {vector_sync['error']}")
     else:
         sync = {"status": "skipped", "reason": "read-only snapshot"}
         profile_sync = {"status": "skipped", "reason": "read-only snapshot"}
         vector_sync = {"status": "skipped", "synced": 0, "reason": "read-only snapshot"}
-    counts = safe_graph_step(repo.graph.graph_counts, "counts", errors, default={})
-    available = safe_graph_step(repo.graph.graph_available, "availability", errors, default=False)
-    graph = safe_graph_step(repo.graph.graph_snapshot, "snapshot", errors, default={"nodes": [], "edges": [], "available": False})
+    counts = await _safe_graph_step(repo.graph.graph_counts, "counts", errors, default={})
+    available = await _safe_graph_step(repo.graph.graph_available, "availability", errors, default=False)
+    graph = await _safe_graph_step(repo.graph.graph_snapshot, "snapshot", errors, default={"nodes": [], "edges": [], "available": False})
+    graph = _apply_graph_deletions(graph)
+    profile_snapshot = {}
+    if profile_repo:
+        profile_snapshot = await _safe_graph_step(
+            lambda: profile_repo.get_profile() or profile_repo.load_profile_snapshot(),
+            "profile snapshot",
+            errors,
+            default={},
+        )
+    # A profile snapshot is durable even when the native graph store is empty,
+    # stale, or temporarily locked. Merge it into the raw snapshot so Knowledge
+    # never becomes a blank canvas while Profile visibly contains evidence.
     profile_graph = profile_snapshot_graph(profile_snapshot)
     graph = merge_graphs(filter_stale_profile_nodes(graph, profile_graph), profile_graph)
-    embedding = embedding_space(repo)
+    embedding = _apply_embedding_deletions(embedding_space(repo))
     if embedding.get("error"):
         errors.append(f"embedding: {embedding['error']}")
     graph_error = "" if available else repo.graph.graph_error()

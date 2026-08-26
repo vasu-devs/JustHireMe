@@ -8,12 +8,12 @@ noise/section/skill keyword tables live here with the heuristics that use them.
 
 from __future__ import annotations
 
-import os
 import re
 from urllib.parse import urlparse, urlunparse
 
 from core.logging import get_logger
 from profile.portfolio_models import PageSnapshot, _PortfolioExtract
+from core import env
 from profile.portfolio_text import (
     _canonical_url,
     _dedupe_strings,
@@ -185,7 +185,7 @@ async def _extract_with_llm(url: str, pages: list[PageSnapshot], deterministic: 
         # LLM-first. Opt out with JHM_PORTFOLIO_LLM=0 for a deterministic-only run
         # (offline / unit tests). A key-required provider with no key configured
         # falls back gracefully to the deterministic draft.
-        if os.getenv("JHM_PORTFOLIO_LLM", "").strip().lower() in {"0", "false", "no", "off"}:
+        if env.portfolio_llm_disabled():
             return None
         from llm import _resolve, provider_needs_key
 

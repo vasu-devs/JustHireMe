@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Icon from "../../shared/components/Icon";
 import type { ApiFetch } from "../../types";
+import { ingestionApi, profileApi, settingsApi } from "../../api";
+import type { ProfileEntity } from "../../api";
 import { ProductionViewIntro } from "../../shared/components/ProductionViewIntro";
 
 async function responseErrorMessage(response: Response, fallback: string) {
@@ -71,7 +73,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
   // Load existing template on mount
   useEffect(() => {
     if (activeTab !== "template" || templateLoaded) return;
-    api(`/api/v1/template`)
+    settingsApi.getTemplate(api)
       .then(r => r.json())
       .then(d => { setTemplate(d.template || ""); setTemplateLoaded(true); })
       .catch(() => {});
@@ -81,11 +83,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
     setStatus("loading");
     setErrorMessage(null);
     try {
-      const r = await api(`/api/v1/template`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ template }),
-      });
+      const r = await settingsApi.saveTemplate(api, template);
       if (r.ok) {
         setStatus("done");
       } else {
@@ -110,9 +108,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
       const payload = type === "identity"
         ? Object.fromEntries(Object.entries(data).filter(([, v]) => String(v ?? "").trim()))
         : data;
-      const r = await api(`/api/v1/profile/${endpointType}`, {
-        method: type === "identity" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-      });
+      const r = await profileApi.saveEntity(api, endpointType as ProfileEntity, payload);
       if (r.ok) {
         setStatus("done");
         if (type === "skill")   setSkillForm({ n: "", cat: "technical" });
@@ -140,7 +136,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
     const fd = new FormData();
     fd.append("file", file);
     try {
-      const r = await api(`/api/v1/ingest`, { method: "POST", body: fd, timeoutMs: 0 });
+      const r = await ingestionApi.upload(api, fd);
       if (r.ok) {
         await r.json().catch(() => ({}));
         window.dispatchEvent(new CustomEvent("profile-refresh"));
@@ -164,7 +160,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
     fd.append("file", linkedinFile);
     try {
       const isPdf = linkedinFile.name.toLowerCase().endsWith(".pdf");
-      const r = await api(isPdf ? `/api/v1/ingest` : `/api/v1/ingest/linkedin`, { method: "POST", body: fd, timeoutMs: 0 });
+      const r = isPdf ? await ingestionApi.upload(api, fd) : await ingestionApi.linkedin(api, fd);
       if (r.ok) {
         const data = await r.json();
         setLinkedinResult(isPdf ? {
@@ -195,12 +191,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
     setStatus("loading");
     setGithubResult(null);
     try {
-      const r = await api(`/api/v1/ingest/github`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: githubUsername, token: githubToken, max_repos: githubMaxRepos }),
-        timeoutMs: 0,
-      });
+      const r = await ingestionApi.github(api, { username: githubUsername, token: githubToken, max_repos: githubMaxRepos });
       if (r.ok) {
         const data = await r.json();
         setGithubResult(data);
@@ -222,12 +213,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
     setStatus("loading");
     if (!autoImport) setPortfolioResult(null);
     try {
-      const r = await api(`/api/v1/ingest/portfolio`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: portfolioUrl, auto_import: autoImport }),
-        timeoutMs: 0,
-      });
+      const r = await ingestionApi.portfolio(api, { url: portfolioUrl, auto_import: autoImport });
       const data = await r.json().catch(() => ({}));
       if (r.ok) {
         setPortfolioResult(data);
@@ -257,12 +243,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
       certifications: portfolioResult.certifications || [],
     };
     try {
-      const r = await api(`/api/v1/ingest/profile`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        timeoutMs: 0,
-      });
+      const r = await ingestionApi.profile(api, payload);
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {
         setPortfolioResult({ ...portfolioResult, importError: data?.detail || `Import failed (${r.status})` });
@@ -281,7 +262,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
 
   const downloadProfileTemplate = async () => {
     try {
-      const r = await api(`/api/v1/ingest/profile/template`);
+      const r = await ingestionApi.profileTemplate(api);
       if (!r.ok) throw new Error(`Template download failed (${r.status})`);
       const data = await r.json();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -308,12 +289,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
     }
     setStatus("loading");
     try {
-      const r = await api(`/api/v1/ingest/profile`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(parsed),
-        timeoutMs: 0,
-      });
+      const r = await ingestionApi.profile(api, parsed);
       const data = await r.json().catch(() => ({}));
       if (r.ok) {
         setJsonResult(data);
@@ -336,7 +312,7 @@ export function IngestionView({ api }: { api: ApiFetch }) {
     const fd = new FormData();
     fd.append("raw", rawText);
     try {
-      const r = await api(`/api/v1/ingest`, { method: "POST", body: fd, timeoutMs: 0 });
+      const r = await ingestionApi.upload(api, fd);
       if (r.ok) {
         window.dispatchEvent(new CustomEvent("profile-refresh"));
         window.dispatchEvent(new CustomEvent("graph-refresh"));

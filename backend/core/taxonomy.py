@@ -35,7 +35,7 @@ TECH_TAXONOMY: dict[str, tuple[str, ...]] = {
     "Laravel": ("laravel",),
     "Ruby on Rails": ("ruby on rails", "rails"),
     "WordPress": ("wordpress", "wp"),
-    "REST API": ("rest api", "restful api", "restful", "rest endpoints", "api endpoint", "api endpoints"),
+    "REST API": ("rest api", "rest apis", "restful api", "restful apis", "restful", "rest endpoints", "api endpoint", "api endpoints"),
     "GraphQL": ("graphql", "graph ql"),
     "PostgreSQL": ("postgresql", "postgres", "neon postgres", "neon"),
     "MySQL": ("mysql",),

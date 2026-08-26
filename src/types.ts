@@ -8,7 +8,10 @@ export type PipelineViewId =
   | "pipeline-generated"
   | "pipeline-applied"
   | "pipeline-discarded";
-export type View = "apply" | "dashboard" | PipelineViewId | "graph" | "activity" | "profile" | "ingestion" | "learn";
+// "report" has no desktop equivalent — the audit-style Overview/Sources
+// screens (leads funnel, source confirm-rates) that only the web build shows
+// (App's `showReport` prop). See src/features/report/ReportView.tsx.
+export type View = "apply" | "dashboard" | "opportunities" | PipelineViewId | "graph" | "activity" | "profile" | "ingestion" | "learn" | "report";
 export type LeadSort = "recommended" | "newest" | "signal" | "match" | "company";
 export type SeniorityFilter = "all" | "beginner" | "fresher" | "junior" | "mid" | "senior" | "unknown";
 

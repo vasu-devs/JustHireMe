@@ -1,0 +1,189 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Vasudev Siddh and vasu-devs */
+
+/**
+ * Additive-only web styles.
+ *
+ * Every class the real app already defines (src/index.css) is reused as-is —
+ * .card, .eyebrow, .pill, .btn, .display, .tabular, .scroll, .product-enter,
+ * ProductionViewIntro's own markup. src/index.css itself is never edited: it
+ * ships to ~2,200 desktop installs. This file exists only for the handful of
+ * shapes the Report screen needs that genuinely have no desktop equivalent
+ * (a funnel bar, a per-source bar, a hand-rolled timeseries chart) — built on
+ * the same design tokens (--ink, --paper-3, --line, --accent, --ok, --warn,
+ * --bad, --font-mono) so they read as part of the same app, not a skin.
+ */
+
+/* Sidebar.tsx's brand mark <img> has no width/height (the source SVG only
+ * sets a viewBox), and .product-logo/.product-brand-mark have no sizing rule
+ * in src/index.css or production-journal.css at all -- confirmed by
+ * measuring the rendered element (1420x1420px, i.e. full-viewport-width) with
+ * this stylesheet absent. The only place this class IS sized is
+ * src/demo/*.css (demo-mode skins, a different entry point this build
+ * doesn't use), so add the same numbers here rather than leave the real
+ * Sidebar broken in a browser.
+ */
+.product-logo > .product-brand-mark {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: grid;
+  place-items: center;
+}
+.product-brand-mark img {
+  width: 32px;
+  height: 32px;
+  display: block;
+}
+
+/* Same gap, same root cause, four more elements: Topbar.tsx's action buttons
+ * (.product-command-trigger, .product-run, .product-theme-toggle,
+ * .product-notify) have no display/icon-sizing rule in either real
+ * stylesheet either. Their DemoIcon children are plain inline <svg
+ * viewBox="0 0 24 24"> with no width/height — Tailwind's preflight makes svg
+ * `display: block` by default, so with no flex container and no explicit
+ * size, each one stretches to its button's full content-box width. Sidebar's
+ * own icons don't have this problem only because .nav-stamp svg /
+ * .product-settings svg (production-journal.css) already size them
+ * explicitly; these four buttons never got the equivalent rule.
+ */
+.product-command-trigger,
+.product-run,
+.product-theme-toggle,
+.product-notify {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.product-topbar button svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+/* Same gap again, generalized: every screen has its own toolbar buttons
+ * (PipelineView's "Add role"/"Re-score", ApplyJobView's actions, ...) that
+ * pass the same bare DemoIcon with no per-button rule of their own — e.g.
+ * .view-toolbar-actions button was measured rendering its "+" icon at
+ * ~1170x1170px. Scoped to direct button/label children only, so it can't
+ * touch the legitimately full-size data-viz svgs (.graph-real-svg, .kg-svg,
+ * .report-chart-svg, ...), which live in div wrappers, not buttons, and
+ * already carry their own higher-specificity class selectors.
+ */
+.product-content button > svg,
+.product-content label > svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.report-page {
+  padding: 32px clamp(20px, 4vw, 48px) 64px;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.report-tabs {
+  display: flex;
+  gap: 8px;
+}
+.report-tabs .btn[aria-selected="true"] {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.report-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 28px;
+  color: var(--ink-2);
+}
+.report-state svg { color: var(--ink-3); }
+.report-state p { margin: 0; color: var(--ink-2); }
+
+.report-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 20px 0;
+}
+.report-stat {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.report-stat .display { font-size: 26px; }
+
+.report-panel {
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+.report-panel-sub {
+  margin: 6px 0 16px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.report-lede { margin: 0 0 16px; font-size: 14px; }
+
+.report-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--paper-3);
+  overflow: hidden;
+}
+.report-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.report-funnel { display: flex; flex-direction: column; gap: 10px; }
+.report-funnel-row { display: grid; grid-template-columns: 110px 1fr 90px; align-items: center; gap: 12px; }
+.report-funnel-label { font-size: 13px; color: var(--ink-2); }
+.report-funnel-count { font-family: var(--font-mono); font-size: 12px; text-align: right; color: var(--ink); }
+.report-drop { margin-left: 6px; color: var(--bad); }
+
+.report-sources { display: flex; flex-direction: column; gap: 10px; }
+.report-src-row { display: grid; grid-template-columns: 130px 1fr 100px; align-items: center; gap: 12px; }
+.report-src-label { font-size: 13px; color: var(--ink-2); text-transform: capitalize; }
+.report-src-nums { display: flex; justify-content: flex-end; gap: 10px; font-family: var(--font-mono); font-size: 12px; }
+.report-src-rate { color: var(--ok); }
+
+.report-chart-legend { display: flex; gap: 16px; margin-bottom: 10px; font-size: 12px; color: var(--ink-2); }
+.report-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.report-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.report-swatch--leads { background: var(--accent); }
+.report-swatch--apps { background: var(--ok); }
+.report-chart-svg { width: 100%; height: auto; }
+.report-chart-axis { stroke: var(--line); stroke-width: 1; }
+.report-chart-area { fill: color-mix(in srgb, var(--accent) 12%, transparent); stroke: none; }
+.report-chart-line { fill: none; stroke-width: 2; }
+.report-chart-line--leads { stroke: var(--accent); }
+.report-chart-line--apps { stroke: var(--ok); }
+.report-chart-axis-label { font-family: var(--font-mono); font-size: 10px; fill: var(--ink-3); }
+.report-empty-note { margin: 10px 0 0; font-size: 12px; color: var(--ink-3); }
+
+.report-activity { display: flex; flex-direction: column; }
+.report-activity-row {
+  display: grid;
+  grid-template-columns: 24px 130px 1fr;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line-2);
+  font-size: 13px;
+}
+.report-activity-row:first-child { border-top: none; }
+.report-activity-num { color: var(--ink-4); font-family: var(--font-mono); font-size: 11px; }
+.report-activity-ts { color: var(--ink-3); font-family: var(--font-mono); font-size: 11px; }
+.report-activity-who { color: var(--ink-3); }
+
+@media (max-width: 640px) {
+  .report-funnel-row, .report-src-row { grid-template-columns: 88px 1fr 70px; gap: 8px; }
+  .report-activity-row { grid-template-columns: 18px 1fr; }
+  .report-activity-ts { display: none; }
+}

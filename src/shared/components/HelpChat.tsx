@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import type { ApiFetch } from "../../types";
+import { helpApi } from "../../api";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -27,11 +28,7 @@ export function HelpChat({ api }: { api: ApiFetch }) {
     setDraft("");
     setBusy(true);
     try {
-      const r = await api("/api/v1/help/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, history: next.slice(-8) }),
-      });
+      const r = await helpApi.chat(api, question, next.slice(-8));
       if (!r.ok) throw new Error(`Help returned ${r.status}`);
       const data = await r.json();
       setMessages([...next, { role: "assistant", content: data.answer || "I could not answer that yet." }]);

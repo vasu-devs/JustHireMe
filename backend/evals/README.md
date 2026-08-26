@@ -15,11 +15,48 @@ rubric-tuning work builds on — you can now prove a change helps.
 ```bash
 cd backend
 uv run python -m evals.harness        # human-readable report (scores, per-field, failures)
-uv run python -m pytest tests/test_ranking_evals.py -q   # the CI gates
+uv run python -m pytest tests/unit/business/test_ranking_evals.py -q   # the CI gates
 ```
 
 The harness runs deterministically: the semantic criterion self-disables when the
 vector store / embedding model is absent (as in CI), so scores are stable.
+
+## Install a verified public opportunity index
+
+Stop the desktop app before installing a large audited index. First run the
+read-only preflight:
+
+```powershell
+python scripts/install_opportunity_index.py `
+  --source evals/output/full_market_index_2026-08-25.sqlite3 `
+  --inspect-only `
+  --report evals/output/installed_public_index_preflight_2026-08-25.json
+```
+
+Then provide an explicit SQLite backup path for the installed database:
+
+```powershell
+python scripts/install_opportunity_index.py `
+  --source evals/output/full_market_index_2026-08-25.sqlite3 `
+  --backup evals/output/installed_crm_before_public_index.sqlite3 `
+  --report evals/output/installed_public_index_sync.json
+```
+
+The synchronizer hashes and validates the source, rejects orphan relationships
+and stable-key conflicts, obtains a destination write lock, creates a
+SQLite-consistent backup, and atomically merges only these public tables:
+
+- `opportunity_source_records`
+- `canonical_opportunities`
+- `opportunity_observations`
+- `opportunity_identity_aliases`
+
+It never imports candidate profiles, application identities, candidate
+decisions/outcomes, leads, settings, or paid-provider usage. Existing destination
+rows win on an identical stable key, making the operation resumable and
+idempotent. Every completed synchronization is recorded in
+`opportunity_index_syncs` with the source SHA-256, counts, timestamps, inserted
+counts, and backup label.
 
 ## Layout
 
@@ -35,7 +72,7 @@ evals/
     seniority.jsonl
 ```
 
-`tests/test_ranking_evals.py` turns the report into two gates: **invariants must
+`tests/unit/business/test_ranking_evals.py` turns the report into two gates: **invariants must
 hold** and **aggregate accuracy >= floor**.
 
 ## Add a case

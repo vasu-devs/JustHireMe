@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { SectionLabel } from "./shared";
-import { settingsApi } from "../../../api/settings";
+import { settingsApi, templatesApi } from "../../../api";
 import type { ApiFetch } from "../../../types";
 
 /** Visual looks for the generated resume PDF (backend STYLE_PRESETS, #90). */
@@ -56,7 +56,7 @@ export function ResumeTemplatesPanel({ api }: { api: ApiFetch }) {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api("/api/v1/templates");
+      const res = await templatesApi.list(api);
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.detail || "Could not load templates");
       setTemplates(body.templates || []);
@@ -77,7 +77,7 @@ export function ResumeTemplatesPanel({ api }: { api: ApiFetch }) {
       const form = new FormData();
       form.append("file", file);
       form.append("make_default", templates.length === 0 ? "true" : "false");
-      const res = await api("/api/v1/templates/upload", { method: "POST", body: form, timeoutMs: 60000 });
+      const res = await templatesApi.upload(api, form, { timeoutMs: 60000 });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.detail || `Upload failed (${res.status})`);
       await load();
@@ -106,8 +106,8 @@ export function ResumeTemplatesPanel({ api }: { api: ApiFetch }) {
     }
   };
 
-  const setDefault = (id: string) => act(id, () => api(`/api/v1/templates/${id}/default`, { method: "POST" }));
-  const remove = (id: string) => act(id, () => api(`/api/v1/templates/${id}`, { method: "DELETE" }));
+  const setDefault = (id: string) => act(id, () => templatesApi.setDefault(api, id));
+  const remove = (id: string) => act(id, () => templatesApi.delete(api, id));
 
   return (
     <div>

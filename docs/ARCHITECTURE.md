@@ -2,6 +2,13 @@
 
 JustHireMe is a local-first desktop app with a Tauri shell, React frontend, and Python backend sidecar.
 
+> This page is the short overview. For the full design set see
+> **[HLD](HLD.md)** (context, components, failure modes) ·
+> **[LLD](LLD.md)** (module design, schemas, hazards) ·
+> **[SRS](SRS.md)** (requirements traced to tests) ·
+> **[UML](UML.md)** (diagrams) ·
+> **[LAYERS](LAYERS.md)** (the enforced dependency rules).
+
 ## High-Level Flow
 
 ```text

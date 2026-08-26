@@ -90,8 +90,12 @@ graphify-out/
 .codex-temp-vector-runtime/
 .codex-temp-runtime-pack/
 .codex-video-analysis/
+.codex-coverage*/
+.codex-mypy-cache*/
+.smoke-web-ui/
 release-assets/
 release-assets-*/
+dist-web/
 test_resume_output.pdf
 *.tmp
 *.bak
@@ -112,6 +116,7 @@ backend/tests/graph.kuzu
 
 # Local pytest basetemp fallback (used when %TEMP%/pytest-of-<user> is broken)
 backend/.pytest-basetemp/
+backend/tests/vector/
 .claude/settings.local.json
 .claude/skills-guide.md
 .codegraph/
@@ -129,3 +134,41 @@ AgentRosterJobScraper/
 
 .vercel
 .env*
+
+# Local working material — never committed
+private/
+
+# watch_jobs.py output: per-role application drafts (human-review-only, personal)
+# and the watcher's own log file. Never shipped/committed.
+backend/scripts/drafts/
+backend/logs/
+
+# autofill_application.py candidate config: real name/email/phone/comp bands.
+# Never shipped/committed -- edit the local copy directly.
+backend/scripts/candidate_answers.json
+backend/scripts/candidate_profile.json
+backend/scripts/verify_shortlist_cache.json
+backend/scripts/dashboard.html
+
+# autofill_application.py persistent browser profile: cookies/session tokens
+# for Gmail/LinkedIn/Greenhouse/Ashby logins. Never shipped/committed.
+backend/.playwright-profile/
+
+# Local candidate material and generated search reports (contain personal data)
+/ASHUTOSH_*
+/Bhire/
+/backend/APPLY_NOW.md
+/backend/CLOSED_LOOP.md
+/backend/ashutosh_resume.md
+/backend/profile_backup*.json
+/backend/shortlist_verified.md
+/backend/scripts/set_profile_ashutosh.py
+/backend/scripts/build_joblist.py
+/backend/scripts/show_matches.py
+
+# Local demos and social-media export variants
+/JustHireMe_Twitter_*.png
+/justhireme-web-demo.webm
+
+# Large reproducible evaluation output; source fixtures stay versioned
+/backend/evals/output/

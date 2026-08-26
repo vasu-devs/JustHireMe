@@ -8,8 +8,19 @@ import html
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from discovery.normalizer import hn_company_role, is_recent, looks_like_hn_job_post, strip_html_text
+from discovery.normalizer import hn_company_role, is_recent, looks_like_hn_job_post, parse_date, strip_html_text
 from discovery.sources.common import json_get, retry_after_seconds, text_lead
+
+
+HIRING_THREAD_WINDOW_DAYS = 35
+
+
+def is_current_hiring_thread_comment(value: str) -> bool:
+    """HN's hiring thread is monthly, so its rows outlive the global 7-day feed cutoff."""
+    parsed = parse_date(value)
+    if parsed is None:
+        return False
+    return parsed >= datetime.now(timezone.utc) - timedelta(days=HIRING_THREAD_WINDOW_DAYS)
 
 
 def is_hn_hiring_story(story: dict) -> bool:
@@ -65,7 +76,7 @@ async def scrape_hn_hiring() -> list:
     params = {
         "query": "Ask HN: Who is hiring?",
         "tags": "story,ask_hn",
-        "numericFilters": "created_at_i>" + str(int((datetime.now(timezone.utc) - timedelta(days=35)).timestamp())),
+        "numericFilters": "created_at_i>" + str(int((datetime.now(timezone.utc) - timedelta(days=HIRING_THREAD_WINDOW_DAYS)).timestamp())),
     }
     async with httpx.AsyncClient(timeout=30) as cx:
         r = await cx.get(search_url, params=params)
@@ -99,7 +110,7 @@ async def scrape_hn_hiring() -> list:
         if not text or len(text) < 50 or not looks_like_hn_job_post(text):
             continue
         created = child.get("created_at", "")
-        if not is_recent(created):
+        if not is_current_hiring_thread_comment(created):
             continue
         author = child.get("author", "")
         hn_url = f"https://news.ycombinator.com/item?id={child.get('id', '')}"

@@ -73,7 +73,12 @@ def _render(md_text: str, filename: str, kind: str = "resume") -> str:
     return _pdf.render(md_text, filename, kind=kind)
 
 
-def run_package(lead: dict, template: str = "", repo: Repository | None = None) -> dict:
+def run_package(
+    lead: dict,
+    template: str = "",
+    repo: Repository | None = None,
+    profile_override: dict | None = None,
+) -> dict:
     blocked_reason = lead_generation_blocker(lead)
     if blocked_reason:
         raise ValueError(blocked_reason)
@@ -84,7 +89,7 @@ def run_package(lead: dict, template: str = "", repo: Repository | None = None) 
 
     assert_llm_configured("generator")
     repo = repo or create_repository()
-    profile = get_profile(repo)
+    profile = profile_override if profile_override is not None else get_profile(repo)
     proof = _build_proof(profile)
     lead_with_ctx = {**lead, "candidate_name": profile.get("n", "")}
 

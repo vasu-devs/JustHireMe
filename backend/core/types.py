@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, TypedDict
+from datetime import datetime
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -21,6 +22,12 @@ LeadStatus = Literal[
     "proposal_sent",
     "awarded",
     "completed",
+    # scripts/generate_drafts.py: a human-review-only resume/cover-letter draft
+    # has been written to disk for this lead (see backend/scripts/drafts/).
+    # Deliberately distinct from "approved" so it is never picked up by the
+    # ghost-mode auto-apply path, which never queries by status at all but
+    # this keeps the two concepts unambiguous in the data itself.
+    "draft_ready",
 ]
 
 
@@ -173,6 +180,55 @@ class CandidateBody(StrictBody):
     s: str = Field(default="", max_length=4000)
 
 
+class OpportunityCandidateBody(StrictBody):
+    consent_confirmed_at: datetime | None = None
+    home_country: str = Field(default="IN", min_length=2, max_length=2)
+    graduation_year: int = Field(default=2027, ge=2020, le=2040)
+    currently_enrolled: bool = True
+    current_degree_level: Literal["unknown", "bachelors", "masters", "doctorate"] = "unknown"
+    accepted_india_cities: list[str] = Field(default_factory=list, max_length=30)
+    technical_skills: list[str] = Field(default_factory=list, max_length=100)
+    project_keywords: list[str] = Field(default_factory=list, max_length=100)
+    spoken_languages: list[str] = Field(default_factory=list, max_length=30)
+    preferred_technical_tracks: list[Literal[
+        "software", "backend", "frontend", "fullstack", "ai_ml", "data",
+        "cloud_devops", "security", "mobile", "qa_automation", "embedded_systems",
+    ]] = Field(default_factory=list, max_length=12)
+    accepted_opportunity_types: list[Literal[
+        "internship", "new_grad", "entry_level_full_time", "stretch_full_time",
+    ]] = Field(
+        default_factory=lambda: ["internship", "new_grad", "entry_level_full_time", "stretch_full_time"],
+        min_length=1,
+        max_length=4,
+    )
+    allow_india_onsite: bool = True
+    allow_india_hybrid: bool = True
+    allow_india_remote: bool = True
+    allow_worldwide_remote: bool = True
+    allow_unpaid: bool = False
+    allow_bond: bool = False
+    professional_experience_years: float = Field(default=0.0, ge=0.0, le=50.0)
+    minimum_monthly_compensation_inr: int = Field(default=0, ge=0, le=10_000_000)
+    maximum_internship_months: int = Field(default=12, ge=1, le=36)
+
+
+class OpportunityScanBody(StrictBody):
+    candidate_id: str = Field(min_length=1, max_length=240, pattern=r"^[a-zA-Z0-9_.:\-]+$")
+    target_limit: int = Field(default=500, ge=1, le=500)
+    max_concurrency: int = Field(default=6, ge=1, le=12)
+
+
+class OpportunityOutcomeBody(StrictBody):
+    event_type: Literal[
+        "application_started", "application_submitted", "outreach_sent",
+        "recruiter_reply", "screening", "technical_assessment", "interview",
+        "rejected", "offer", "withdrawn", "skipped",
+    ]
+    occurred_at: str = Field(default="", max_length=80)
+    note: str = Field(default="", max_length=1000)
+    idempotency_key: str = Field(default="", max_length=160, pattern=r"^[a-zA-Z0-9_.:\-]*$")
+
+
 class IdentityBody(StrictBody):
     email: str = Field(default="", max_length=200)
     phone: str = Field(default="", max_length=80)
@@ -180,6 +236,15 @@ class IdentityBody(StrictBody):
     github_url: str = Field(default="", max_length=500)
     website_url: str = Field(default="", max_length=500)
     city: str = Field(default="", max_length=200)
+
+
+class OpportunityProfileSnapshotBody(StrictBody):
+    expected_payload_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$")
+    identity: IdentityBody
+
+
+class OpportunityCandidateProfileImportBody(OpportunityProfileSnapshotBody):
+    profile: dict[str, Any]
 
 
 class ProfileEntryBody(StrictBody):

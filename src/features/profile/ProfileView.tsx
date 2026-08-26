@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DemoIcon } from "../../demo/DemoIcon";
 import type { ApiFetch, GraphStats, View } from "../../types";
-import { applyProfileDeleteMarkers, entryTitle, mergeProfileWithGraphFallback, normalizeProfileResponse, profileDeleteKey, profileDeletePath, profileHasDeleteMarker, removeProfileItem } from "./profileUtils";
+import { profileApi } from "../../api";
+import type { ProfileEntity } from "../../api";
+import { applyProfileDeleteMarkers, entryTitle, mergeProfileWithGraphFallback, normalizeProfileResponse, profileDeleteKey, profileHasDeleteMarker, removeProfileItem } from "./profileUtils";
 import type { ProfileDeleteMarker } from "./profileUtils";
 
 type ProfileData = ReturnType<typeof normalizeProfileResponse>;
@@ -39,7 +41,7 @@ export function createProfileItemDelete({ api, isBusy, setBusy, reload, setError
     const key = profileDeleteKey(item);
     setBusy(`${type}:${key}`);
     try {
-      const response = await api(profileDeletePath(type, key), { method: "DELETE" });
+      const response = await profileApi.deleteEntity(api, type as ProfileEntity, key);
       if (!response.ok) throw new Error(`Delete failed (${response.status})`);
       onDeleted?.(type, key);
       await reload();
@@ -67,7 +69,7 @@ export function ProfileView({ api, setView, stats }: { api: ApiFetch; setView: (
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      const response = await api("/api/v1/profile");
+      const response = await profileApi.get(api);
       if (!response.ok) throw new Error(`Profile load failed (${response.status})`);
       const body = await response.json();
       // Drop markers the stats prop no longer resurrects; apply the rest.

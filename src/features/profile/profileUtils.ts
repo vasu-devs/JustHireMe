@@ -306,10 +306,6 @@ export function mergeProfileWithGraphFallback(profile: unknown, stats: GraphStat
   });
 }
 
-export function profileDeletePath(type: string, idOrTitle: string) {
-  return `/api/v1/profile/${type}/${encodeURIComponent(idOrTitle)}`;
-}
-
 const cleanDeleteToken = (value: unknown): string => {
   const raw = String(value || "").trim();
   if (!raw) return "";

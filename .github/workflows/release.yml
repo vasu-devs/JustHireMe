@@ -1012,7 +1012,9 @@ jobs:
             echo
             echo "### What's inside"
             echo "- Local-first job intelligence workbench"
-            echo "- Source adapters, quality gates, and transparent ranking"
+            echo "- Internship and early-career opportunity workspace for CSE, software, data, and AI candidates"
+            echo "- Broad first-party source adapters, canonical deduplication, liveness checks, and India/remote applicability gates"
+            echo "- Transparent apply, stretch, review, and skip decisions with source provenance and rejection reasons"
             echo "- Built-in CRM for your job pipeline"
             echo "- Profile-aware graph and vector matching"
             echo "- Resume, cover letter, and outreach draft generation"

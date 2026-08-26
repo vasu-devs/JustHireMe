@@ -25,6 +25,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from core import env as jhm_env
 
 # Codex's own default model (chosen by the user's `codex` config / ChatGPT plan)
 # is the only reliable choice for subscription auth. JustHireMe's hardcoded
@@ -41,7 +42,7 @@ _DEFAULT_TIMEOUT = 120
 # global ~/.codex setting. At "xhigh" a 140-job feed takes ~169s and blows the
 # 120s timeout (and burns ~16K tokens on a 4KB input); "low" keeps it fast enough
 # and still extracts/scores correctly. Override via env if ever needed.
-_CODEX_REASONING = (os.environ.get("JHM_CODEX_REASONING", "").strip() or "low")
+_CODEX_REASONING = jhm_env.codex_reasoning()
 
 # substrings that classify a failure (checked case-insensitively, login first)
 _LOGIN_HINTS = ("not logged in", "please run /login", "/login", "invalid api key",
@@ -92,7 +93,7 @@ def _exe(provider: str) -> str:
 
 
 def _child_env() -> dict:
-    env = dict(os.environ)
+    env = jhm_env.snapshot()
     for k in _SCRUB:
         env.pop(k, None)
     return env
@@ -477,7 +478,7 @@ def _gemini_logged_in() -> bool:
         os.path.exists(os.path.join(gemini_dir, "oauth_creds.json"))
         or os.path.exists(os.path.join(gemini_dir, "google_accounts.json"))
         or os.path.isdir(gemini_dir)
-        or bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+        or jhm_env.any_set(jhm_env.GEMINI_API_KEY, jhm_env.GOOGLE_API_KEY)
     )
 
 
@@ -495,7 +496,7 @@ def _antigravity_logged_in() -> bool:
 def _copilot_logged_in() -> bool:
     """Copilot CLI authenticates with the user's GitHub Copilot subscription via a
     GitHub token (env or the gh CLI's stored login)."""
-    if any(os.environ.get(v) for v in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN")):
+    if jhm_env.any_set(*jhm_env.COPILOT_TOKEN_NAMES):
         return True
     home = os.path.expanduser("~")
     if os.path.exists(os.path.join(home, ".config", "gh", "hosts.yml")) or os.path.isdir(os.path.join(home, ".copilot")):
@@ -527,7 +528,7 @@ def status(provider: str) -> dict:
             info.update(rich)
         else:
             home = os.path.expanduser("~")
-            info["logged_in"] = bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")) \
+            info["logged_in"] = jhm_env.is_set(jhm_env.CLAUDE_CODE_OAUTH_TOKEN) \
                 or os.path.exists(os.path.join(home, ".claude", ".credentials.json")) \
                 or os.path.isdir(os.path.join(home, ".claude"))
     elif provider == "gemini_cli":

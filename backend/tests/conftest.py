@@ -6,9 +6,15 @@ from pathlib import Path
 import pytest
 
 
-BACKEND_ROOT = Path(__file__).resolve().parents[1]
+TESTS_ROOT = Path(__file__).resolve().parent
+BACKEND_ROOT = TESTS_ROOT.parent
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
+# Tests live in unit/<layer>/ and regression/ subdirectories; keep tests/ itself
+# importable so any of them can `from paths import ...` / `from regression_support
+# import ...` regardless of how deep they sit.
+if str(TESTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(TESTS_ROOT))
 
 # HARD app-data isolation for the whole test process, set BEFORE any backend
 # module can resolve app_data_dir(). Without this, module-level telemetry
@@ -18,6 +24,12 @@ if str(BACKEND_ROOT) not in sys.path:
 # setdefault so an explicit externally-provided dir (or a subprocess real-DB
 # test that passes its own db_path) still behaves as intended.
 os.environ.setdefault("JHM_APP_DATA_DIR", tempfile.mkdtemp(prefix="jhm-test-appdata-"))
+
+# Cache the real SQLite connection layer before legacy graph tests temporarily
+# shadow sys.modules["sqlite3"] during collection. Without this, whichever test
+# file happens to import data.sqlite.connection next can receive the fake and
+# make unrelated filesystem-backed tests order-dependent.
+from data.sqlite import connection as _stable_sqlite_connection  # noqa: E402,F401
 
 
 collect_ignore_glob = ["tmp*"]

@@ -32,6 +32,18 @@ class ProfileService:
     def update_identity(self, identity: dict) -> dict:
         return graph_profile.update_identity(identity)
 
+    def get_identity(self) -> dict:
+        """Read counterpart of update_identity.
+
+        IDENTITY_KEYS is what update_identity persists; full_name and
+        current_company live only in settings (written by the settings screen)
+        but belong to the same contact block the UI renders.
+        """
+        from data.graph.profile_base import IDENTITY_KEYS
+
+        cfg = settings.get_settings()
+        return {key: cfg.get(key, "") for key in ("full_name", "current_company", *IDENTITY_KEYS)}
+
     def add_skill(self, name: str, category: str = "general") -> dict:
         return graph_profile.add_skill(name, category)
 
@@ -90,6 +102,13 @@ class ProfileService:
             await run_graph(graph_profile.save_profile_snapshot, snapshot)
         await self._run_post_ingest_sync()
         return result
+
+    async def parse_resume(self, raw: str = "", document_path: str | None = None) -> dict:
+        """Parse candidate evidence without replacing the shared Profile workspace."""
+        from profile.ingestor import parse_only
+
+        result = await asyncio.to_thread(parse_only, raw, document_path)
+        return result.model_dump(mode="json") if hasattr(result, "model_dump") else dict(result)
 
     async def ingest_linkedin(self, zip_bytes: bytes) -> dict:
         from profile.linkedin_parser import parse_linkedin_export
@@ -558,3 +577,20 @@ def _dedupe_text_items(items: list[Any]) -> list[str]:
             seen.add(key)
             out.append(text)
     return out
+
+
+async def call_on_graph(method, *args, **kwargs):
+    """Await a ProfileService method, running sync ones on the graph executor.
+
+    Kùzu tolerates no concurrent writers, so every synchronous profile mutation
+    is funnelled onto the single graph executor. Lives here rather than in the
+    router so the API layer never imports the data layer.
+    """
+    import inspect
+
+    if inspect.iscoroutinefunction(method):
+        return await method(*args, **kwargs)
+    result = await run_graph(method, *args, **kwargs)
+    if inspect.isawaitable(result):
+        return await result
+    return result

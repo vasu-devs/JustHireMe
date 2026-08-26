@@ -2,7 +2,6 @@ from __future__ import annotations
 import logging
 
 import json
-import os
 import re
 import time
 import traceback
@@ -11,6 +10,7 @@ from collections.abc import Mapping
 from importlib import import_module
 
 from .paths import app_data_path
+from . import env
 
 SENSITIVE_KEY_RE = re.compile(
     r"(authorization|bearer|cookie|password|secret|token|api[_-]?key|private[_-]?key|resume|cover[_-]?letter|profile|email|phone)",
@@ -28,12 +28,12 @@ MAX_TEXT_LEN = 2000
 
 
 def telemetry_enabled() -> bool:
-    return os.environ.get("JHM_LOCAL_ERROR_TELEMETRY", "").strip().lower() in {"1", "true", "yes", "on"}
+    return env.local_error_telemetry_enabled()
 
 
 def errors_path() -> Path:
     base = app_data_path()
-    return Path(os.environ.get("JHM_ERRORS_JSONL", base / "errors.jsonl"))
+    return Path(env.text(env.ERRORS_JSONL) or base / "errors.jsonl")
 
 
 def redact_text(value: object, *, max_len: int = MAX_TEXT_LEN) -> str:

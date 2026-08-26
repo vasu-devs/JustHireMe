@@ -19,7 +19,10 @@ company-direct structured postings on top, strongest for tech.
 
 from __future__ import annotations
 
+import json
 import re
+
+from pathlib import Path
 
 # --- Field classification -----------------------------------------------------
 
@@ -113,21 +116,44 @@ def detect_region(profile: dict) -> str:
 # aggregator for breadth and add a few cross-industry names here.
 
 _TECH_SEEDS: tuple[tuple[str, str], ...] = (
+    # Greenhouse — the widest keyless board. Slugs verified against
+    # boards-api.greenhouse.io/v1/boards/<slug>/jobs.
     ("greenhouse", "stripe"), ("greenhouse", "airbnb"), ("greenhouse", "dropbox"),
     ("greenhouse", "coinbase"), ("greenhouse", "databricks"), ("greenhouse", "gitlab"),
     ("greenhouse", "cloudflare"), ("greenhouse", "robinhood"), ("greenhouse", "doordash"),
     ("greenhouse", "instacart"), ("greenhouse", "pinterest"), ("greenhouse", "reddit"),
     ("greenhouse", "discord"), ("greenhouse", "twitch"), ("greenhouse", "roblox"),
     ("greenhouse", "samsara"), ("greenhouse", "affirm"), ("greenhouse", "asana"),
+    ("greenhouse", "figma"), ("greenhouse", "elastic"), ("greenhouse", "hashicorp"),
+    ("greenhouse", "datadog"), ("greenhouse", "mongodb"), ("greenhouse", "twilio"),
+    ("greenhouse", "brex"), ("greenhouse", "flexport"), ("greenhouse", "benchling"),
+    ("greenhouse", "airtable"), ("greenhouse", "sentry"), ("greenhouse", "postman"),
+    ("greenhouse", "grafanalabs"), ("greenhouse", "sourcegraph"), ("greenhouse", "chime"),
+    ("greenhouse", "duolingo"), ("greenhouse", "lyft"), ("greenhouse", "wise"),
+    ("greenhouse", "monzo"), ("greenhouse", "deliveroo"), ("greenhouse", "starlingbank"),
+    # Ashby — heavily used by newer/AI companies.
     ("ashby", "ramp"), ("ashby", "vercel"), ("ashby", "linear"), ("ashby", "openai"),
     ("ashby", "notion"), ("ashby", "mercury"), ("ashby", "replicate"),
-    ("lever", "netflix"), ("lever", "plaid"),
+    ("ashby", "anthropic"), ("ashby", "perplexityai"), ("ashby", "huggingface"),
+    ("ashby", "cursor"), ("ashby", "modal"), ("ashby", "supabase"), ("ashby", "railway"),
+    ("ashby", "deel"), ("ashby", "loom"), ("ashby", "clerk"),
+    # Probed live before adding — a guessed slug just 404s and wastes a scan slot.
+    ("ashby", "elevenlabs"), ("ashby", "decagon"), ("ashby", "abridge"),
+    # Lever
+    ("lever", "plaid"), ("lever", "attentive"), ("lever", "gopuff"),
+    ("lever", "shieldai"), ("lever", "voleon"), ("lever", "wealthfront"),
+    # Workable / SmartRecruiters / Recruitee / Personio broaden geography.
+    ("workable", "wearedevelopers"), ("smartrecruiters", "Visa"),
+    ("smartrecruiters", "Bosch"), ("personio", "personio"),
 )
 
 # Cross-industry / non-tech names on keyless ATSs (kept small; aggregator carries breadth).
 _GENERAL_SEEDS: tuple[tuple[str, str], ...] = (
     ("greenhouse", "wayfair"), ("greenhouse", "warbyparker"), ("greenhouse", "peloton"),
-    ("greenhouse", "sofi"), ("greenhouse", "betterment"),
+    ("greenhouse", "sofi"), ("greenhouse", "betterment"), ("greenhouse", "wework"),
+    ("greenhouse", "cargurus"), ("greenhouse", "zillow"), ("greenhouse", "eventbrite"),
+    ("smartrecruiters", "Visa"), ("smartrecruiters", "Bosch"),
+    ("smartrecruiters", "McDonalds"), ("smartrecruiters", "Ubisoft"),
 )
 
 # field -> the seed pools to draw from (in priority order).
@@ -139,10 +165,89 @@ _FIELD_SEEDS: dict[str, tuple[tuple[tuple[str, str], ...], ...]] = {
     "finance": (_GENERAL_SEEDS, _TECH_SEEDS),
     "marketing": (_GENERAL_SEEDS, _TECH_SEEDS),
     "sales": (_GENERAL_SEEDS, _TECH_SEEDS),
+    # Previously these returned [] and the ATS backbone never fired for them.
+    # Large employers on keyless ATSs hire across every function, so a general
+    # pool beats no pool; the aggregator still carries field-specific breadth.
+    "general": (_GENERAL_SEEDS,),
 }
 
 
-def ats_seed_targets(profile: dict, limit: int = 8) -> list[str]:
+def _load_workday_boards() -> list[dict]:
+    """Live Workday boards discovered by ``scripts/probe_workday.py``.
+
+    Kept as data rather than a literal because tenant/host/site slugs are not
+    guessable and do drift — re-running the probe refreshes this file without a
+    code change.
+    """
+    path = Path(__file__).resolve().parent / "workday_seeds.json"
+    try:
+        boards = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [b for b in boards if isinstance(b, dict) and b.get("tenant") and b.get("site")]
+
+
+def workday_seed_targets(profile: dict, limit: int = 12) -> list[str]:
+    """``ats:workday:...`` targets, one per live enterprise board.
+
+    Workday hosts the employers the Greenhouse/Ashby startup pool structurally
+    misses — insurers, banks, IT consultancies, healthcare and retail IT — which
+    is where .NET, SQL Server and enterprise-cloud roles are actually posted.
+
+    Unlike every other seed source these are *search* targets: Workday's list
+    endpoint takes a keyword, so the candidate's own headline drives the query
+    instead of pulling whole boards and discarding most of them. The keyword
+    match is fuzzy, so scoring still does the real filtering.
+    """
+    # The bundled Workday inventory is a technology/enterprise-employer set,
+    # not a field-neutral hospital or education inventory. Sending a nurse or
+    # teacher profile through it creates a large irrelevant ATS flood.
+    if detect_field(profile) not in _FIELD_SEEDS:
+        return []
+    query = _search_query(profile)
+    targets = []
+    for board in _load_workday_boards()[:max(1, limit)]:
+        targets.append(
+            f"ats:workday:{board['tenant']}:{board.get('host', 'wd5')}:{board['site']}:{query}"
+        )
+    return targets
+
+
+def _search_query(profile: dict) -> str:
+    """A short keyword string for search-first boards.
+
+    Prefers the candidate's stated title, falls back to their top skills, and
+    finally to the field bucket — always non-empty, since an empty Workday
+    search returns the whole board.
+    """
+    # "desired_position" is the key ingest_resume.py / candidate_profile.json
+    # actually populate; the others are legacy/alternate spellings kept for
+    # profiles that use them. Checked BEFORE skills so a profile with a title
+    # never falls through to the (dict-shaped) skills list below.
+    for key in ("desired_position", "target_title", "title", "headline", "current_title"):
+        value = str(profile.get(key) or "").strip()
+        if value:
+            return value[:60]
+
+    skills = profile.get("skills") or profile.get("top_skills") or []
+    if isinstance(skills, str):
+        skills = [s.strip() for s in skills.split(",")]
+    # Each skill is normally {"n": "...", "cat": "..."} (see candidate_profile.json)
+    # -- str()-ing the dict itself produced a literal "{'n': '...', 'cat': '...'}"
+    # search string, which is what actually got POSTed as Workday's searchText.
+    names = [
+        str(s.get("n") or s.get("name") or "").strip() if isinstance(s, dict) else str(s).strip()
+        for s in skills
+    ]
+    picked = [name for name in names if name][:3]
+    if picked:
+        return " ".join(picked)[:60]
+
+    field = detect_field(profile)
+    return "engineer" if field in ("tech", "data") else field
+
+
+def ats_seed_targets(profile: dict, limit: int = 40) -> list[str]:
     """``ats:<provider>:<slug>`` targets for the candidate's detected field/region.
 
     Returns [] for fields where curated ATS slugs would be unreliable (healthcare,

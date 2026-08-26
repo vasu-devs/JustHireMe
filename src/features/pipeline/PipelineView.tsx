@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 const LANE_PAGE_SIZE = 8;
 import { DemoIcon } from "../../demo/DemoIcon";
 import type { ApiFetch, Lead, PipelineTab, View } from "../../types";
+import { leadsApi } from "../../api";
 import { leadDisplayHeading, leadSearchText, leadSignal } from "../../shared/lib/leadUtils";
 
 type BoardLane = "Discovered" | "Tailoring" | "Ready" | "Applied" | "Discarded";
@@ -87,11 +88,7 @@ export function PipelineView({
     setMoving(lead.job_id);
     setActionError(null);
     try {
-      const response = await api(`/api/v1/leads/${lead.job_id}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
-      });
+      const response = await leadsApi.updateStatus(api, lead.job_id, nextStatus);
       if (!response.ok) throw new Error(`Move failed (${response.status})`);
       window.dispatchEvent(new CustomEvent("lead-updated", { detail: { ...lead, status: nextStatus } }));
       window.dispatchEvent(new CustomEvent("leads-refresh"));

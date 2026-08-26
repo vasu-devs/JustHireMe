@@ -209,3 +209,24 @@ def ingest(raw: str = "", pdf: str | None = None) -> C:
     except Exception as exc:
         _log.warning("vector write skipped: %s", exc)
     return p
+
+
+def parse_only(raw: str = "", document_path: str | None = None) -> C:
+    """Parse one resume locally without graph writes, settings writes, or LLM calls."""
+    document_text = _document(document_path) if document_path else ""
+    txt = (raw + " " + document_text).strip() if document_text else raw
+    if not txt.strip():
+        raise ValueError(
+            "Could not read any text from the uploaded document. If it is a scanned "
+            "or image-only PDF, upload a text-based PDF, DOCX, TXT, or Markdown resume."
+        )
+    if len(txt) > MAX_INGEST_CHARS:
+        _log.warning("candidate resume exceeds %d characters; truncating", MAX_INGEST_CHARS)
+        txt = txt[:MAX_INGEST_CHARS]
+    # Candidate pilot consent promises that this evidence stays local. Do not
+    # reuse ``run`` here: it may call a configured cloud LLM. The deterministic
+    # parser is intentionally the only parser on this privacy-sensitive path.
+    parsed = _parse_local(txt)
+    from profile.normalization import normalize_candidate_model
+
+    return normalize_candidate_model(parsed)

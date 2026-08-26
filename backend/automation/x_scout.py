@@ -1,7 +1,6 @@
 import logging
 import asyncio
 import hashlib
-import os
 import re
 import threading
 from contextvars import ContextVar
@@ -19,6 +18,7 @@ from discovery.lead_intel import (
 )
 from data.repository import create_repository
 from automation.lead_store import save_lead_compat as save_lead
+from core import env
 
 _repo = create_repository()
 rank_lead_by_feedback = _repo.feedback.rank_lead_by_feedback
@@ -434,7 +434,7 @@ def run(
         "max_requests": max_requests,
     }
 
-    token = bearer_token or os.environ.get("X_BEARER_TOKEN") or os.environ.get("TWITTER_BEARER_TOKEN")
+    token = bearer_token or env.x_bearer_token()
     if not token:
         errors.append("X bearer token is not configured")
         _publish_state(errors, usage)

@@ -73,6 +73,14 @@ hidden = [
     + collect_submodules("automation")
     + collect_submodules("help")
     + collect_submodules("learning")
+    + collect_submodules("leads")
+    + collect_submodules("reporting")
+    + collect_submodules("templates")
+    + collect_submodules("settings")
+    + collect_submodules("system")
+    + collect_submodules("ports")
+    + collect_submodules("catalog")
+    + collect_submodules("opportunities")
     + collect_submodules("llm")
 )
 
@@ -105,6 +113,9 @@ if include_vector:
 
 datas = (
     [(str(backend_root / "data" / "sqlite" / "migrations"), "data/sqlite/migrations")]
+    + [(str(backend_root / "core" / name), "core") for name in (
+        "ai_boards.json", "new_boards.json", "workday_seeds.json",
+    )]
     # C3: ship the profile import template so the /ingest/profile/template
     # endpoint can read it in a packaged build.
     + [(str(backend_root / "data" / "profile_schema_example.json"), "data")]

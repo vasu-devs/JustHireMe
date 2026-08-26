@@ -1,9 +1,9 @@
 import json
-import os
 import re
 import urllib.parse
 import urllib.request
 
+from core import env
 from core.logging import get_logger
 
 _log = get_logger(__name__)
@@ -57,9 +57,12 @@ def _domain_from_url(url: str) -> str:
     if not host or host in ATS_HOSTS:
         return ""
     parts = [p for p in host.split(".") if p]
-    if len(parts) >= 2:
-        return ".".join(parts[-2:])
-    return host
+    # A company domain needs at least two labels and no whitespace. Without this,
+    # free text ("not a url") parsed into a netloc and was sent to Hunter.io as a
+    # domain — a wasted paid API call that can only ever return nothing.
+    if len(parts) < 2 or any(c.isspace() for c in host):
+        return ""
+    return ".".join(parts[-2:])
 
 
 def _domain_from_meta(lead: dict) -> str:
@@ -123,11 +126,15 @@ def _hunter_contacts(domain: str, key: str) -> list[dict]:
 
 
 def _extract_manager_name(text: str) -> str:
+    # The label is matched case-insensitively — job posts write "Hiring Manager:"
+    # far more often than lowercase, and the all-lowercase patterns meant this
+    # never fired on a real posting. The captured NAME stays case-sensitive on
+    # purpose: `[A-Z][a-z]+` is what distinguishes a name from ordinary prose.
     patterns = [
-        r"hiring manager\s*[:\-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
-        r"recruiter\s*[:\-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
-        r"contact\s*[:\-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
-        r"report(?:s|ing)?\s+to\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
+        r"(?i:hiring manager)\s*[:\-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
+        r"(?i:recruiter)\s*[:\-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
+        r"(?i:contact)\s*[:\-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
+        r"(?i:report(?:s|ing)?\s+to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
     ]
     for pattern in patterns:
         match = re.search(pattern, text or "")
@@ -198,8 +205,8 @@ def run(lead: dict, settings: dict | None = None, profile: dict | None = None) -
     if not domain:
         return {"status": "no_domain", "contacts": [], "message": "Could not infer company domain from this job URL."}
 
-    hunter_key = _setting(settings, "hunter_api_key") or os.environ.get("HUNTER_API_KEY", "")
-    proxycurl_key = _setting(settings, "proxycurl_api_key") or os.environ.get("PROXYCURL_API_KEY", "")
+    hunter_key = _setting(settings, "hunter_api_key") or env.hunter_api_key()
+    proxycurl_key = _setting(settings, "proxycurl_api_key") or env.proxycurl_api_key()
     if not hunter_key:
         return {"status": "missing_hunter_key", "domain": domain, "contacts": [], "message": "Add a Hunter.io API key in Settings to find company contacts."}
 

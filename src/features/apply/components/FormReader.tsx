@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ApiFetch, FormField, FormReadResult } from "../../../types";
+import { automationApi } from "../../../api";
 
 export function FormReader({
   jobId,
@@ -31,12 +32,7 @@ export function FormReader({
     const controller = new AbortController();
     requestRef.current = controller;
     try {
-      const r = await api(`/api/v1/leads/${jobId}/form/read`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-        signal: controller.signal,
-      });
+      const r = await automationApi.readForm(api, jobId, url, { signal: controller.signal });
       if (!r.ok) {
         const detail = await r.json().then((d: any) => d.detail).catch(() => "");
         throw new Error(detail || `Server returned ${r.status}`);

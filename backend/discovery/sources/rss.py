@@ -12,7 +12,7 @@ from discovery.sources.net import guarded_async_client
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from discovery.normalizer import clean_text, is_recent, looks_role_like, strip_html_text
-from discovery.sources.common import retry_after_seconds
+from discovery.sources.common import current_listing_active_hint, retry_after_seconds
 
 SOURCE_CAPS = {
     "hn_hiring": 25,
@@ -21,6 +21,7 @@ SOURCE_CAPS = {
     "remotive": 45,
     "jobicy": 45,
     "weworkremotely": 40,
+    "nodesk": 35,
     "rss": 35,
 }
 
@@ -40,6 +41,8 @@ def platform_from_url(u: str, fallback: str = "scout") -> str:
         return "jobicy"
     if "weworkremotely.com" in host:
         return "weworkremotely"
+    if "nodesk.co" in host:
+        return "nodesk"
     if "greenhouse.io" in host:
         return "greenhouse"
     if "lever.co" in host:
@@ -74,7 +77,10 @@ def compact(value) -> str:
     if value is None:
         return ""
     if isinstance(value, (list, tuple, set)):
-        return ", ".join(str(v).strip() for v in value if str(v).strip())
+        # Drop None BEFORE stringifying: a null in a source's tags/categories
+        # array otherwise stringifies to "None" and shows up verbatim in the
+        # lead's details ("Tags: python, None").
+        return ", ".join(str(v).strip() for v in value if v is not None and str(v).strip())
     return str(value).strip()
 
 
@@ -101,6 +107,27 @@ def salary_from_bounds(low, high, currency: str = "") -> str:
     if low_text and high_text:
         return f"{prefix}{low_text}-{high_text}"
     return f"{prefix}{low_text or high_text}"
+
+
+# Some feed generators (NoDesk among them) leave named HTML entities
+# un-escaped instead of using CDATA or numeric entities. They're valid HTML but
+# undefined in bare XML, and defusedxml refuses to resolve custom entities by
+# design (that's exactly what blocks XXE/billion-laughs) -- so a lone &rsquo;
+# is a hard ParseError, not a warning. Rewrite the common ones to their literal
+# character before parsing, same idea as repair_mojibake below.
+_HTML_ENTITY_FIXUPS = {
+    "&rsquo;": "’", "&lsquo;": "‘",
+    "&rdquo;": "”", "&ldquo;": "“",
+    "&mdash;": "—", "&ndash;": "–",
+    "&hellip;": "…", "&nbsp;": " ",
+}
+_HTML_ENTITY_RE = re.compile("|".join(re.escape(k) for k in _HTML_ENTITY_FIXUPS))
+
+
+def fix_html_entities(text: str) -> str:
+    def _replace(match: re.Match[str]) -> str:
+        return _HTML_ENTITY_FIXUPS[match.group(0)]
+    return _HTML_ENTITY_RE.sub(_replace, text)
 
 
 def feed_entries(root) -> list:
@@ -184,7 +211,7 @@ async def scrape_rss(u: str) -> list:
             await asyncio.sleep(retry_after)
             r.raise_for_status()
         r.raise_for_status()
-        root = ET.fromstring(r.text)
+        root = ET.fromstring(fix_html_entities(r.text))
 
     items = []
     for item in feed_entries(root):
@@ -196,9 +223,18 @@ async def scrape_rss(u: str) -> list:
         if date_str and not is_recent(date_str):
             continue
         company, title = rss_company_and_role(raw_title, platform)
+        # WeWorkRemotely (verified live) tags every item with a <region>
+        # value -- "Anywhere in the World", a named country ("India"), or a
+        # US state -- real per-posting eligibility data no standard RSS tag
+        # carries. Captured into `location` (not just the description text)
+        # because that's the field the India classifier's strongest signal
+        # checks first; without this every RSS-sourced lead had an empty
+        # location column no matter what the feed actually knew.
+        region = xml_text(item, "region")
         desc = description(
             xml_text(item, "description", "encoded", "summary"),
             detail("Categories", xml_all_text(item, "category")),
+            detail("Location", region),
             limit=1400,
         )
         items.append({
@@ -208,6 +244,8 @@ async def scrape_rss(u: str) -> list:
             "platform": platform,
             "description": desc,
             "posted_date": date_str,
+            "location": region,
+            "active_hint": current_listing_active_hint(platform),
             "source_meta": {"source": "rss", "feed": u},
         })
     return items
@@ -361,7 +399,7 @@ async def scrape_remoteok() -> list:
             detail("Location", j.get("location")),
             detail("Tags", j.get("tags")),
             detail("Salary", salary),
-            limit=1600,
+            limit=50_000,
         )
         results.append({
             "title": title,
@@ -370,6 +408,9 @@ async def scrape_remoteok() -> list:
             "platform": "remoteok",
             "description": desc,
             "posted_date": posted_date,
+            "location": j.get("location", ""),
+            "workplace": "remote",
+            "active_hint": current_listing_active_hint("remoteok"),
             "source_meta": {"source": "remoteok", "tags": j.get("tags") or []},
         })
     return results
@@ -410,7 +451,7 @@ async def scrape_remotive(u: str) -> list:
             detail("Location", job.get("candidate_required_location")),
             detail("Type", job.get("job_type")),
             detail("Salary", job.get("salary")),
-            limit=1800,
+            limit=50_000,
         )
         results.append({
             "title": title,
@@ -419,6 +460,9 @@ async def scrape_remotive(u: str) -> list:
             "platform": "remotive",
             "description": desc,
             "posted_date": str(posted),
+            "location": job.get("candidate_required_location", ""),
+            "workplace": "remote",
+            "active_hint": current_listing_active_hint("remotive"),
             "source_meta": {
                 "source": "remotive",
                 "category": job.get("category", ""),
@@ -469,7 +513,7 @@ async def scrape_jobicy_api(u: str) -> list:
             detail("Type", job.get("jobType")),
             detail("Level", job.get("jobLevel")),
             detail("Salary", salary),
-            limit=1800,
+            limit=50_000,
         )
         results.append({
             "title": title,
@@ -478,10 +522,73 @@ async def scrape_jobicy_api(u: str) -> list:
             "platform": "jobicy",
             "description": desc,
             "posted_date": str(posted),
+            "location": job.get("jobGeo", ""),
+            "workplace": "remote",
+            "active_hint": current_listing_active_hint("jobicy"),
             "source_meta": {
                 "source": "jobicy",
                 "industry": job.get("jobIndustry", ""),
                 "location": job.get("jobGeo", ""),
             },
+        })
+    return results
+
+
+@retry(
+    retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    stop=stop_after_attempt(2),
+    reraise=True,
+)
+async def scrape_working_nomads() -> list:
+    """Working Nomads' full open-jobs feed (``/api/exposed_jobs/``).
+
+    Verified live and keyless. Its ``?category=`` query param is a confirmed
+    no-op -- two different category values, and the unfiltered call, all
+    returned byte-identical responses -- so this pulls the whole feed, same
+    as remoteok/arbeitnow. A small board (~40-50 open roles at a time), but
+    its own ``location`` field is real free text ("India", "APAC",
+    "CET (+/- 3 hours)", ...) captured straight into the lead's location
+    column, the classifier's strongest signal.
+    """
+    async with guarded_async_client(timeout=30, headers=http_headers("workingnomads"), follow_redirects=True) as cx:
+        r = await cx.get("https://www.workingnomads.com/api/exposed_jobs/")
+        if r.status_code == 429:
+            retry_after = retry_after_seconds(r.headers.get("Retry-After"))
+            await asyncio.sleep(retry_after)
+            r.raise_for_status()
+        r.raise_for_status()
+        data = r.json()
+
+    results = []
+    for job in data if isinstance(data, list) else []:
+        if not isinstance(job, dict):
+            continue
+        posted = job.get("pub_date") or ""
+        if posted and not is_recent(posted):
+            continue
+        title = job.get("title", "")
+        url = job.get("url", "")
+        if not title or not url:
+            continue
+        location = job.get("location") or ""
+        desc = description(
+            job.get("description", ""),
+            detail("Category", job.get("category_name")),
+            detail("Location", location),
+            detail("Tags", job.get("tags")),
+            limit=50_000,
+        )
+        results.append({
+            "title": title,
+            "company": job.get("company_name", ""),
+            "url": url,
+            "platform": "workingnomads",
+            "description": desc,
+            "posted_date": str(posted),
+            "location": location,
+            "workplace": "remote",
+            "active_hint": current_listing_active_hint("workingnomads"),
+            "source_meta": {"source": "workingnomads", "category": job.get("category_name", "")},
         })
     return results

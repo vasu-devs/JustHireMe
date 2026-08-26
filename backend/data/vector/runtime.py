@@ -14,6 +14,7 @@ import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import url2pathname
+from core import env
 
 
 _RELEASE_DOWNLOAD_BASE = "https://github.com/vasu-devs/JustHireMe/releases/latest/download"
@@ -40,7 +41,7 @@ def sys_platform() -> str:
 
 def _app_version() -> str:
     """Return the app version from the JHM_APP_VERSION env var set by Tauri."""
-    return os.environ.get("JHM_APP_VERSION", "")
+    return env.get(env.APP_VERSION)
 
 
 def _expected_runtime_pack_version() -> str:
@@ -54,7 +55,7 @@ def _expected_runtime_pack_version() -> str:
     build env var is absent (dev, or older builds), fall back to the app version
     so behaviour is unchanged.
     """
-    return os.environ.get("JHM_RUNTIME_PACK_VERSION", "").strip() or _app_version()
+    return env.text(env.RUNTIME_PACK_VERSION) or _app_version()
 
 
 def _version_stamp_path() -> Path:
@@ -99,27 +100,27 @@ def _runtime_pack_is_stale() -> bool:
 
 
 def _data_root() -> Path:
-    configured = os.environ.get("JHM_APP_DATA_DIR")
+    configured = env.text(env.APP_DATA_DIR)
     if configured:
         return Path(configured)
     if os.name == "nt":
-        root = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+        root = Path(env.text(env.LOCAL_APP_DATA) or Path.home() / "AppData" / "Local")
     elif sys_platform() == "darwin":
         root = Path.home() / "Library" / "Application Support"
     else:
-        root = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+        root = Path(env.text(env.XDG_DATA_HOME) or Path.home() / ".local" / "share")
     return root / "JustHireMe"
 
 
 def vector_runtime_dir() -> Path:
-    configured = os.environ.get("JHM_VECTOR_RUNTIME_DIR")
+    configured = env.text(env.VECTOR_RUNTIME_DIR)
     if configured:
         return Path(configured)
     return _data_root() / "vector-runtime"
 
 
 def browser_runtime_dir() -> Path:
-    configured = os.environ.get("JHM_BROWSER_RUNTIME_DIR") or os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    configured = env.first(env.BROWSER_RUNTIME_DIR, env.PLAYWRIGHT_BROWSERS_PATH)
     if configured:
         return Path(configured)
     return _data_root() / "browser-runtime" / "ms-playwright"
@@ -144,31 +145,29 @@ def vector_runtime_asset_name() -> str:
 
 
 def runtime_pack_url() -> str:
-    return os.environ.get(
-        "JHM_RUNTIME_PACK_URL",
-        os.environ.get(
-            "JHM_BUNDLED_RUNTIME_PACK_URL",
-            f"{_RELEASE_DOWNLOAD_BASE}/{runtime_pack_asset_name()}",
-        ),
+    return env.first(
+        env.RUNTIME_PACK_URL,
+        env.BUNDLED_RUNTIME_PACK_URL,
+        default=f"{_RELEASE_DOWNLOAD_BASE}/{runtime_pack_asset_name()}",
     )
 
 
 def release_runtime_pack_url() -> str:
-    return os.environ.get(
-        "JHM_RELEASE_RUNTIME_PACK_URL",
+    return env.get(
+        env.RELEASE_RUNTIME_PACK_URL,
         f"{_RELEASE_DOWNLOAD_BASE}/{runtime_pack_asset_name()}",
     )
 
 
 def vector_runtime_url() -> str:
-    return os.environ.get(
-        "JHM_VECTOR_RUNTIME_URL",
+    return env.get(
+        env.VECTOR_RUNTIME_URL,
         f"{_RELEASE_DOWNLOAD_BASE}/{vector_runtime_asset_name()}",
     )
 
 
 def _legacy_vector_runtime_override() -> bool:
-    return bool(os.environ.get("JHM_VECTOR_RUNTIME_URL") and not os.environ.get("JHM_RUNTIME_PACK_URL"))
+    return env.is_set(env.VECTOR_RUNTIME_URL) and not env.is_set(env.RUNTIME_PACK_URL)
 
 
 def _set_progress(**updates) -> None:
@@ -372,8 +371,8 @@ def _download(url: str, archive_path: Path) -> None:
 def _runtime_pack_sources() -> list[str]:
     sources: list[str] = []
     for candidate in (
-        os.environ.get("JHM_BUNDLED_RUNTIME_PACK_URL"),
-        os.environ.get("JHM_RUNTIME_PACK_URL"),
+        env.get(env.BUNDLED_RUNTIME_PACK_URL) or None,
+        env.get(env.RUNTIME_PACK_URL) or None,
         release_runtime_pack_url(),
     ):
         if candidate and candidate not in sources:

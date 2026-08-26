@@ -5,22 +5,26 @@ import { useTheme } from "../lib/theme";
 const titleFor = (view: View) => {
   if (view === "dashboard") return "Today";
   if (view === "apply") return "Tailor";
+  if (view === "opportunities") return "Opportunities";
   if (view === "activity") return "Scout";
   if (view === "graph") return "Knowledge";
   if (view === "ingestion") return "Context";
   if (view === "profile") return "Profile";
   if (view === "learn") return "Learn";
+  if (view === "report") return "Report";
   return "Pipeline";
 };
 
 const subtitleFor = (view: View) => {
   if (view === "dashboard") return "Your opportunity command board";
   if (view === "apply") return "Application workshop";
+  if (view === "opportunities") return "Verified early-career decisions for each candidate";
   if (view === "activity") return "Search sources and field notes";
   if (view === "graph") return "Your connected evidence atlas";
   if (view === "ingestion") return "Add resume, projects, links, and proof";
   if (view === "profile") return "Your connected evidence map";
   if (view === "learn") return "What your market wants you to learn next";
+  if (view === "report") return "Audit numbers, straight from the database";
   return "Every role moving forward";
 };
 

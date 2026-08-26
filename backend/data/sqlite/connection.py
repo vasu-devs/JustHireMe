@@ -206,6 +206,29 @@ def close_all() -> None:
         _MIGRATED_PATHS.clear()
 
 
+def checkpoint_wal(db_path: str | None = None, *, mode: str = "PASSIVE") -> None:
+    """Fold the WAL back into the main db file.
+
+    Without this, a long-lived process with many pooled connections (one per
+    thread -- see ConnectionPool above) can leave SQLite's automatic
+    checkpoint unable to ever fully catch up: it can only checkpoint up to the
+    oldest reader's snapshot, and there's almost always *some* pooled
+    connection idle-but-open. Confirmed on the real desktop DB: the WAL grew
+    to ~70MB (nearly the size of the 80MB main file) after a long scan +
+    rescore session, and every dashboard read had to reconstruct pages from
+    that whole WAL — headline_metrics/funnel_stages/source_breakdown each ran
+    7x+ slower (0.68s vs 0.09s for funnel_stages alone) than on a checkpointed
+    WAL. PASSIVE never blocks a concurrent reader/writer, so it's safe to call
+    from a request path or a periodic tick; it just does whatever partial
+    checkpoint is currently safe.
+    """
+    conn = get_connection(db_path)
+    try:
+        conn.execute(f"PRAGMA wal_checkpoint({mode})")
+    except Exception as exc:
+        _log.debug("wal checkpoint skipped: %s", exc)
+
+
 def prune_history(db_path: str | None = None, *, max_events: int = 5000, max_jobs: int = 500, max_errors: int = 1000) -> None:
     """Cap the append-only telemetry tables to their most recent rows so a
     long-lived local install doesn't accumulate events/jobs/errors forever.

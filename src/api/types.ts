@@ -1,4 +1,4 @@
-export type { ApiFetch, ContactLookup, FormReadResult, GraphStats, KeywordCoverage, Lead } from "../types";
+export type { ApiFetch, ApiFetchOptions, ContactLookup, FormReadResult, GraphStats, KeywordCoverage, Lead } from "../types";
 
 export type WSMessage =
   | { type: "heartbeat"; status: string; beat: number; uptime_seconds: number; timestamp: string }
