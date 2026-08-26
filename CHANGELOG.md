@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.0 - 2026-08-26
+
+- A one-click Elite AI Internship campaign now focuses discovery and ranking on paid AI, ML, data, backend, GenAI, RAG, agent, and applied-research internships that are remote worldwide or workable from India.
+- Compensation is now a first-class campaign constraint. Candidates can set separate INR and USD monthly floors and targets; the preset defaults to ₹1 lakh/₹2 lakh and $1,200/$2,400. Unpaid roles and bond-heavy offers are rejected, while missing or ambiguous pay is held for review instead of being presented as a verified high-paying opportunity.
+- Compensation parsing and normalization now cover INR and USD hourly, monthly, and annual amounts, ranges, `k` and lakh notation. "Up to" compensation is treated as an upper bound, never silently promoted into a guaranteed minimum, and currencies are not mixed through speculative exchange-rate conversion.
+- Discovery has deeper candidate-specific coverage for GenAI, LLM, RAG, LangGraph, agentic systems, applied AI, ML, data science, and backend internship searches, with paid-source budgets reserved for the campaign's highest-value queries.
+- Candidate campaign data remains local-first and consent-gated. The release adds richer campaign controls without uploading contact details or enabling automatic applications.
+- The release gate covers 25,697 canonical market records and 613 active internships, plus 1,888 backend tests (14 skipped), 89 frontend tests, production builds, static analysis, and browser-level responsive smoke checks.
+
 ## 1.5.0 - 2026-08-26
 
 - A dedicated opportunity-intelligence path for CSE, software, data, and AI students. The new Opportunities workspace discovers internships, graduate roles, apprenticeships, and genuinely entry-level full-time roles, then separates strong applications, stretches, manual-review leads, and skips instead of dumping an unfiltered job feed on students.

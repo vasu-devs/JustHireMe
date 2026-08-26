@@ -1013,6 +1013,8 @@ jobs:
             echo "### What's inside"
             echo "- Local-first job intelligence workbench"
             echo "- Internship and early-career opportunity workspace for CSE, software, data, and AI candidates"
+            echo "- One-click Elite AI Internship campaign for paid India and worldwide-remote opportunities"
+            echo "- Configurable INR and USD compensation floors and targets with truthful range handling"
             echo "- Broad first-party source adapters, canonical deduplication, liveness checks, and India/remote applicability gates"
             echo "- Transparent apply, stretch, review, and skip decisions with source provenance and rejection reasons"
             echo "- Built-in CRM for your job pipeline"
