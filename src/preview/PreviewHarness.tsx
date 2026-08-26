@@ -209,7 +209,9 @@ const OPPORTUNITY_PROFILE = {
   accepted_opportunity_types: ["internship", "new_grad", "entry_level_full_time"],
   allow_india_onsite: true, allow_india_hybrid: true, allow_india_remote: true, allow_worldwide_remote: true,
   allow_unpaid: false, allow_bond: false, professional_experience_years: 0,
-  minimum_monthly_compensation_inr: 25_000, maximum_internship_months: 6,
+  minimum_monthly_compensation_inr: 25_000, target_monthly_compensation_inr: 100_000,
+  minimum_monthly_compensation_usd: 0, target_monthly_compensation_usd: 0,
+  unknown_compensation_policy: "allow", maximum_internship_months: 6,
 };
 
 const OPPORTUNITIES = [
@@ -271,6 +273,30 @@ const mockApi: ApiFetch = async (path) => {
     { candidate_id: "friend-2", graduation_year: 2027, preferred_technical_tracks: ["frontend", "mobile"], accepted_opportunity_types: ["internship"], profile_updated_at: "2026-08-23T12:00:00Z" },
   ]);
   if (path.startsWith("/api/v1/opportunities/scan/status")) return json({ status: "completed", target_count: 160, targets_completed: 160, opportunities: 389, source_failures: 0, decision_counts: { apply_now: 4 } });
+  if (path.startsWith("/api/v1/opportunities/coverage")) return json({
+    candidate_id: "default",
+    inventory_target_count: 219,
+    inventory_provider_count: 27,
+    inventory_by_provider: { greenhouse: 74, lever: 32, ashby: 28 },
+    attempted_target_count: 219,
+    unattempted_target_count: 0,
+    health_counts: { success: 198, zero_result: 21 },
+    provider_health: {},
+    raw_rows: 18_420,
+    accepted_source_records: 7_842,
+    latest_attempted_at: "2026-08-24T12:00:00Z",
+    paid_provider_count: 3,
+    index: {
+      source_record_count: 7_842,
+      canonical_opportunity_count: 6_117,
+      active_opportunity_count: 3_809,
+      observation_count: 12_508,
+      identity_alias_count: 412,
+      status_counts: { active: 3_809, unknown: 344, closed: 1_964 },
+      latest_observed_at: "2026-08-24T12:00:00Z",
+      last_sync: null,
+    },
+  });
   if (path.startsWith("/api/v1/opportunities/providers")) return json({
     master_enabled: false, secrets_redacted: true,
     retention_rule: "Retain after >=10 successful requests only when net-new eligible yield is >=10%.",

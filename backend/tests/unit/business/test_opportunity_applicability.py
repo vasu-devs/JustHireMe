@@ -9,6 +9,7 @@ from opportunities.eligibility import (
     CandidateConstraints,
     Decision,
     DegreeLevel,
+    UnknownCompensationPolicy,
     _contains_bounded_alias,
     _graduation_years,
     evaluate_applicability,
@@ -1072,6 +1073,147 @@ def test_non_inr_monthly_amount_is_not_compared_as_rupees() -> None:
         source_observed_active=True,
     )
     assert "compensation_below_minimum" not in result.hard_blockers
+
+
+@pytest.mark.parametrize(
+    ("disclosure", "expected_monthly"),
+    [
+        ("Compensation is USD 1,500 per month.", 1_500),
+        ("Compensation is $1.5k monthly.", 1_500),
+        ("Compensation is $24,000 per year.", 2_000),
+        ("Compensation is $90k-$120k USD annually.", 7_500),
+        ("Compensation is $18-$30 per hour.", 3_120),
+    ],
+)
+def test_usd_compensation_is_normalized_without_fx_conversion(
+    disclosure: str,
+    expected_monthly: int,
+) -> None:
+    candidate = CANDIDATE.model_copy(update={
+        "minimum_monthly_compensation_usd": 1_200,
+        "target_monthly_compensation_usd": 2_400,
+    })
+    result = evaluate_applicability(
+        title="Applied AI Engineering Intern",
+        description=f"Paid worldwide remote AI internship. {disclosure}",
+        location="Remote — Worldwide",
+        candidate=candidate,
+        source_observed_active=True,
+    )
+    assert result.monthly_compensation_usd == [expected_monthly]
+    assert "compensation_below_minimum" not in result.hard_blockers
+
+
+def test_compact_inr_lakh_range_is_normalized() -> None:
+    candidate = CANDIDATE.model_copy(update={
+        "minimum_monthly_compensation_inr": 100_000,
+        "target_monthly_compensation_inr": 200_000,
+    })
+    result = evaluate_applicability(
+        title="Generative AI Engineering Intern",
+        description="Paid internship. Stipend ₹1L-₹2L/month. Mentorship and production ownership.",
+        location="Remote - India",
+        candidate=candidate,
+        source_observed_active=True,
+    )
+
+    assert result.monthly_compensation_inr == [100_000]
+    assert result.compensation_score == 70
+    assert result.target_compensation_met is False
+
+
+@pytest.mark.parametrize(
+    "disclosure",
+    [
+        "Compensation is up to $25/hr.",
+        "The maximum is ₹2L/month.",
+    ],
+)
+def test_upper_bound_only_pay_does_not_satisfy_candidate_floor(disclosure: str) -> None:
+    candidate = CANDIDATE.model_copy(update={
+        "minimum_monthly_compensation_inr": 100_000,
+        "target_monthly_compensation_inr": 200_000,
+        "minimum_monthly_compensation_usd": 1_200,
+        "target_monthly_compensation_usd": 2_400,
+        "unknown_compensation_policy": UnknownCompensationPolicy.REVIEW,
+    })
+    result = evaluate_applicability(
+        title="AI Engineering Intern",
+        description=f"Worldwide remote paid internship. {disclosure}",
+        location="Remote - Worldwide",
+        candidate=candidate,
+        source_observed_active=True,
+    )
+
+    assert result.decision == Decision.NEEDS_REVIEW
+    assert result.monthly_compensation_inr == []
+    assert result.monthly_compensation_usd == []
+    assert result.target_compensation_met is None
+    assert result.evidence["compensation_upper_bound_only"] == [
+        "maximum_disclosed_without_guaranteed_minimum"
+    ]
+
+
+def test_target_compensation_boosts_priority_and_is_explained() -> None:
+    candidate = CANDIDATE.model_copy(update={
+        "minimum_monthly_compensation_inr": 100_000,
+        "target_monthly_compensation_inr": 200_000,
+    })
+    result = evaluate_applicability(
+        title="Generative AI Engineering Intern",
+        description="Paid internship shipping production LLM agents. Stipend ₹2,00,000 per month.",
+        location="Bengaluru, India",
+        candidate=candidate,
+        source_observed_active=True,
+    )
+    assert result.decision == Decision.APPLY_NOW
+    assert result.compensation_score == 100
+    assert result.target_compensation_met is True
+    assert result.evidence["target_compensation"] == [
+        "disclosed_lower_bound_meets_or_exceeds_target"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("policy", "decision", "expected_signal"),
+    [
+        (UnknownCompensationPolicy.ALLOW, Decision.APPLY_NOW, None),
+        (UnknownCompensationPolicy.REVIEW, Decision.NEEDS_REVIEW, "compensation_unknown"),
+        (UnknownCompensationPolicy.SKIP, Decision.SKIP, "compensation_unknown"),
+    ],
+)
+def test_undisclosed_compensation_obeys_candidate_policy(
+    policy: UnknownCompensationPolicy,
+    decision: Decision,
+    expected_signal: str | None,
+) -> None:
+    candidate = CANDIDATE.model_copy(update={
+        "minimum_monthly_compensation_inr": 100_000,
+        "target_monthly_compensation_inr": 200_000,
+        "unknown_compensation_policy": policy,
+    })
+    result = evaluate_applicability(
+        title="AI Engineering Intern",
+        description="Paid internship building production LLM evaluation systems.",
+        location="Bengaluru, India",
+        candidate=candidate,
+        source_observed_active=True,
+    )
+    assert result.decision == decision
+    assert result.target_compensation_met is None
+    if expected_signal is None:
+        assert "compensation_unknown" not in result.unknowns
+        assert "compensation_unknown" not in result.hard_blockers
+    else:
+        assert expected_signal in {*result.unknowns, *result.hard_blockers}
+
+
+def test_target_compensation_cannot_be_below_hard_floor() -> None:
+    with pytest.raises(ValueError, match="INR target compensation must be at least the minimum"):
+        CandidateConstraints(
+            minimum_monthly_compensation_inr=200_000,
+            target_monthly_compensation_inr=100_000,
+        )
 
 
 def test_candidate_specialization_filters_unwanted_tracks_but_keeps_generic_software_roles() -> None:

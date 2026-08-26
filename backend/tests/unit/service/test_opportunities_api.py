@@ -132,13 +132,20 @@ def test_candidate_constraints_and_background_scan_endpoints() -> None:
         "allow_unpaid": False,
         "allow_bond": False,
         "professional_experience_years": 0,
-        "minimum_monthly_compensation_inr": 0,
+        "minimum_monthly_compensation_inr": 100_000,
+        "target_monthly_compensation_inr": 200_000,
+        "minimum_monthly_compensation_usd": 1_200,
+        "target_monthly_compensation_usd": 2_400,
+        "unknown_compensation_policy": "review",
         "maximum_internship_months": 12,
     })
     assert saved.status_code == 200
     assert saved.json()["candidate_id"] == "friend-1"
     assert saved.json()["current_degree_level"] == "bachelors"
     assert saved.json()["spoken_languages"] == ["English", "Hindi"]
+    assert saved.json()["target_monthly_compensation_inr"] == 200_000
+    assert saved.json()["target_monthly_compensation_usd"] == 2_400
+    assert saved.json()["unknown_compensation_policy"] == "review"
 
     started = client.post("/api/v1/opportunities/scan", json={"candidate_id": "friend-1"})
     assert started.status_code == 200

@@ -209,7 +209,21 @@ class OpportunityCandidateBody(StrictBody):
     allow_bond: bool = False
     professional_experience_years: float = Field(default=0.0, ge=0.0, le=50.0)
     minimum_monthly_compensation_inr: int = Field(default=0, ge=0, le=10_000_000)
+    target_monthly_compensation_inr: int = Field(default=0, ge=0, le=10_000_000)
+    minimum_monthly_compensation_usd: int = Field(default=0, ge=0, le=1_000_000)
+    target_monthly_compensation_usd: int = Field(default=0, ge=0, le=1_000_000)
+    unknown_compensation_policy: Literal["allow", "review", "skip"] = "allow"
     maximum_internship_months: int = Field(default=12, ge=1, le=36)
+
+    @model_validator(mode="after")
+    def validate_opportunity_compensation_targets(self) -> OpportunityCandidateBody:
+        pairs = (
+            (self.minimum_monthly_compensation_inr, self.target_monthly_compensation_inr),
+            (self.minimum_monthly_compensation_usd, self.target_monthly_compensation_usd),
+        )
+        if any(target and minimum and target < minimum for minimum, target in pairs):
+            raise ValueError("target compensation must be at least the corresponding minimum")
+        return self
 
 
 class OpportunityScanBody(StrictBody):

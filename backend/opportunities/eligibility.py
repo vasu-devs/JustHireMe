@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from core.taxonomy import TECH_TAXONOMY
 from opportunities.models import LiveStatus
@@ -39,7 +39,13 @@ class DegreeLevel(StrEnum):
     DOCTORATE = "doctorate"
 
 
-OPPORTUNITY_RULE_VERSION = "35"
+class UnknownCompensationPolicy(StrEnum):
+    ALLOW = "allow"
+    REVIEW = "review"
+    SKIP = "skip"
+
+
+OPPORTUNITY_RULE_VERSION = "36"
 
 
 class CandidateConstraints(BaseModel):
@@ -74,7 +80,22 @@ class CandidateConstraints(BaseModel):
     allow_bond: bool = False
     professional_experience_years: float = Field(default=0.0, ge=0.0)
     minimum_monthly_compensation_inr: int = Field(default=0, ge=0)
+    target_monthly_compensation_inr: int = Field(default=0, ge=0)
+    minimum_monthly_compensation_usd: int = Field(default=0, ge=0)
+    target_monthly_compensation_usd: int = Field(default=0, ge=0)
+    unknown_compensation_policy: UnknownCompensationPolicy = UnknownCompensationPolicy.ALLOW
     maximum_internship_months: int = Field(default=12, ge=1, le=36)
+
+    @model_validator(mode="after")
+    def validate_compensation_targets(self) -> CandidateConstraints:
+        pairs = (
+            ("INR", self.minimum_monthly_compensation_inr, self.target_monthly_compensation_inr),
+            ("USD", self.minimum_monthly_compensation_usd, self.target_monthly_compensation_usd),
+        )
+        for currency, minimum, target in pairs:
+            if target and minimum and target < minimum:
+                raise ValueError(f"{currency} target compensation must be at least the minimum")
+        return self
 
 
 class ApplicabilityDecision(BaseModel):
@@ -105,6 +126,9 @@ class ApplicabilityDecision(BaseModel):
     posting_india_cities: list[str] = Field(default_factory=list)
     graduation_years: list[int] = Field(default_factory=list)
     monthly_compensation_inr: list[int] = Field(default_factory=list)
+    monthly_compensation_usd: list[int] = Field(default_factory=list)
+    compensation_score: int = Field(default=50, ge=0, le=100)
+    target_compensation_met: bool | None = None
     internship_duration_months: list[int] = Field(default_factory=list)
     minimum_experience_years: int = Field(default=0, ge=0)
     requires_current_enrollment: bool = False
@@ -148,17 +172,59 @@ _EXTERNAL_PROGRAM_RESTRICTION = re.compile(
     re.I,
 )
 _MONTHLY_PAY_RANGE = re.compile(
-    r"(?:₹|inr|rs\.?\s*)?(\d[\d,]*(?:\.\d+)?)\s*[-–—]\s*"
-    r"(?:₹|inr|rs\.?\s*)?(\d[\d,]*(?:\.\d+)?)\s*"
-    r"(k|thousand|lakh|lac)?\s*(?:₹|inr|rs\.?)?\s*(?:/|per\s*)?(?:month|monthly|pm)\b",
+    r"(?:₹|inr|rs\.?\s*)?(\d[\d,]*(?:\.\d+)?)\s*(k|thousand|lakh|lac|l)?\s*[-–—]\s*"
+    r"(?:₹|inr|rs\.?\s*)?(\d[\d,]*(?:\.\d+)?)\s*(k|thousand|lakh|lac|l)?\s*"
+    r"(?:₹|inr|rs\.?)?\s*(?:/|per\s*)?(?:month|monthly|pm)\b",
     re.I,
 )
 _MONTHLY_PAY = re.compile(
-    r"(?:₹|inr|rs\.?\s*)?(\d[\d,]*(?:\.\d+)?)\s*(k|thousand|lakh|lac)?\s*"
+    r"(?:₹|inr|rs\.?\s*)?(\d[\d,]*(?:\.\d+)?)\s*(k|thousand|lakh|lac|l)?\s*"
     r"(?:₹|inr|rs\.?)?\s*(?:/|per\s*)?(?:month|monthly|pm)\b",
     re.I,
 )
 _ANNUAL_LAKH = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:lpa|lakhs?\s+per\s+annum)\b", re.I)
+_USD_MONTHLY_RANGE = re.compile(
+    r"(?:\$|usd\s*)(\d[\d,]*(?:\.\d+)?)\s*(k|thousand)?\s*[-–—]\s*"
+    r"(?:\$|usd\s*)?(\d[\d,]*(?:\.\d+)?)\s*(k|thousand)?\s*(?:usd\s*)?"
+    r"(?:/|per\s*)?(?:month|monthly|pm)\b",
+    re.I,
+)
+_USD_MONTHLY = re.compile(
+    r"(?:\$|usd\s*)(\d[\d,]*(?:\.\d+)?)\s*(k|thousand)?\s*(?:usd\s*)?"
+    r"(?:/|per\s*)?(?:month|monthly|pm)\b",
+    re.I,
+)
+_USD_ANNUAL_RANGE = re.compile(
+    r"(?:\$|usd\s*)(\d[\d,]*(?:\.\d+)?)\s*(k|thousand)?\s*[-–—]\s*"
+    r"(?:\$|usd\s*)?(\d[\d,]*(?:\.\d+)?)\s*(k|thousand)?\s*(?:usd\s*)?"
+    r"(?:/|per\s*)?(?:year|yearly|annual(?:ly)?|annum)\b",
+    re.I,
+)
+_USD_ANNUAL = re.compile(
+    r"(?:\$|usd\s*)(\d[\d,]*(?:\.\d+)?)\s*(k|thousand)?\s*(?:usd\s*)?"
+    r"(?:/|per\s*)?(?:year|yearly|annual(?:ly)?|annum)\b",
+    re.I,
+)
+_USD_HOURLY_RANGE = re.compile(
+    r"(?:\$|usd\s*)(\d[\d,]*(?:\.\d+)?)\s*(k|thousand)?\s*[-–—]\s*"
+    r"(?:\$|usd\s*)?(\d[\d,]*(?:\.\d+)?)\s*(k|thousand)?\s*(?:usd\s*)?"
+    r"(?:/|per\s*)?(?:hour|hourly|hr)\b",
+    re.I,
+)
+_USD_HOURLY = re.compile(
+    r"(?:\$|usd\s*)(\d[\d,]*(?:\.\d+)?)\s*(k|thousand)?\s*(?:usd\s*)?"
+    r"(?:/|per\s*)?(?:hour|hourly|hr)\b",
+    re.I,
+)
+_UPPER_BOUND_PREFIX = re.compile(
+    r"\b(?:up\s+to|max(?:imum)?(?:\s+(?:of|is))?|as\s+(?:high|much)\s+as)\s*$",
+    re.I,
+)
+_UPPER_BOUND_COMPENSATION = re.compile(
+    r"\b(?:up\s+to|max(?:imum)?(?:\s+(?:of|is))?|as\s+(?:high|much)\s+as)\s*"
+    r"(?:₹|\$|usd\b|inr\b|rs\.?\s*)",
+    re.I,
+)
 _INTERNSHIP_DURATION = re.compile(r"\b(\d{1,2})\s*[- ]?months?\b", re.I)
 _LANGUAGE_NAMES = (
     "English", "Hindi", "Mandarin", "Chinese", "German", "French", "Spanish",
@@ -431,8 +497,12 @@ def _india_cities(value: str) -> set[str]:
 
 def _money_value(number: str, unit: str = "") -> int:
     value = float(number.replace(",", ""))
-    multiplier = 100_000 if unit.lower() in {"lakh", "lac"} else 1_000 if unit.lower() in {"k", "thousand"} else 1
+    multiplier = 100_000 if unit.lower() in {"lakh", "lac", "l"} else 1_000 if unit.lower() in {"k", "thousand"} else 1
     return round(value * multiplier)
+
+
+def _upper_bound_only(description: str, match_start: int) -> bool:
+    return bool(_UPPER_BOUND_PREFIX.search(description[max(0, match_start - 32):match_start]))
 
 
 def _monthly_compensation_values(description: str) -> list[int]:
@@ -440,17 +510,90 @@ def _monthly_compensation_values(description: str) -> list[int]:
     range_matches = list(_MONTHLY_PAY_RANGE.finditer(description))
     range_spans = [match.span() for match in range_matches]
     for match in range_matches:
-        if not re.search(r"₹|\binr\b|\brs\.?\b|\blakhs?\b|\blac\b", match.group(0), re.I):
+        if _upper_bound_only(description, match.start()):
             continue
-        values.append(_money_value(match.group(1), match.group(3) or ""))
+        if not re.search(r"₹|\binr\b|\brs\.?\b|\blakhs?\b|\blac\b|\d\s*l\b", match.group(0), re.I):
+            continue
+        values.append(_money_value(match.group(1), match.group(2) or match.group(4) or ""))
     for match in _MONTHLY_PAY.finditer(description):
         if any(start <= match.start() < end for start, end in range_spans):
             continue
-        if not re.search(r"₹|\binr\b|\brs\.?\b|\blakhs?\b|\blac\b", match.group(0), re.I):
+        if _upper_bound_only(description, match.start()):
+            continue
+        if not re.search(r"₹|\binr\b|\brs\.?\b|\blakhs?\b|\blac\b|\d\s*l\b", match.group(0), re.I):
             continue
         values.append(_money_value(match.group(1), match.group(2) or ""))
-    values.extend(round(float(match.group(1)) * 100_000 / 12) for match in _ANNUAL_LAKH.finditer(description))
+    values.extend(
+        round(float(match.group(1)) * 100_000 / 12)
+        for match in _ANNUAL_LAKH.finditer(description)
+        if not _upper_bound_only(description, match.start())
+    )
     return values
+
+
+def _usd_monthly_compensation_values(description: str) -> list[int]:
+    """Normalize disclosed USD monthly, annual, and hourly lower bounds.
+
+    Hourly postings use the conventional 40-hour week only for ranking. The
+    original disclosure remains in source evidence, and no FX conversion is
+    performed so volatile exchange rates cannot silently change eligibility.
+    """
+    values: list[int] = []
+    range_patterns = (
+        (_USD_MONTHLY_RANGE, lambda value: round(value)),
+        (_USD_ANNUAL_RANGE, lambda value: round(value / 12)),
+        (_USD_HOURLY_RANGE, lambda value: round(value * 40 * 52 / 12)),
+    )
+    single_patterns = (
+        (_USD_MONTHLY, lambda value: round(value)),
+        (_USD_ANNUAL, lambda value: round(value / 12)),
+        (_USD_HOURLY, lambda value: round(value * 40 * 52 / 12)),
+    )
+    range_spans: list[tuple[int, int]] = []
+    for pattern, normalize in range_patterns:
+        for match in pattern.finditer(description):
+            range_spans.append(match.span())
+            if _upper_bound_only(description, match.start()):
+                continue
+            values.append(normalize(_money_value(match.group(1), match.group(2) or "")))
+    for pattern, normalize in single_patterns:
+        for match in pattern.finditer(description):
+            if any(start <= match.start() < end for start, end in range_spans):
+                continue
+            if _upper_bound_only(description, match.start()):
+                continue
+            values.append(normalize(_money_value(match.group(1), match.group(2) or "")))
+    return values
+
+
+def _compensation_score(
+    candidate: CandidateConstraints,
+    inr_values: list[int],
+    usd_values: list[int],
+) -> tuple[int, bool | None]:
+    thresholds = (
+        (inr_values, candidate.minimum_monthly_compensation_inr, candidate.target_monthly_compensation_inr),
+        (usd_values, candidate.minimum_monthly_compensation_usd, candidate.target_monthly_compensation_usd),
+    )
+    configured = [(values, minimum, target) for values, minimum, target in thresholds if minimum or target]
+    if not configured:
+        return 50, None
+    observed = [(values, minimum, target) for values, minimum, target in configured if values]
+    if not observed:
+        return 0, None
+
+    target_checks = [min(values) >= target for values, _minimum, target in observed if target]
+    if target_checks and any(target_checks):
+        return 100, True
+
+    floor_checks = [min(values) >= minimum for values, minimum, _target in observed if minimum]
+    if floor_checks and any(floor_checks):
+        return 70, False if target_checks else None
+
+    # Comparable pay was disclosed, but it cleared neither the configured hard
+    # floor nor target. The hard-blocking decision is made by the caller.
+    comparable = any(minimum or target for _values, minimum, target in observed)
+    return (20 if comparable else 50), (False if target_checks else None)
 
 
 def evaluate_applicability(
@@ -589,6 +732,7 @@ def evaluate_applicability(
         evidence["external_program_restriction"] = ["named_external_program_or_portal_required"]
 
     compensation_values = _monthly_compensation_values(description)
+    usd_compensation_values = _usd_monthly_compensation_values(description)
     if (
         candidate.minimum_monthly_compensation_inr > 0
         and compensation_values
@@ -599,6 +743,41 @@ def evaluate_applicability(
             f"observed_monthly_inr:{min(compensation_values)}",
             f"candidate_minimum_inr:{candidate.minimum_monthly_compensation_inr}",
         ]
+    if (
+        candidate.minimum_monthly_compensation_usd > 0
+        and usd_compensation_values
+        and min(usd_compensation_values) < candidate.minimum_monthly_compensation_usd
+    ):
+        hard_blockers.append("compensation_below_minimum")
+        evidence.setdefault("compensation_below_minimum", []).extend([
+            f"observed_monthly_usd:{min(usd_compensation_values)}",
+            f"candidate_minimum_usd:{candidate.minimum_monthly_compensation_usd}",
+        ])
+    compensation_targeting_enabled = bool(
+        candidate.minimum_monthly_compensation_inr
+        or candidate.target_monthly_compensation_inr
+        or candidate.minimum_monthly_compensation_usd
+        or candidate.target_monthly_compensation_usd
+    )
+    comparable_compensation_observed = bool(
+        compensation_values
+        and (candidate.minimum_monthly_compensation_inr or candidate.target_monthly_compensation_inr)
+    ) or bool(
+        usd_compensation_values
+        and (candidate.minimum_monthly_compensation_usd or candidate.target_monthly_compensation_usd)
+    )
+    if compensation_targeting_enabled and not comparable_compensation_observed:
+        evidence["compensation_unknown"] = [
+            f"candidate_policy:{candidate.unknown_compensation_policy.value}"
+        ]
+        if _UPPER_BOUND_COMPENSATION.search(description):
+            evidence["compensation_upper_bound_only"] = [
+                "maximum_disclosed_without_guaranteed_minimum"
+            ]
+        if candidate.unknown_compensation_policy == UnknownCompensationPolicy.REVIEW:
+            unknowns.append("compensation_unknown")
+        elif candidate.unknown_compensation_policy == UnknownCompensationPolicy.SKIP:
+            hard_blockers.append("compensation_unknown")
 
     durations = [int(value) for value in _INTERNSHIP_DURATION.findall(description)]
     if (
@@ -676,6 +855,13 @@ def evaluate_applicability(
         candidate_fit_score = 50
     if matched_technologies:
         evidence["candidate_skill_matches"] = sorted(matched_technologies)
+    compensation_score, target_compensation_met = _compensation_score(
+        candidate,
+        compensation_values,
+        usd_compensation_values,
+    )
+    if target_compensation_met is True:
+        evidence["target_compensation"] = ["disclosed_lower_bound_meets_or_exceeds_target"]
     priority_bases = {
         Decision.APPLY_NOW: 60,
         Decision.STRONG_STRETCH: 45,
@@ -687,7 +873,8 @@ def evaluate_applicability(
         priority_bases[decision]
         + round(career_growth_score * 0.15)
         + round(hiring_confidence_score * 0.1)
-        + round(candidate_fit_score * 0.2),
+        + round(candidate_fit_score * 0.15)
+        + round(compensation_score * 0.2),
     )
 
     return ApplicabilityDecision(
@@ -715,6 +902,9 @@ def evaluate_applicability(
         posting_india_cities=sorted(posting_cities),
         graduation_years=sorted(graduation_years),
         monthly_compensation_inr=sorted(set(compensation_values)),
+        monthly_compensation_usd=sorted(set(usd_compensation_values)),
+        compensation_score=compensation_score,
+        target_compensation_met=target_compensation_met,
         internship_duration_months=sorted(set(durations)),
         minimum_experience_years=minimum_experience,
         requires_current_enrollment=bool(_ENROLLED.search(description)),

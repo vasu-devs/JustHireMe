@@ -18,6 +18,7 @@ from core.config import int_cfg, truthy
 from discovery.normalizer import strip_html_text
 from discovery.sources.net import guarded_async_client
 from opportunities.eligibility import CandidateConstraints
+from opportunities.taxonomy import OpportunityType
 
 
 PAID_PROVIDERS = ("serpapi", "adzuna", "jooble")
@@ -110,21 +111,50 @@ def provider_policy(provider: str, cfg: dict) -> PaidProviderPolicy:
 def _queries(candidate: CandidateConstraints) -> list[tuple[str, str]]:
     tracks = {track.value for track in candidate.preferred_technical_tracks}
     queries: list[tuple[str, str]] = []
-    if not tracks or tracks & {"software", "backend", "frontend", "fullstack", "mobile", "qa_automation"}:
-        queries.append(("software-engineering-intern-india", "software engineering intern"))
-    if not tracks or tracks & {"ai_ml", "data"}:
-        queries.extend([
-            ("ai-ml-intern-india", "machine learning AI intern"),
-            ("data-intern-india", "data science data engineering intern"),
-        ])
-    if tracks & {"cloud_devops", "security", "embedded_systems"}:
-        label = " ".join(sorted(tracks & {"cloud_devops", "security", "embedded_systems"})).replace("_", " ")
-        queries.append(("specialist-intern-india", f"{label} intern"))
-    queries.extend([
-        ("worldwide-remote-intern", "worldwide remote software engineering intern"),
-        ("software-new-grad-india", "software engineer new grad"),
-        ("entry-level-software-india", "entry level software engineer"),
-    ])
+    accepted = set(candidate.accepted_opportunity_types)
+    accepts_internships = OpportunityType.INTERNSHIP in accepted
+    if accepts_internships:
+        elite_ai_campaign = bool(
+            ({"ai_ml", "data", "backend"} & tracks)
+            and (
+                candidate.minimum_monthly_compensation_inr >= 100_000
+                or candidate.target_monthly_compensation_inr >= 100_000
+                or candidate.minimum_monthly_compensation_usd >= 1_200
+                or candidate.target_monthly_compensation_usd >= 1_200
+            )
+        )
+        # Paid providers are governed by tight daily caps. Put the highest-upside
+        # remote and specialist searches first so a five-request budget does not
+        # get consumed by broad generic queries before the campaign targets run.
+        if elite_ai_campaign:
+            if candidate.allow_worldwide_remote:
+                queries.append((
+                    "worldwide-remote-intern",
+                    "worldwide remote generative AI LLM engineering intern",
+                ))
+            queries.extend([
+                ("ai-agent-intern-india", "AI agent LangGraph RAG intern"),
+                ("applied-ai-intern-india", "applied AI research engineering intern"),
+                ("generative-ai-intern-india", "generative AI LLM engineering intern"),
+            ])
+        if not tracks or tracks & {"software", "backend", "frontend", "fullstack", "mobile", "qa_automation"}:
+            queries.append(("software-engineering-intern-india", "software engineering intern"))
+        if not tracks or tracks & {"ai_ml", "data"}:
+            queries.extend([
+                ("ai-ml-intern-india", "machine learning AI intern"),
+                ("data-intern-india", "data science data engineering intern"),
+            ])
+        if tracks & {"cloud_devops", "security", "embedded_systems"}:
+            label = " ".join(sorted(tracks & {"cloud_devops", "security", "embedded_systems"})).replace("_", " ")
+            queries.append(("specialist-intern-india", f"{label} intern"))
+
+        if candidate.allow_worldwide_remote and not elite_ai_campaign:
+            queries.append(("worldwide-remote-intern", "worldwide remote software engineering intern"))
+
+    if OpportunityType.NEW_GRAD in accepted:
+        queries.append(("software-new-grad-india", "software engineer new grad"))
+    if accepted & {OpportunityType.ENTRY_LEVEL_FULL_TIME, OpportunityType.STRETCH_FULL_TIME}:
+        queries.append(("entry-level-software-india", "entry level software engineer"))
     seen: set[str] = set()
     unique_queries: list[tuple[str, str]] = []
     for key, value in queries:

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from opportunities.eligibility import CandidateConstraints
+from opportunities.taxonomy import OpportunityType, TechnicalTrack
 from opportunities import paid_sources
 
 
@@ -46,6 +47,33 @@ def test_paid_targets_require_both_switches_and_credentials_and_fit_remaining_ca
 
     full_targets = paid_sources.paid_provider_targets(_cfg(), candidate)
     assert any(target.target_id.endswith("worldwide-remote-intern") for target in full_targets)
+
+
+def test_elite_ai_internship_campaign_expands_only_high_signal_intern_queries() -> None:
+    candidate = CandidateConstraints(
+        candidate_id="elite-ai-intern",
+        preferred_technical_tracks=[TechnicalTrack.AI_ML, TechnicalTrack.BACKEND],
+        accepted_opportunity_types=[OpportunityType.INTERNSHIP],
+        minimum_monthly_compensation_inr=100_000,
+        target_monthly_compensation_inr=200_000,
+        minimum_monthly_compensation_usd=1_200,
+        target_monthly_compensation_usd=2_400,
+    )
+    targets = paid_sources.paid_provider_targets(
+        _cfg(paid_provider_daily_request_cap="20"), candidate
+    )
+    ids = {target.target_id for target in targets}
+    assert "paid:serpapi:generative-ai-intern-india" in ids
+    assert "paid:serpapi:ai-agent-intern-india" in ids
+    assert "paid:serpapi:applied-ai-intern-india" in ids
+    assert "paid:serpapi:worldwide-remote-intern" in ids
+    assert not any("new-grad" in target_id or "entry-level" in target_id for target_id in ids)
+    assert [target.target_id for target in targets[:4]] == [
+        "paid:serpapi:worldwide-remote-intern",
+        "paid:serpapi:ai-agent-intern-india",
+        "paid:serpapi:applied-ai-intern-india",
+        "paid:serpapi:generative-ai-intern-india",
+    ]
 
 
 def test_provider_status_is_redacted_and_reports_retention_gate() -> None:

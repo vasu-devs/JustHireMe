@@ -45,6 +45,9 @@ export interface OpportunityCard {
     posting_india_cities?: string[];
     graduation_years?: number[];
     monthly_compensation_inr?: number[];
+    monthly_compensation_usd?: number[];
+    compensation_score?: number;
+    target_compensation_met?: boolean | null;
     internship_duration_months?: number[];
     minimum_experience_years?: number;
     requires_current_enrollment?: boolean;
@@ -76,6 +79,10 @@ export interface OpportunityCandidate {
   allow_bond: boolean;
   professional_experience_years: number;
   minimum_monthly_compensation_inr: number;
+  target_monthly_compensation_inr: number;
+  minimum_monthly_compensation_usd: number;
+  target_monthly_compensation_usd: number;
+  unknown_compensation_policy: "allow" | "review" | "skip";
   maximum_internship_months: number;
 }
 

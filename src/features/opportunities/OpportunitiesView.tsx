@@ -80,6 +80,10 @@ const DEFAULT_PROFILE: OpportunityCandidate = {
   allow_bond: false,
   professional_experience_years: 0,
   minimum_monthly_compensation_inr: 0,
+  target_monthly_compensation_inr: 0,
+  minimum_monthly_compensation_usd: 0,
+  target_monthly_compensation_usd: 0,
+  unknown_compensation_policy: "allow",
   maximum_internship_months: 12,
 };
 const EMPTY_APPLICATION_IDENTITY: OpportunityApplicationIdentity = {
@@ -226,6 +230,28 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
     setCandidateId(normalized);
   };
 
+  const applyEliteAiInternshipPreset = () => {
+    setProfile(value => ({
+      ...value,
+      current_degree_level: "bachelors",
+      currently_enrolled: true,
+      preferred_technical_tracks: ["ai_ml", "backend", "data"],
+      accepted_opportunity_types: ["internship"],
+      allow_india_onsite: true,
+      allow_india_hybrid: true,
+      allow_india_remote: true,
+      allow_worldwide_remote: true,
+      allow_unpaid: false,
+      allow_bond: false,
+      minimum_monthly_compensation_inr: 100_000,
+      target_monthly_compensation_inr: 200_000,
+      minimum_monthly_compensation_usd: 1_200,
+      target_monthly_compensation_usd: 2_400,
+      unknown_compensation_policy: "review",
+      maximum_internship_months: 6,
+    }));
+  };
+
   const profileBody = () => ({
     consent_confirmed_at: profile.consent_confirmed_at,
     home_country: "IN",
@@ -246,6 +272,10 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
     allow_bond: profile.allow_bond,
     professional_experience_years: profile.professional_experience_years,
     minimum_monthly_compensation_inr: profile.minimum_monthly_compensation_inr,
+    target_monthly_compensation_inr: profile.target_monthly_compensation_inr,
+    minimum_monthly_compensation_usd: profile.minimum_monthly_compensation_usd,
+    target_monthly_compensation_usd: profile.target_monthly_compensation_usd,
+    unknown_compensation_policy: profile.unknown_compensation_policy,
     maximum_internship_months: profile.maximum_internship_months,
   });
 
@@ -485,6 +515,13 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
       </header>
 
       <section className="opportunity-setup" aria-label="Candidate opportunity constraints">
+        <div className="opportunity-campaign-preset">
+          <div>
+            <strong>Elite AI internship campaign</strong>
+            <span>₹1L / $1.2k monthly floor · ₹2L / $2.4k target · AI, backend and data internships only</span>
+          </div>
+          <button type="button" onClick={applyEliteAiInternshipPreset}>Apply elite preset</button>
+        </div>
         <label>
           <span>Current degree level</span>
           <select
@@ -576,7 +613,7 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
           </div>
         </fieldset>
         <label>
-          <span>Minimum ₹ / month</span>
+          <span>Hard floor ₹ / month</span>
           <input
             type="number"
             min={0}
@@ -584,6 +621,50 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
             value={profile.minimum_monthly_compensation_inr}
             onChange={event => setProfile(value => ({ ...value, minimum_monthly_compensation_inr: Number(event.target.value) }))}
           />
+        </label>
+        <label>
+          <span>Target ₹ / month</span>
+          <input
+            type="number"
+            min={0}
+            step={5000}
+            value={profile.target_monthly_compensation_inr}
+            onChange={event => setProfile(value => ({ ...value, target_monthly_compensation_inr: Number(event.target.value) }))}
+          />
+        </label>
+        <label>
+          <span>Remote floor $ / month</span>
+          <input
+            type="number"
+            min={0}
+            step={100}
+            value={profile.minimum_monthly_compensation_usd}
+            onChange={event => setProfile(value => ({ ...value, minimum_monthly_compensation_usd: Number(event.target.value) }))}
+          />
+        </label>
+        <label>
+          <span>Remote target $ / month</span>
+          <input
+            type="number"
+            min={0}
+            step={100}
+            value={profile.target_monthly_compensation_usd}
+            onChange={event => setProfile(value => ({ ...value, target_monthly_compensation_usd: Number(event.target.value) }))}
+          />
+        </label>
+        <label>
+          <span>When pay is undisclosed</span>
+          <select
+            value={profile.unknown_compensation_policy}
+            onChange={event => setProfile(value => ({
+              ...value,
+              unknown_compensation_policy: event.target.value as OpportunityCandidate["unknown_compensation_policy"],
+            }))}
+          >
+            <option value="allow">Keep in normal queue</option>
+            <option value="review">Send to review</option>
+            <option value="skip">Skip</option>
+          </select>
         </label>
         <label>
           <span>Max internship months</span>
@@ -793,6 +874,7 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
                   <span>growth {facts.career_growth_score}</span>
                   <span>hiring confidence {facts.hiring_confidence_score}</span>
                   <span>fit {facts.candidate_fit_score}</span>
+                  <span>pay score {facts.compensation_score ?? 50}</span>
                   <span>{words(facts.opportunity_type)}</span>
                   <span>{words(facts.technical_track)}</span>
                   <span>{words(facts.workplace_scope)}</span>
@@ -800,6 +882,10 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
                   {(facts.monthly_compensation_inr?.length || 0) > 0 && (
                     <span>₹{Math.min(...(facts.monthly_compensation_inr || [])).toLocaleString("en-IN")}/mo observed</span>
                   )}
+                  {(facts.monthly_compensation_usd?.length || 0) > 0 && (
+                    <span>${Math.min(...(facts.monthly_compensation_usd || [])).toLocaleString("en-US")}/mo observed</span>
+                  )}
+                  {facts.target_compensation_met === true && <span>target pay met</span>}
                   {(facts.internship_duration_months?.length || 0) > 0 && (
                     <span>up to {Math.max(...(facts.internship_duration_months || []))} months</span>
                   )}
