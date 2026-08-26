@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.1 - 2026-08-26
+
+- Preserves the complete Elite AI Internship campaign from 1.6.0 while hardening the Windows release gate: installed sidecar pipe handles are explicitly closed after the health check, temporary cleanup can no longer keep a successful smoke process alive, and silent NSIS installs now have a bounded timeout.
+
 ## 1.6.0 - 2026-08-26
 
 - A one-click Elite AI Internship campaign now focuses discovery and ranking on paid AI, ML, data, backend, GenAI, RAG, agent, and applied-research internships that are remote worldwide or workable from India.

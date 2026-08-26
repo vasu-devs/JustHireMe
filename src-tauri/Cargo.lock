@@ -1913,7 +1913,7 @@ dependencies = [
 
 [[package]]
 name = "justhireme"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "serde",
  "serde_json",

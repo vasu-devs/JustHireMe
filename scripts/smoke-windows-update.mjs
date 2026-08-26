@@ -450,15 +450,24 @@ async function requestShutdown(port, token) {
 }
 
 async function stopSidecar(child, handshake) {
-  if (handshake?.port && handshake?.token) {
-    await requestShutdown(handshake.port, handshake.token);
+  try {
+    if (handshake?.port && handshake?.token) {
+      await requestShutdown(handshake.port, handshake.token);
+    }
+    const closedCleanly = await waitForChildClose(child, 15_000);
+    if (!closedCleanly) {
+      killProcessTree(child);
+      await waitForChildClose(child, 5_000);
+    }
+    await sleep(1000);
+  } finally {
+    // A PyInstaller child can inherit these pipe handles after the launcher
+    // exits. Destroy them explicitly so a successful smoke cannot keep Node's
+    // event loop alive until the GitHub Actions job timeout.
+    child?.stdout?.destroy();
+    child?.stderr?.destroy();
+    child?.unref?.();
   }
-  const closedCleanly = await waitForChildClose(child, 15_000);
-  if (!closedCleanly) {
-    killProcessTree(child);
-    await waitForChildClose(child, 5_000);
-  }
-  await sleep(1000);
 }
 
 function requireHealth(health, options = {}) {
@@ -556,7 +565,7 @@ async function freshInstallerSmoke() {
   const shortcutSnapshot = snapshotShortcutFiles(root);
 
   try {
-    run(newInstaller, ["/S", `/D=${installDir}`]);
+    run(newInstaller, ["/S", `/D=${installDir}`], { timeout: installerTimeoutMs });
     assertInstalledMetadata(installDir, expectedVersion);
     await smokeInstalledSidecar(installDir, appDataDir);
     console.log(`Windows installed package smoke passed: ${installDir}`);
@@ -564,6 +573,7 @@ async function freshInstallerSmoke() {
     killImage("justhireme.exe");
     killImage("jhm-sidecar-next.exe");
     killImage("backend.exe");
+    await sleep(1000);
     await cleanupInstalledPackage(installDir, registrySnapshot);
     restoreShortcutFiles(shortcutSnapshot);
     await sleep(3000);
