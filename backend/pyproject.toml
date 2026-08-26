@@ -28,7 +28,7 @@ dependencies = [
     "onnxruntime~=1.27.0",
     "tokenizers>=0.20.0",
     "huggingface-hub>=0.27.0",
-    "pypdf>=6.14.2",
+    "pypdf>=6.15.0",
     "playwright>=1.60.0",
     "html2text>=2025.4.15",
     "httpx>=0.28.1",
@@ -41,6 +41,9 @@ dependencies = [
     "langsmith>=0.9.6",
     "urllib3>=2.7.0",
     "starlette>=1.3.1",
+    # Security floors for transitive networking dependencies are explicit so
+    # a stale resolver result cannot reintroduce patched parser vulnerabilities.
+    "aiohttp>=3.14.3",
 ]
 
 [dependency-groups]
@@ -51,6 +54,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.20",
+    "setuptools>=83.0.0",
 ]
 
 [tool.pytest.ini_options]
