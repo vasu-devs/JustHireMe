@@ -50,6 +50,7 @@ export interface Lead {
   url: string; platform: string; status: string; asset: string;
   resume_asset?: string; cover_letter_asset?: string; selected_projects?: string[];
   resume_version?: number;
+  score_stale?: boolean;
   keyword_coverage?: KeywordCoverage;
   contact_lookup?: ContactLookup;
   score: number; reason: string; match_points: string[]; gaps?: string[]; scored_by?: string;

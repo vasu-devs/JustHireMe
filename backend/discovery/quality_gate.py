@@ -142,7 +142,7 @@ def _freshness(lead: dict, max_age_days: int = 7) -> tuple[bool, str]:
         # it must not get a free pass into the (auto-apply) pipeline. The one
         # exception is a lead from a recency-constrained source.
         if _has_fresh_source(lead):
-            return True, "freshness assumed (recency-constrained source)"
+            return True, "posting date unverified; recency inferred from constrained source"
         return False, "no posting date"
     newest = max(dates)
     age_seconds = (datetime.now(timezone.utc) - newest).total_seconds()
@@ -198,6 +198,11 @@ def evaluate_lead_quality(
     reasons.append(fresh_reason)
     if not fresh:
         penalties += 35
+    elif fresh_reason.startswith("posting date unverified"):
+        # A query constrained to the last week is useful evidence, but it is not
+        # the same as a date supplied by the ATS.  Never let inferred freshness
+        # present as perfect source confidence.
+        penalties += 10
 
     lower = text.lower()
     red_flags = [flag for flag in _RED_FLAGS if flag in lower]

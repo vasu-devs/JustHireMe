@@ -111,7 +111,7 @@ export function DiscoverySettings({ cfg, set, onChange }: { cfg: Cfg; set: (k: k
                     <input type="number" min={0} max={100} value={cfg.x_min_signal_score} onChange={set("x_min_signal_score")} className="mono field-input"
                       style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--card)", fontSize: 12 }} />
                   </LabelledField>
-                  <LabelledField label="Hot score" hint="0-100">
+                  <LabelledField label="Source threshold" hint="not candidate fit">
                     <input type="number" min={1} max={100} value={cfg.x_hot_lead_threshold} onChange={set("x_hot_lead_threshold")} className="mono field-input"
                       style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--card)", fontSize: 12 }} />
                   </LabelledField>
@@ -120,9 +120,9 @@ export function DiscoverySettings({ cfg, set, onChange }: { cfg: Cfg; set: (k: k
                   active={cfg.x_enable_notifications === "true"}
                   onToggle={() => onChange("x_enable_notifications", cfg.x_enable_notifications === "true" ? "false" : "true")}
                   icon="spark"
-                  label="Hot X notifications"
+                  label="High-confidence X source notifications"
                   badge={cfg.x_enable_notifications === "true" ? "on" : "off"}
-                  sub="Desktop alert when an X lead crosses the hot score"
+                  sub="Source/actionability quality only; candidate fit is scored separately"
                   tone="orange"
                 />
               </div>

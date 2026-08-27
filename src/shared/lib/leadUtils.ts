@@ -4,7 +4,11 @@ export const getMark = (company: string) => company ? company.charAt(0).toUpperC
 export const PAGE_SIZE = 80;
 export const ONBOARDING_KEY = "justhireme:onboarding:v4";
 
-export const leadSignal = (lead: Lead) => Math.max(lead.signal_score || 0, lead.score || 0);
+// Candidate fit is the only score allowed to drive recommendations, "Hot",
+// dashboards, or match labels. signal_score is a pre-profile discovery heuristic
+// (source/actionability), so taking max(signal, fit) made an irrelevant marketing
+// role with signal=100 outrank a genuine engineering match.
+export const leadSignal = (lead: Lead) => lead.score || 0;
 
 export const leadSearchText = (lead: Lead) => [
   lead.title, lead.company, lead.platform, lead.status, lead.kind, lead.budget,
@@ -153,6 +157,7 @@ export const sortLeads = (items: Lead[], sort: LeadSort) => {
       const bContacted = b.last_contacted_at ? 1 : 0;
       return (
         leadSignal(b) - leadSignal(a) ||
+        (b.signal_score || 0) - (a.signal_score || 0) ||
         (b.learning_delta || 0) - (a.learning_delta || 0) ||
         bContacted - aContacted ||
         (b.budget ? 1 : 0) - (a.budget ? 1 : 0)

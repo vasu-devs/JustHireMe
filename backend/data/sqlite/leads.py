@@ -6,6 +6,7 @@ import html
 import re
 
 from core.tenancy import LOCAL_TENANT_ID
+from core.scoring_version import MATCH_SCORING_VERSION, is_match_score_stale
 from data.sqlite.connection import DEFAULT_DB_PATH, get_connection
 from data.sqlite.events import record_event
 
@@ -88,14 +89,21 @@ def json_dumps_list(items: list | str | None) -> str:
 def lead_row_dict(row) -> dict:
     source_meta = json_dict(row_get(row, "source_meta") or "{}")
     asset_path = row_get(row, "asset_path") or ""
+    stored_score = int(row_get(row, "score") or 0)
+    score_stale = is_match_score_stale(stored_score, source_meta)
     return {
         "job_id": row_get(row, "job_id"), "title": row_get(row, "title"), "company": row_get(row, "company"), "url": row_get(row, "url"),
-        "platform": row_get(row, "platform"), "status": row_get(row, "status"), "score": row_get(row, "score") or 0,
-        "reason": row_get(row, "reason") or "",
-        "match_points": json_list(row_get(row, "match_points") or "[]"),
+        "platform": row_get(row, "platform"), "status": row_get(row, "status"),
+        # Never present a result from a superseded algorithm as current fit.
+        # The stored value is preserved in SQLite and becomes current again only
+        # after update_lead_score records this release's scoring version.
+        "score": 0 if score_stale else stored_score,
+        "score_stale": score_stale,
+        "reason": "Score needs re-evaluation after a matching-engine update." if score_stale else (row_get(row, "reason") or ""),
+        "match_points": [] if score_stale else json_list(row_get(row, "match_points") or "[]"),
         "asset": asset_path,
         "description": row_get(row, "description") or "",
-        "gaps": json_list(row_get(row, "gaps") or "[]"),
+        "gaps": [] if score_stale else json_list(row_get(row, "gaps") or "[]"),
         "resume_asset": asset_path,
         "cover_letter_asset": row_get(row, "cover_letter_path") or "",
         "selected_projects": json_list(row_get(row, "selected_projects") or "[]"),
@@ -538,6 +546,7 @@ def update_lead_score(
         source_meta = json_dict(row["source_meta"] if row else "{}")
         if scored_by:
             source_meta["scored_by"] = scored_by
+        source_meta["match_scoring_version"] = MATCH_SCORING_VERSION
 
         # Two settable bands so the loop surfaces genuine matches in EVERY field: the
         # deterministic rubric scores non-software roles lower, so a single hard 76 bar
@@ -850,35 +859,14 @@ def get_lead_by_id(job_id: str, db_path: str = DEFAULT_DB_PATH) -> dict:
 
 
 def get_lead_for_fire_base(job_id: str, db_path: str = DEFAULT_DB_PATH) -> tuple[dict, str]:
-    conn = get_connection(db_path)
-    try:
-        row = conn.execute(
-            "SELECT job_id,title,company,url,platform,status,score,reason,match_points,asset_path,description,gaps,cover_letter_path,selected_projects,kind,budget FROM leads WHERE job_id=?",
-            (job_id,),
-        ).fetchone()
-    finally:
-        conn.close()
-    if not row:
+    # Reuse the canonical row mapper so automation cannot see a stale pre-upgrade
+    # score that the normal leads API correctly hides.
+    lead = get_lead_by_id(job_id, db_path)
+    if not lead:
         return {}, ""
-
-    path = row["asset_path"] or ""
-    cover_path = row["cover_letter_path"] or ""
-    lead = {
-        "job_id": row["job_id"], "title": row["title"], "company": row["company"], "url": row["url"],
-        "platform": row["platform"], "status": row["status"], "score": row["score"] or 0,
-        "reason": row["reason"] or "",
-        "match_points": json_list(row["match_points"] or "[]"),
-        "asset": path,
-        "resume_asset": path,
-        "asset_path": path,
-        "description": row["description"] or "",
-        "gaps": json_list(row["gaps"] or "[]"),
-        "cover_letter_asset": cover_path,
-        "cover_letter_path": cover_path,
-        "selected_projects": json_list(row["selected_projects"] or "[]"),
-        "kind": row["kind"] or "job",
-        "budget": row["budget"] or "",
-    }
+    path = str(lead.get("resume_asset") or lead.get("asset") or "")
+    lead["asset_path"] = path
+    lead["cover_letter_path"] = str(lead.get("cover_letter_asset") or "")
     return lead, path
 
 

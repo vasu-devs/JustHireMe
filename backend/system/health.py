@@ -48,7 +48,11 @@ def check_vector(repo: Repository) -> dict:
         if getattr(module.vec, "available", True) is False:
             return {"status": "unavailable", "tables": [], "error": getattr(module.vec, "reason", "")}
         return {"status": "ok", "tables": list(module.vec.list_tables() or [])}
-    except Exception as exc:
+    except BaseException as exc:
+        # Native PyO3 drivers can surface Rust panics as BaseException. Health
+        # must report optional-subsystem failure instead of returning HTTP 500.
+        if isinstance(exc, (KeyboardInterrupt, SystemExit, GeneratorExit)):
+            raise
         return {"status": "error", "error": str(exc)}
 
 

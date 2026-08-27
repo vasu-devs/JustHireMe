@@ -330,7 +330,10 @@ function requireHealth(health, options = {}) {
     fail(`Graph health must be ok, got ${graph || "(missing)"}: ${JSON.stringify(components.graph || {})}`);
   }
   if (options.vectorRequired && vector !== "ok") {
-    fail(`Vector health must be ok in release sidecars, got ${vector || "(missing)"}`);
+    fail(
+      `Vector health must be ok in release sidecars, got ${vector || "(missing)"}: ` +
+        JSON.stringify(components.vector || {})
+    );
   }
 
   return { sqlite, graph, vector, app: health.status };
@@ -464,7 +467,11 @@ try {
     await waitForChildClose(child, 5_000);
   }
   await sleep(1000);
-  remove(appDataDir, { allowFailure: true });
+  if (process.env.JHM_SMOKE_KEEP_DATA === "1" && !passed) {
+    console.warn(`Preserving failed sidecar smoke data at ${appDataDir}`);
+  } else {
+    remove(appDataDir, { allowFailure: true });
+  }
   if (cleanupDir) {
     remove(cleanupDir, { allowFailure: true });
   }

@@ -99,6 +99,17 @@ describe("sortLeads", () => {
       lead({ job_id: "learned", signal_score: 80, learning_delta: 4 }),
     ], "recommended").map(l => l.job_id)).toEqual(["learned", "contacted", "budget", "fresh"]);
   });
+
+  it("never lets discovery signal override an evaluated candidate fit", () => {
+    const irrelevant = lead({ job_id: "marketing", score: 15, signal_score: 100 });
+    const realMatch = lead({ job_id: "engineering", score: 82, signal_score: 70 });
+
+    expect(leadUtils.leadSignal(irrelevant)).toBe(15);
+    expect(sortLeads([irrelevant, realMatch], "recommended").map(l => l.job_id)).toEqual([
+      "engineering",
+      "marketing",
+    ]);
+  });
 });
 
 describe("leadDisplayHeading", () => {

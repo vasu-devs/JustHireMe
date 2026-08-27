@@ -223,7 +223,7 @@ export function useWS() {
           window.dispatchEvent(new CustomEvent("hot-x-lead", { detail: d.data }));
           if ("Notification" in window && Notification.permission === "granted") {
             const lead = d.data as Lead;
-            new Notification("Hot X lead", { body: `${lead.company}: ${lead.title}` });
+            new Notification("High-confidence X source", { body: `${lead.company}: ${lead.title} · candidate fit not scored yet` });
           }
         }
       } catch (err) {

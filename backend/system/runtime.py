@@ -50,13 +50,18 @@ def runtime_payload(sync: dict | None = None) -> dict:
     runtime_ready = bool(runtime.get("ready"))
     vector = _loaded_vector_status(runtime_ready)
     restart_required = bool(vector.get("restart_required"))
+    job_active = _job_running() or bool(progress.get("active", False))
     payload = {
-        "ready": runtime_ready and not restart_required,
+        # The archive can become file-complete before the background worker has
+        # imported LanceDB, connected it, and synced existing profile rows. Do
+        # not advertise the runtime as ready during that window: callers would
+        # otherwise observe a disabled vector store immediately after success.
+        "ready": runtime_ready and not restart_required and not job_active,
         "required": not runtime_ready and not restart_required,
         "restart_required": restart_required,
         "runtime": runtime,
         "vector": vector,
-        "progress": progress | {"active": _job_running() or progress.get("active", False)},
+        "progress": progress | {"active": job_active},
     }
     current_sync = sync if sync is not None else _LAST_SYNC
     if current_sync is not None:

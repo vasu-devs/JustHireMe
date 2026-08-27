@@ -267,15 +267,16 @@ function assertInstalledMetadata(installDir, expectedVersion = "") {
   if (!existsSync(startMenuShortcut)) {
     fail(`Missing Start Menu shortcut: ${startMenuShortcut}`);
   }
-  for (const shortcut of shortcuts) {
-    if (!existsSync(shortcut)) continue;
-    const target = readShortcutTarget(shortcut);
-    if (normalizeFsPath(target) !== normalizeFsPath(expectedApp)) {
-      fail(`Shortcut ${shortcut} points to ${target || "(missing)"}, expected ${expectedApp}.`);
-    }
-    if (!existsSync(target)) {
-      fail(`Shortcut ${shortcut} points to missing executable: ${target || "(missing)"}.`);
-    }
+  // NSIS owns the Start Menu shortcut. Desktop and pinned-taskbar shortcuts
+  // may predate this isolated install and legitimately keep pointing at the
+  // user's normal installation; the smoke snapshots/restores them but must
+  // not require the test installer to rewrite unrelated user state.
+  const target = readShortcutTarget(startMenuShortcut);
+  if (normalizeFsPath(target) !== normalizeFsPath(expectedApp)) {
+    fail(`Shortcut ${startMenuShortcut} points to ${target || "(missing)"}, expected ${expectedApp}.`);
+  }
+  if (!existsSync(target)) {
+    fail(`Shortcut ${startMenuShortcut} points to missing executable: ${target || "(missing)"}.`);
   }
 }
 
@@ -414,7 +415,7 @@ async function readHealth(port, token) {
       const response = await fetch(`http://127.0.0.1:${port}/health`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
       return response.json();
     } catch (error) {
       lastError = error;
@@ -539,6 +540,12 @@ async function smokeInstalledSidecar(installDir, appDataDir) {
     const runtimeHealth = await readHealth(handshake.port, handshake.token);
     const runtimeSummary = requireHealth(runtimeHealth, { vectorRequired: runtime.ready });
     console.log(`Installed sidecar health passed: app=${summary.app}, sqlite=${summary.sqlite}, graph=${summary.graph}, vector=${runtimeSummary.vector || summary.vector}`);
+  } catch (error) {
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}\n` +
+        `sidecar stdout:\n${stdoutLines.join("\n")}\n` +
+        `sidecar stderr:\n${stderrLines.join("\n")}`,
+    );
   } finally {
     await stopSidecar(child, handshake);
   }

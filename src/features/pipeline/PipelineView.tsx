@@ -29,7 +29,7 @@ function laneFor(lead: Lead): BoardLane {
   if (lead.status === "discarded" || lead.status === "rejected") return "Discarded";
   if (["applied", "interviewing", "accepted"].includes(lead.status)) return "Applied";
   if (lead.status === "approved") return "Ready";
-  if (lead.status === "tailoring" || lead.score > 0 || (lead.signal_score || 0) > 0) return "Tailoring";
+  if ((lead.status === "tailoring" && !lead.score_stale) || lead.score > 0) return "Tailoring";
   return "Discovered";
 }
 
@@ -76,7 +76,7 @@ export function PipelineView({
     let rows = needle ? leads.filter(lead => leadSearchText(lead).includes(needle)) : leads;
     if (tab === "hot") rows = rows.filter(lead => leadSignal(lead) >= 80);
     if (tab === "found") rows = rows.filter(lead => laneFor(lead) === "Discovered");
-    if (tab === "evaluated") rows = rows.filter(lead => lead.score > 0 || (lead.signal_score || 0) > 0);
+    if (tab === "evaluated") rows = rows.filter(lead => lead.score > 0);
     if (tab === "generated") rows = rows.filter(lead => ["Tailoring", "Ready"].includes(laneFor(lead)));
     if (tab === "applied") rows = rows.filter(lead => laneFor(lead) === "Applied");
     if (tab === "discarded") rows = rows.filter(lead => laneFor(lead) === "Discarded");

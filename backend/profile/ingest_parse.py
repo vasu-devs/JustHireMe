@@ -342,16 +342,34 @@ def _profile_has_content(profile: C) -> bool:
     )
 
 
+_RESUME_SECTION_HEADINGS = (
+    "summary", "professional summary", "profile", "professional profile", "objective",
+    "career objective", "about me",
+    "skills", "technical skills", "core skills", "core competencies",
+    "technical competencies", "technical toolkit", "technologies", "tools",
+    "experience", "work experience", "professional experience", "employment", "internships",
+    "projects", "selected projects", "key projects", "personal projects", "academic projects",
+    "portfolio projects", "open source projects", "projects & open source", "project experience",
+    "education", "academics", "academic background",
+    "certifications", "certificates", "licenses & certifications", "licenses and certifications",
+    "achievements", "awards", "honors & awards", "honors and awards",
+    "open source", "open source & community",
+)
+
+
 def _section_lines(text: str, headings: tuple[str, ...]) -> list[str]:
     pattern = "|".join(re.escape(name) for name in headings)
-    match = re.search(rf"(?im)^\s*(?:#+\s*)?(?:{pattern})\s*:?\s*$", text or "")
+    # Resume headings commonly carry a descriptive suffix, e.g.
+    # "SELECTED PROJECTS — AGENTS, CONTENT PIPELINES & EVALS".  Requiring the
+    # heading name to occupy the entire line made EXPERIENCE swallow PROJECTS
+    # and turned project titles/bullets into fake jobs.
+    suffix = r"(?:\s+(?:[-–—|])\s+[^\n]{1,120})?"
+    match = re.search(rf"(?im)^\s*(?:#+\s*)?(?:{pattern}){suffix}\s*:?\s*$", text or "")
     if not match:
         return []
     tail = text[match.end():]
-    end = re.search(
-        r"(?im)^\s*(?:#+\s*)?(?:summary|profile|objective|skills|technical skills|experience|work experience|employment|projects|education|certifications|certificates|achievements|awards)\s*:?\s*$",
-        tail,
-    )
+    all_headings = "|".join(re.escape(name) for name in _RESUME_SECTION_HEADINGS)
+    end = re.search(rf"(?im)^\s*(?:#+\s*)?(?:{all_headings}){suffix}\s*:?\s*$", tail)
     if end:
         tail = tail[:end.start()]
     return [_strip_md(re.sub(r"^\s*(?:[-*]|\u2022|\u00e2\u20ac\u00a2)\s*", "", line)) for line in tail.splitlines() if _strip_md(line)]
@@ -374,18 +392,25 @@ def _parse_resume_heuristic(txt: str) -> C:
             name = " ".join(words)
             break
 
-    summary_lines = _section_lines(clean_text, ("summary", "profile", "objective"))
+    summary_lines = _section_lines(
+        clean_text,
+        ("summary", "professional summary", "profile", "professional profile", "objective", "career objective", "about me"),
+    )
     summary = " ".join(summary_lines[:3])
     if not summary:
         summary = ""
 
-    skill_lines = _section_lines(clean_text, ("skills", "technical skills", "technologies", "tools"))
+    skill_lines = _section_lines(
+        clean_text,
+        ("skills", "technical skills", "core skills", "core competencies", "technical competencies", "technical toolkit", "technologies", "tools"),
+    )
     skill_names: list[str] = []
     known_terms = {
         "Python", "TypeScript", "JavaScript", "React", "Next.js", "Node.js", "FastAPI", "Django", "Flask",
         "SQL", "PostgreSQL", "SQLite", "MongoDB", "Redis", "Docker", "Kubernetes", "AWS", "GCP", "Azure",
-        "LangGraph", "LangChain", "OpenAI", "Gemini", "LLM", "RAG", "Machine Learning", "Pandas", "NumPy",
-        "PyTorch", "TensorFlow", "Tauri", "Rust", "Git", "CI/CD", "Linux", "Playwright",
+        "LangGraph", "LangChain", "OpenAI", "Gemini", "DeepSeek", "Tavily", "LLM", "RAG",
+        "Machine Learning", "Pandas", "NumPy", "PyTorch", "TensorFlow", "Tauri", "Rust", "Git",
+        "CI/CD", "Linux", "Playwright", "WebSockets", "asyncio", "httpx", "FTS5", "MCP",
     }
     for line in skill_lines:
         value = re.sub(r"^[A-Za-z /&+-]{2,35}:\s*", "", line)
@@ -394,7 +419,11 @@ def _parse_resume_heuristic(txt: str) -> C:
     for term in known_terms:
         if re.search(r"(?<![a-z0-9+#.-])" + re.escape(term.lower()) + r"(?![a-z0-9+#.-])", lower_resume):
             skill_names.append(term)
-    skills = [S(n=item, cat="resume") for item in _dedupe(skill_names)[:40]]
+    # Keep the full normalized résumé vocabulary (bounded consistently with the
+    # profile normalizer) instead of silently dropping everything after skill 40.
+    # Dense technical résumés routinely exceed that once category lines, aliases,
+    # and project stacks are combined; the truncation erased ranking evidence.
+    skills = [S(n=item, cat="resume") for item in _dedupe(skill_names)[:200]]
 
     # Per-role skill matching uses the candidate's OWN listed skills (any field)
     # plus the tech known-terms, so a nurse's "IV therapy" is matched in their
@@ -409,7 +438,10 @@ def _parse_resume_heuristic(txt: str) -> C:
             if re.search(r"(?<![a-z0-9+#.-])" + re.escape(term.lower()) + r"(?![a-z0-9+#.-])", low)
         ]
 
-    exp_lines = _section_lines(clean_text, ("experience", "work experience", "employment"))
+    exp_lines = _section_lines(
+        clean_text,
+        ("experience", "work experience", "professional experience", "employment", "internships"),
+    )
     exp: list[E] = []
     current_exp: dict | None = None
     # #111: the old [:30]-line window silently dropped later roles and bullets
@@ -437,9 +469,17 @@ def _parse_resume_heuristic(txt: str) -> C:
     if current_exp:
         exp.append(E(role=current_exp["role"], co=current_exp["co"], period=current_exp.get("period", ""), location=current_exp.get("location", ""), d=current_exp.get("d", ""), s=_skills_in(current_exp.get("d", ""))))
 
-    project_lines = _section_lines(clean_text, ("projects", "selected projects", "personal projects"))
+    project_lines = _section_lines(
+        clean_text,
+        (
+            "projects", "selected projects", "key projects", "personal projects", "academic projects",
+            "portfolio projects", "open source projects", "projects & open source", "project experience",
+        ),
+    )
     projects = _projects_from_resume_lines(project_lines, skills)
-    education = _education_from_resume_lines(_section_lines(clean_text, ("education",)))
+    education = _education_from_resume_lines(
+        _section_lines(clean_text, ("education", "academics", "academic background"))
+    )
 
     parsed = C(
         n=name,
@@ -447,9 +487,15 @@ def _parse_resume_heuristic(txt: str) -> C:
         skills=skills,
         exp=exp,
         projects=projects,
-        certifications=_section_lines(clean_text, ("certifications", "certificates"))[:8],
+        certifications=_section_lines(
+            clean_text,
+            ("certifications", "certificates", "licenses & certifications", "licenses and certifications"),
+        )[:8],
         education=education,
-        achievements=_section_lines(clean_text, ("achievements", "awards"))[:8],
+        achievements=_section_lines(
+            clean_text,
+            ("achievements", "awards", "honors & awards", "honors and awards"),
+        )[:8],
     )
     from profile.normalization import normalize_candidate_model
 
@@ -471,7 +517,13 @@ def _resume_experience_header(line: str) -> dict | None:
     has_at = " at " in clean.lower()
     has_date = bool(re.search(r"\b(?:19|20)\d{2}\b|present|current", clean, re.I))
     has_separator = bool(re.search(r"\s\|\s|\s[–—-]\s", clean))
-    if not (has_occupation or has_at or (has_date and has_separator)):
+    # A bullet can mention an occupation ("hardened agent behavior") without
+    # being a role header.  Occupation-only headers must be compact; structural
+    # forms with company/date separators remain accepted across all fields.
+    compact_occupation_header = has_occupation and len(clean.split()) <= 8
+    if not (compact_occupation_header or has_at or (has_date and has_separator)):
+        return None
+    if not (has_at or has_date or has_separator) and re.search(r"\b(?:commits?|tests?|lines? of code|loc)\b", clean, re.I):
         return None
 
     # #111: pull the date RANGE out first, verbatim, with a dedicated token
@@ -569,6 +621,30 @@ def _projects_from_resume_lines(lines: list[str], skills: list) -> list:
             continue
         header = _resume_project_header(line, known_skill_names)
         if header:
+            # A tagline can contain a skill word and metrics ("Reliability-first
+            # API ... 2K GitHub stars"), which makes it superficially header-like.
+            # Treat it as a boundary only with structural evidence: a repo, a
+            # compact title+stack line, or a multi-skill delimited stack. This is
+            # layout-based and does not depend on a tech-specific adjective list.
+            header_stack = [
+                item for item in normalize_stack(header.get("stack", ""))
+                if item.lower() not in {"git", "github"}
+            ]
+            compact_header = len(line.split()) <= 4
+            delimited_stack = len(header_stack) >= 2 and bool(re.search(r"[,;/]", line))
+            title_detail_separator = bool(re.search(r"\s[-–—:]\s", line))
+            strong_header = (
+                bool(header.get("repo"))
+                or compact_header
+                or delimited_stack
+                or title_detail_separator
+            )
+            if (
+                current is not None
+                and not strong_header
+            ):
+                append_impact(line)
+                continue
             flush()
             current = header
             continue
@@ -614,6 +690,22 @@ def _resume_project_header(line: str, known_skills: list[str]) -> dict | None:
         return None
     split_title, split_detail = _split_project_title_detail(clean)
     if split_detail and len(split_title.split()) <= 8 and _first_skill_position(split_title, known_skills) != 0 and not _resume_line_is_detail(split_title):
+        # Project headings often use the first pipe as a visual separator and
+        # put the entire stack after it, sometimes prefixed by ``GitHub``.  The
+        # old parser treated that rich stack as prose impact, losing the very
+        # evidence ranking needs (and displaying "no project stack").
+        # ``GitHub`` here is a link label, not a technology used to build the
+        # project. Strip only a leading label before scanning the real stack.
+        stack_detail = re.sub(r"(?i)^\s*github(?:\s+(?:repo|repository))?\s*[|:-]?\s*", "", split_detail)
+        split_stack = _resume_stack_terms(stack_detail, known_skills)
+        if split_stack:
+            title = re.sub(r"\s*\([^)]*(?:\.[a-z]{2,}|github)[^)]*\)\s*$", "", split_title, flags=re.I).strip()
+            return {
+                "title": title or split_title,
+                "impact": "",
+                "repo": _first_url(clean) or _site_from_parentheses(clean),
+                "stack": ", ".join(split_stack),
+            }
         return {"title": split_title, "impact": split_detail, "repo": _first_url(clean), "stack": ""}
     if _resume_line_is_detail(clean):
         return None
@@ -652,7 +744,7 @@ def _resume_line_is_detail(line: str) -> bool:
     clean = _strip_md(line)
     return bool(
         re.match(
-            r"(?i)^(built|created|developed|designed|engineered|implemented|integrated|launched|shipped|automated|features?|supports?|modeled|streamed|edit|and|or|with)\b",
+            r"(?i)^(built|created|developed|designed|engineered|implemented|integrated|launched|shipped|automated|hardened|migrated|solved|caught|corrected|removed|delivered|validated|landed|lifted|cut|owned|led|managed|improved|reduced|increased|optimized|deployed|maintained|features?|supports?|modeled|streamed|edit|and|or|with)\b",
             clean,
         )
         or clean[:1].islower()
@@ -676,11 +768,19 @@ def _resume_stack_only_line(line: str, known_skills: list[str]) -> bool:
 
 
 def _resume_stack_terms(text: str, known_skills: list[str]) -> list[str]:
-    from profile.normalization import normalize_stack
-
-    stack = normalize_stack(text)
-    known = {skill.lower() for skill in known_skills}
-    return _dedupe([item for item in stack if item.lower() in known or len(item.split()) <= 3])
+    # Match skills anywhere in the stack fragment rather than requiring each
+    # comma chunk to equal a skill exactly. Real headings contain decorations
+    # and versions (``GitHub | Tauri 2, React 19``) and combined tokens
+    # (``Python asyncio``), all of which defeated exact-chunk matching.
+    lower = (text or "").lower()
+    hits: list[tuple[int, str]] = []
+    for skill in known_skills:
+        if not skill:
+            continue
+        match = re.search(r"(?<![a-z0-9+#.-])" + re.escape(skill.lower()) + r"(?![a-z0-9+#.-])", lower)
+        if match:
+            hits.append((match.start(), skill))
+    return _dedupe([skill for _position, skill in sorted(hits, key=lambda item: item[0])])
 
 
 def _site_from_parentheses(line: str) -> str:

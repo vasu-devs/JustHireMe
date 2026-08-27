@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from profile.service import ProfileService
 from models.schema import C, S, E, P
 from data.graph import profile_base, profile_deletions, profile_mutations, profile_read, profile_vectors
@@ -408,6 +410,148 @@ CGPA 8.5
     assert len(parsed.education) == 1
     assert "Lovely Professional University" in parsed.education[0]
     assert "Bachelor of Technology" in parsed.education[0]
+
+
+def test_resume_heuristic_recognizes_decorated_project_heading_and_stops_experience():
+    from profile import ingestor
+
+    resume = """
+Vasudev Siddh
+AI Engineer
+
+EXPERIENCE
+Voice-Agent Engineer — Layers | Jun 2026 - Present
+- Hardened agent behavior for customer-facing use with grounded answers.
+- Migrated production AI workflows into native TypeScript.
+
+SELECTED PROJECTS — AGENTS, CONTENT PIPELINES & EVALS
+JustHireMe (justhireme.ai) | GitHub | Tauri, Rust, React, Python, FastAPI
+- Local-first AI job-intelligence workbench | 300K+ views, 2,000+ GitHub stars.
+- Built a local-first AI job-intelligence workbench.
+AgentRoster | Python, FastAPI, SQLite
+- Built an always-on monitoring engine over 35 sources.
+Kyoka (GitHub) | Python, LangChain
+- OSINT-to-strategy intelligence for high-stakes meetings.
+- Tri-agent pipeline (researcher -> profiler -> strategist) creates a dossier.
+
+TECHNICAL SKILLS
+Python, TypeScript, React, FastAPI, Tauri, Rust, SQLite
+"""
+
+    parsed = ingestor._parse_resume_heuristic(resume)
+
+    assert len(parsed.exp) == 1
+    assert parsed.exp[0].role == "Voice-Agent Engineer"
+    assert "JustHireMe" not in parsed.exp[0].d
+    assert [project.title for project in parsed.projects] == ["JustHireMe", "AgentRoster", "Kyoka"]
+    assert {"Tauri", "Rust", "React", "Python", "FastAPI"}.issubset(set(parsed.projects[0].stack))
+    assert {"Python", "FastAPI", "SQLite"}.issubset(set(parsed.projects[1].stack))
+    assert {"Python", "LangChain"}.issubset(set(parsed.projects[2].stack))
+    assert "Local-first AI job-intelligence" in parsed.projects[0].impact
+    assert "Tri-agent pipeline" in parsed.projects[2].impact
+
+
+def test_resume_heuristic_does_not_truncate_dense_skill_vocabulary_or_promote_taglines():
+    from profile import ingestor
+
+    filler = ", ".join(f"Skill{index}" for index in range(45))
+    resume = f"""
+Candidate Name
+AI Engineer
+
+SELECTED PROJECTS
+Odeon (GitHub) Python, FastAPI, WebSockets, React 19
+Self-correcting agent evaluation & prompt-optimization gym
+- Built an evaluation loop.
+
+TECHNICAL SKILLS
+{filler}, agent, Python, FastAPI, WebSockets, React
+"""
+
+    parsed = ingestor._parse_resume_heuristic(resume)
+
+    assert len(parsed.skills) > 40
+    assert [project.title for project in parsed.projects] == ["Odeon"]
+    assert {"Python", "FastAPI", "WebSockets", "React"}.issubset(set(parsed.projects[0].stack))
+    assert "Self-correcting agent evaluation" in parsed.projects[0].impact
+
+
+def test_resume_heuristic_uses_structure_not_a_tagline_word_allowlist():
+    from profile import ingestor
+
+    resume = """
+Candidate Name
+Software Engineer
+
+PROJECTS
+MonitorKit — Python, FastAPI
+Reliability-first API monitoring with Python and actionable alerts
+- Reduced incident response time by 40%.
+QueueLab Python
+- Built a durable task queue.
+
+TECHNICAL SKILLS
+Python, FastAPI, API monitoring
+"""
+
+    parsed = ingestor._parse_resume_heuristic(resume)
+
+    assert [project.title for project in parsed.projects] == ["MonitorKit", "QueueLab"]
+    assert "Reliability-first API monitoring" in parsed.projects[0].impact
+
+
+@pytest.mark.parametrize(
+    "summary_heading,skills_heading,experience_heading,projects_heading,education_heading",
+    [
+        ("PROFESSIONAL SUMMARY", "CORE COMPETENCIES", "PROFESSIONAL EXPERIENCE", "KEY PROJECTS", "ACADEMICS"),
+        ("PROFESSIONAL PROFILE", "TECHNICAL TOOLKIT", "EMPLOYMENT", "ACADEMIC PROJECTS", "ACADEMIC BACKGROUND"),
+        ("ABOUT ME", "CORE SKILLS", "INTERNSHIPS", "OPEN SOURCE PROJECTS", "EDUCATION"),
+        ("CAREER OBJECTIVE", "TECHNICAL COMPETENCIES", "WORK EXPERIENCE", "PORTFOLIO PROJECTS", "EDUCATION"),
+        ("SUMMARY", "TECHNOLOGIES", "EXPERIENCE", "PROJECTS & OPEN SOURCE", "EDUCATION"),
+        ("PROFILE", "TOOLS", "EXPERIENCE", "PROJECT EXPERIENCE", "EDUCATION"),
+    ],
+)
+def test_resume_heuristic_supports_common_section_heading_matrix(
+    summary_heading,
+    skills_heading,
+    experience_heading,
+    projects_heading,
+    education_heading,
+):
+    from profile import ingestor
+
+    resume = f"""
+Jane Candidate
+Software Engineer
+
+{summary_heading}
+Reliability-focused backend engineer.
+
+{skills_heading}
+Python, FastAPI, PostgreSQL, Docker
+
+{experience_heading}
+Backend Engineering Intern | Acme | Jan 2025 - Jun 2025
+- Built Python and FastAPI services backed by PostgreSQL.
+
+{projects_heading}
+QueueLab — Python, FastAPI, PostgreSQL
+- Built a durable task queue and shipped it with Docker.
+
+{education_heading}
+Bachelor of Technology in Computer Science
+Example University | 2022 - 2026
+"""
+
+    parsed = ingestor._parse_resume_heuristic(resume)
+
+    assert parsed.s == "Reliability-focused backend engineer"
+    assert {"Python", "FastAPI", "PostgreSQL", "Docker"}.issubset({skill.n for skill in parsed.skills})
+    assert len(parsed.exp) == 1
+    assert parsed.exp[0].role == "Backend Engineering Intern"
+    assert [project.title for project in parsed.projects] == ["QueueLab"]
+    assert {"Python", "FastAPI", "PostgreSQL"}.issubset(set(parsed.projects[0].stack))
+    assert len(parsed.education) == 1
 
 
 def test_graph_profile_get_profile_merges_snapshot_with_existing_graph(monkeypatch):

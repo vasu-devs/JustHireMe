@@ -29,7 +29,10 @@ def test_default_criteria_registry_matches_roadmap():
 def test_wrong_field_cap_message_is_candidate_relative_for_semantic_trigger():
     from ranking.scoring_engine import _apply_caps, analyze_candidate, analyze_posting
 
-    posting = analyze_posting("Job Title: Financial Analyst\nDescription: Build budget models and quarterly forecasts.")
+    posting = analyze_posting(
+        "Job Title: Senior Account Based Marketing Manager\n"
+        "Description: Own ABM campaigns, pipeline creation, and marketing analytics."
+    )
     candidate = analyze_candidate({"skills": [{"n": "IV Therapy"}], "exp": [], "projects": []})
     posting.wrong_field = True
     posting.wrong_field_semantic = True
@@ -39,10 +42,10 @@ def test_wrong_field_cap_message_is_candidate_relative_for_semantic_trigger():
     assert kinds[0] == "wrong-field"
     assert "different profession than this profile" in notes[0]
 
-    # Blocklist trigger keeps the tech-specific wording.
+    # A title-level block explains the actual occupation mismatch.
     posting.wrong_field_semantic = False
     _final, notes, _cap, _kinds = _apply_caps(50, posting, candidate, set(), set())
-    assert "not a technical/software opportunity" in notes[0]
+    assert "job title is a different occupation (marketing manager)" in notes[0]
 
 
 def test_score_result_carries_structural_cap_kinds():

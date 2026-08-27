@@ -203,7 +203,11 @@ async def run_x_signal_scan(
         if (lead.get("signal_score") or 0) >= hot_threshold:
             await manager.broadcast({"type": "HOT_X_LEAD", "data": lead})
             if notify_hot:
-                await manager.broadcast({"type": "agent", "event": "x_hot_lead", "msg": f"Hot X lead: {lead.get('title','?')} @ {lead.get('company','?')}"})
+                await manager.broadcast({
+                    "type": "agent",
+                    "event": "x_hot_lead",
+                    "msg": f"High-confidence X source (not candidate fit): {lead.get('title','?')} @ {lead.get('company','?')}",
+                })
     return leads
 
 

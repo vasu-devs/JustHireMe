@@ -100,6 +100,19 @@ def test_progress_reports_active_while_a_job_runs(monkeypatch):
     assert runtime.runtime_payload()["progress"]["active"] is True
 
 
+def test_file_complete_runtime_is_not_ready_until_install_worker_finishes(monkeypatch):
+    """Regression: release smoke saw ready=True while health still said disabled."""
+    _stub_runtime(monkeypatch, ready=True, progress={"status": "installed", "active": False})
+    _stub_vector_module(monkeypatch, {"status": "disabled", "error": "LanceDB is not available"})
+    monkeypatch.setattr(runtime, "_job_running", lambda: True)
+
+    payload = runtime.runtime_payload()
+
+    assert payload["ready"] is False
+    assert payload["required"] is False
+    assert payload["progress"]["active"] is True
+
+
 # ------------------------------------------------------------- embedding provider
 
 

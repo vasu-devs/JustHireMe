@@ -45,6 +45,7 @@ class Lead(TypedDict, total=False):
     # Status and scoring
     status: LeadStatus
     score: int
+    score_stale: bool
     reason: str
     match_points: list[str]
     gaps: list[str]

@@ -14,11 +14,14 @@ SPEC = CriterionSpec(
 
 def evaluate_role_alignment(posting: PostingSignals, candidate: CandidateEvidence) -> CriterionScore:
     if posting.wrong_field:
+        detail = ", ".join(posting.wrong_field_terms[:3])
+        if posting.wrong_field_title:
+            detail = f"job title is a different occupation ({detail or posting.title})"
         return CriterionScore(
             "Role alignment",
             0,
             18,
-            "non-technical/non-target field: " + ", ".join(posting.wrong_field_terms[:3]),
+            "non-target field: " + detail,
         )
 
     if not posting.role_tags and not posting.terms:

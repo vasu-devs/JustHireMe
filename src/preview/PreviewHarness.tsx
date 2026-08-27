@@ -378,9 +378,9 @@ export default function PreviewHarness() {
 
   const leadCounts = useMemo(() => ({
     total:        LEADS.length,
-    hot:          LEADS.filter(l => (l.signal_score || 0) >= 80 || (l.score || 0) >= 85).length,
+    hot:          LEADS.filter(l => (l.score || 0) >= 85).length,
     discovered:   LEADS.filter(l => l.status === "discovered").length,
-    evaluated:    LEADS.filter(l => l.score > 0 || (l.signal_score || 0) > 0).length,
+    evaluated:    LEADS.filter(l => l.score > 0).length,
     evaluating:   LEADS.filter(l => l.status === "evaluating").length,
     tailoring:    LEADS.filter(l => l.status === "tailoring").length,
     approved:     LEADS.filter(l => l.status === "approved").length,

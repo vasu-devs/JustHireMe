@@ -106,6 +106,128 @@ def test_wrong_field_and_thin_posting_caps_hold_for_many_profiles(monkeypatch):
         assert _score(f"Job Title: {role}\nDescription: Nice team.", _profile(stack), monkeypatch) <= 68
 
 
+def test_marketing_title_cannot_be_laundered_by_ai_body_copy(monkeypatch):
+    profile = _profile(
+        ["Python", "FastAPI", "LLM", "RAG", "TypeScript"],
+        period="Jun 2026 - Present",
+        role="AI Engineer",
+    )
+    job = (
+        "Job Title: Senior Account Based Marketing Manager\n"
+        "Company: Dropbox\n"
+        "Description: Own ABM campaigns, account personalization, digital advertising, "
+        "sales outreach, pipeline creation, and marketing analytics. Requires 6+ years "
+        "of B2B marketing experience. Use generative AI tools for campaign research and "
+        "support GTM motions for AI products. Remote role."
+    )
+
+    import ranking.scoring_engine as scoring_engine
+
+    monkeypatch.setattr(scoring_engine, "_semantic_criterion", lambda *_args, **_kwargs: None)
+    result = scoring_engine.ScoringEngine().score(job, profile)
+
+    assert result.score <= 15
+    assert "wrong-field" in result.cap_kinds
+    assert any("different occupation" in gap or "wrong-field cap" in gap for gap in result.gaps)
+
+
+def test_non_technical_title_cannot_be_laundered_by_technical_modifiers(monkeypatch):
+    profile = _profile(
+        ["Python", "FastAPI", "LLM", "RAG", "TypeScript"],
+        period="Jun 2026 - Present",
+        role="AI Engineer",
+    )
+    import ranking.scoring_engine as scoring_engine
+
+    monkeypatch.setattr(scoring_engine, "_semantic_criterion", lambda *_args, **_kwargs: None)
+    for title in (
+        "Generative AI Marketing Manager",
+        "Python Marketing Manager",
+        "Machine Learning Content Writer",
+    ):
+        result = scoring_engine.ScoringEngine().score(
+            f"Job Title: {title}\nDescription: Own campaigns and content using AI tools.",
+            profile,
+        )
+        assert result.score <= 15, title
+        assert "wrong-field" in result.cap_kinds, title
+
+
+def test_non_technical_title_is_cleared_for_a_genuine_same_field_candidate(monkeypatch):
+    profile = {
+        "s": "Growth marketer with 4 years in B2B demand generation.",
+        "skills": [
+            {"n": "Account Based Marketing"},
+            {"n": "Demand Generation"},
+            {"n": "Campaign Strategy"},
+            {"n": "Google Analytics"},
+        ],
+        "exp": [{
+            "role": "Growth Marketing Specialist",
+            "co": "SaaSCo",
+            "period": "Jan 2022 - Present",
+            "d": "Owned account based marketing, demand generation, campaign strategy, and analytics.",
+        }],
+    }
+    job = (
+        "Job Title: Account Based Marketing Manager\n"
+        "Description: Own account based marketing, demand generation, campaign strategy, "
+        "and Google Analytics. 3+ years."
+    )
+
+    import ranking.scoring_engine as scoring_engine
+
+    monkeypatch.setattr(scoring_engine, "_semantic_criterion", lambda *_args, **_kwargs: None)
+    result = scoring_engine.ScoringEngine().score(job, profile)
+
+    assert result.score > 15
+    assert "wrong-field" not in result.cap_kinds
+
+
+def test_one_incidental_domain_phrase_cannot_clear_a_non_technical_title(monkeypatch):
+    profile = _profile(
+        ["Python", "FastAPI", "LLM", "RAG", "TypeScript"],
+        period="Jun 2026 - Present",
+        role="AI Engineer",
+    )
+    profile["skills"].append({"n": "GTM Strategy"})
+    job = (
+        "Job Title: Generative AI Marketing Manager\n"
+        "Description: Own campaigns and GTM strategy using generative AI tools."
+    )
+
+    import ranking.scoring_engine as scoring_engine
+
+    monkeypatch.setattr(scoring_engine, "_semantic_criterion", lambda *_args, **_kwargs: None)
+    result = scoring_engine.ScoringEngine().score(job, profile)
+
+    assert result.score <= 15
+    assert "wrong-field" in result.cap_kinds
+
+
+def test_responsibility_words_do_not_fabricate_seniority_requirements(monkeypatch):
+    profile = {
+        "s": "Software engineer",
+        "skills": [{"n": "Python"}, {"n": "FastAPI"}],
+        "exp": [
+            {"role": "Software Engineer", "co": "A", "period": "Jan 2025 - Sep 2025", "d": "Built APIs"},
+            {"role": "Backend Engineer", "co": "B", "period": "Oct 2025 - Jun 2026", "d": "Built services"},
+        ],
+        "projects": [{"title": "API", "stack": ["Python", "FastAPI"], "impact": "Shipped an API"}],
+    }
+    import ranking.scoring_engine as scoring_engine
+
+    monkeypatch.setattr(scoring_engine, "_semantic_criterion", lambda *_args, **_kwargs: None)
+    for description in (
+        "Build Python and FastAPI services. Interview with the hiring manager.",
+        "Build Python and FastAPI services and lead API design.",
+    ):
+        result = scoring_engine.ScoringEngine().score(
+            f"Job Title: Software Engineer\nDescription: {description}", profile
+        )
+        assert "seniority" not in result.cap_kinds, description
+
+
 def test_stack_caps_hold_when_exact_requested_terms_are_missing(monkeypatch):
     profile = _profile(["React", "TypeScript", "Node.js"], period="Jan 2020 to Dec 2025")
     adjacent_miss_jobs = [

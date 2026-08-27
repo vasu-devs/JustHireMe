@@ -263,9 +263,9 @@ export default function App({ showReport = false }: { showReport?: boolean } = {
 
   const leadCounts = {
     total:        leads.length,
-    hot:          leads.filter(l => (l.signal_score || 0) >= 80 || (l.score || 0) >= 85).length,
+    hot:          leads.filter(l => (l.score || 0) >= 85).length,
     discovered:   leads.filter(l=>l.status==="discovered").length,
-    evaluated:    leads.filter(l => l.score > 0 || (l.signal_score || 0) > 0).length,
+    evaluated:    leads.filter(l => l.score > 0).length,
     evaluating:   leads.filter(l=>l.status==="evaluating").length,
     tailoring:    leads.filter(l=>l.status==="tailoring").length,
     approved:     leads.filter(l=>l.status==="approved").length,

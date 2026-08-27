@@ -112,7 +112,12 @@ def _runtime_package_installed() -> bool:
 
 def _is_pyo3_reinit_error(exc: BaseException) -> bool:
     """Detect the PyO3 'may only be initialized once per interpreter process' error."""
-    return "initialized once per interpreter" in str(exc).lower()
+    message = str(exc).lower()
+    return (
+        "initialized once per interpreter" in message
+        or "env_logger::init_from_env should not be called after logger initialized" in message
+        or exc.__class__.__name__ == "PanicException"
+    )
 
 
 def _set_lancedb_module(module):
@@ -146,7 +151,12 @@ def _try_import_lancedb(*, log_warning: bool = True):
         _clear_lancedb_modules()
     try:
         module = importlib.import_module("lancedb")
-    except Exception as exc:
+    except BaseException as exc:
+        # PyO3 exposes native Rust panics as PanicException(BaseException), not
+        # Exception. Contain those so a failed optional vector driver cannot
+        # turn /health into HTTP 500, while preserving interpreter controls.
+        if isinstance(exc, (KeyboardInterrupt, SystemExit, GeneratorExit)):
+            raise
         # PyO3 native extensions can only be initialized once per process.
         # If this is a reinit error, a module may already be loaded and usable.
         cached = sys.modules.get("lancedb")

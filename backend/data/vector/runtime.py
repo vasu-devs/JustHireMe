@@ -250,7 +250,13 @@ def add_vector_runtime_to_path(path: Path | None = None) -> None:
         if candidate.exists() and candidate.is_dir():
             value = str(candidate)
             if value not in sys.path:
-                sys.path.insert(0, value)
+                # The frozen sidecar already bundles shared dependencies such
+                # as NumPy and ONNX Runtime. Prepending the OTA directory can
+                # split an in-flight import across two package copies when the
+                # embedding warm-up thread is active. Keep bundled modules
+                # authoritative; PathFinder will still discover OTA-only
+                # packages (LanceDB/PyArrow) later on the path.
+                sys.path.append(value)
             _add_dll_dir(candidate)
             _add_dll_dir(candidate / "pyarrow.libs")
             _add_dll_dir(candidate / "numpy.libs")

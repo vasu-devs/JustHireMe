@@ -12,11 +12,11 @@ export function useLeads(api: ApiFetch | null, addLog?: (msg: string, kind: LogL
   const knownLeadIds = useRef<Set<string>>(new Set());
 
   const notifyStrongLead = (lead: Lead) => {
-    const topScore = Math.max(lead.score || 0, lead.signal_score ?? 0);
-    if (topScore < 80) return;
+    const fitScore = lead.score || 0;
+    if (fitScore < 80) return;
     invoke("notify_high_score_lead", {
       title: `Strong match: ${lead.title}`,
-      body: `${lead.company} · Score ${topScore}`,
+      body: `${lead.company} · Fit ${fitScore}`,
     }).catch(() => {});
   };
 

@@ -22,8 +22,9 @@ def test_undated_lead_fails_closed():
 
 
 def test_undated_with_fresh_source_top_level_passes():
-    fresh, _ = _freshness({"_fresh_source": "google_past_week"})
+    fresh, reason = _freshness({"_fresh_source": "google_past_week"})
     assert fresh is True
+    assert "unverified" in reason
 
 
 def test_undated_with_fresh_source_in_meta_passes():
@@ -63,3 +64,5 @@ def test_undated_but_fresh_source_is_accepted():
         "source_meta": {"fresh_source": "google_past_week"},
     })
     assert q["accepted"] is True
+    assert q["score"] == 78
+    assert "posting date unverified" in q["reason"]

@@ -58,7 +58,7 @@ export function DashboardView(props: {
     return () => { alive = false; };
   }, [api]);
 
-  const active = leads.filter(lead => lead.status !== "discarded");
+  const active = leads.filter(lead => lead.status !== "discarded" && lead.score > 0);
   const queue = [...active].sort((a, b) => leadSignal(b) - leadSignal(a) || (b.score || 0) - (a.score || 0)).slice(0, 3);
   const ready = active.filter(lead => lead.status === "approved" || lead.status === "tailoring").length;
   const scores = active.map(lead => leadSignal(lead)).filter(Boolean);

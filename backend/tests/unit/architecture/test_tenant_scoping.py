@@ -43,7 +43,7 @@ GLOBAL_TABLES = frozenset({"schema_migrations"})
 #: **This dict may only ever shrink.**
 BASELINE: dict[str, int] = {
     # data/sqlite/events.py reached 0 via SqliteEventStore - the reference pattern.
-    "data/sqlite/leads.py": 38,
+    "data/sqlite/leads.py": 37,
     "data/sqlite/resume_templates.py": 14,
     "data/sqlite/connection.py": 3,
     "data/sqlite/settings.py": 3,

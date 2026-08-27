@@ -135,6 +135,49 @@ describe("high-risk component behavioral render coverage", () => {
     expect(drawerHtml).toContain("Mark as applied");
   });
 
+  it("never presents scraper quality as candidate fit", () => {
+    const misleadingLead: Lead = {
+      ...lead,
+      job_id: "dropbox-abm",
+      title: "Senior Account Based Marketing Manager",
+      company: "Dropbox",
+      score: 15,
+      signal_score: 100,
+      lead_quality_score: 100,
+      lead_quality_reason: "freshness assumed (recency-constrained source)",
+    };
+
+    const cardHtml = renderToStaticMarkup(
+      <JobCard lead={misleadingLead} onOpen={vi.fn()} onDelete={vi.fn()} showScore />,
+    );
+    const drawerHtml = renderToStaticMarkup(
+      <ApprovalDrawer j={misleadingLead} api={api} onClose={vi.fn()} />,
+    );
+
+    expect(cardHtml).toContain("15%");
+    expect(cardHtml).not.toContain(">100<");
+    expect(cardHtml).toContain("Posting date unverified");
+    expect(drawerHtml).toContain("15/100 match");
+    expect(drawerHtml).toContain("NOT A FIT SCORE");
+    expect(drawerHtml).not.toContain("Lead signal 100");
+    expect(drawerHtml).not.toContain("Quality 100");
+  });
+
+  it("hides persisted scores from an older matching algorithm", () => {
+    const staleLead: Lead = { ...lead, score: 0, score_stale: true, reason: "Score needs re-evaluation" };
+    const cardHtml = renderToStaticMarkup(
+      <JobCard lead={staleLead} onOpen={vi.fn()} onDelete={vi.fn()} showScore />,
+    );
+    const drawerHtml = renderToStaticMarkup(
+      <ApprovalDrawer j={staleLead} api={api} onClose={vi.fn()} />,
+    );
+
+    expect(cardHtml).toContain("NEEDS RE-SCORE");
+    expect(cardHtml).not.toContain("91%");
+    expect(drawerHtml).toContain("older matching engine");
+    expect(drawerHtml).toContain("Needs re-score");
+  });
+
   it("reports ErrorBoundary crashes through the configured API", () => {
     const boundary = new ErrorBoundary({ label: "Pipeline", api, children: null });
     const nextState = ErrorBoundary.getDerivedStateFromError(new Error("boom"));

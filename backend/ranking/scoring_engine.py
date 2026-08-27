@@ -60,6 +60,10 @@ class PostingSignals:
     # profession pair) set wrong_field, as opposed to the tech-only blocklist.
     # Drives a candidate-relative cap message instead of "not software".
     wrong_field_semantic: bool = False
+    # A non-target occupation is explicit in the JOB TITLE.  This is stronger
+    # evidence than body copy: an Account-Based Marketing Manager does not become
+    # an AI-engineering role because the description says the marketer will use AI.
+    wrong_field_title: bool = False
 
 
 
@@ -415,17 +419,34 @@ def analyze_posting(raw_text: str, default_title: str = "Lead") -> PostingSignal
     role_tags = _find_tags(f"{title}\n{text}", ROLE_KEYWORDS)
     deliverables = _find_tags(f"{title}\n{text}", DELIVERABLE_KEYWORDS)
     wrong_terms = [term for term in WRONG_FIELD_TERMS if _contains_phrase(lower, term)]
+    title_lower = title.lower()
+    title_wrong_terms = [term for term in WRONG_FIELD_TERMS if _contains_phrase(title_lower, term)]
     tech_role = bool(terms or role_tags & {"ai", "backend", "frontend", "fullstack", "data", "devops", "desktop", "testing"})
-    wrong_field = bool(wrong_terms and not tech_role)
+    # An explicit occupation in the title wins over modifiers and tooling.
+    # "Generative AI Marketing Manager" and "Python Marketing Manager" are
+    # still marketing jobs; a technology word must not launder the occupation.
+    # Candidate-relative generalization below still clears this for a marketer.
+    title_wrong_field = bool(title_wrong_terms)
+    # Title-first occupation guard: descriptive technology/AI mentions cannot
+    # launder a clearly non-target occupation into the software lane.
+    wrong_field = title_wrong_field or bool(wrong_terms and not tech_role)
     max_years = _extract_years(text)
+    # Seniority words in responsibilities are not requirements: "meet the hiring
+    # manager" and "lead API design" previously fabricated 6y/5y hard caps. Use
+    # the title plus explicit "senior role/position" body declarations; numeric
+    # requirements are independently captured by _extract_years.
     seniority_flags = {
         flag
         for flag, aliases in {
             "senior": ("senior", "sr.", "sr ", "lead", "staff", "principal"),
             "manager": ("manager", "director", "head of"),
         }.items()
-        if any(_contains_phrase(lower, alias) for alias in aliases)
+        if any(_contains_phrase(title_lower, alias) for alias in aliases)
     }
+    if re.search(r"\b(?:senior|staff|principal)(?:-level)?\s+(?:role|position)\b", lower):
+        seniority_flags.add("senior")
+    if re.search(r"\b(?:manager|director|head[- ]of)(?:-level)?\s+(?:role|position)\b", lower):
+        seniority_flags.add("manager")
     entry_level = any(_contains_phrase(lower, alias) for alias in ("junior", "entry level", "entry-level", "fresher", "graduate", "intern", "0-2 years", "0 to 2 years"))
     remote = any(_contains_phrase(lower, alias) for alias in ("remote", "work from home", "wfh", "anywhere"))
     onsite = any(_contains_phrase(lower, alias) for alias in ("onsite", "on-site", "in office", "relocation"))
@@ -455,6 +476,7 @@ def analyze_posting(raw_text: str, default_title: str = "Lead") -> PostingSignal
         commercial_intent=commercial_intent,
         red_flags=red_flags,
         quality_features=_quality_features(text, terms, title, company),
+        wrong_field_title=title_wrong_field,
     )
 
 
@@ -594,7 +616,15 @@ def apply_domain_generalization(posting: PostingSignals, candidate: CandidateEvi
         # RIGHT field and the hard cap must not fire.
         cand_text = _profile_text(candidate_data).lower()
         same_profession = any(_contains_phrase(cand_text, term) for term in posting.wrong_field_terms)
-        if matched or same_profession:
+        # A literal occupation in the title is strong evidence, but it still has
+        # to be candidate-relative.  Two candidate-owned domain phrases are a
+        # meaningful same-field signal (for example a Growth Marketer matching
+        # "account based marketing" + "demand generation" in a Marketing Manager
+        # posting).  A single incidental phrase is deliberately insufficient, so
+        # "GTM strategy" or another buzzword cannot launder a marketing title for
+        # a software candidate.  Body-only blocklist hits remain more permissive.
+        substantive_domain_match = len(matched) >= 2
+        if same_profession or substantive_domain_match or (matched and not posting.wrong_field_title):
             posting.wrong_field = False
     elif not matched:
         # The tech-only blocklist didn't flag it, but a low candidate-vs-JD semantic
@@ -646,8 +676,13 @@ def _seniority_cap(posting: PostingSignals, candidate: CandidateEvidence) -> tup
         effective_required = max(effective_required, 6)
     # Zero or near-zero professional experience vs any seniority requirement
     # is always a hard mismatch, regardless of project count.
-    if candidate.work_months < 6 and effective_required >= 3:
+    if candidate.work_months < 12 and effective_required >= 3:
         return 30, (
+            f"seniority cap: {candidate.work_months} months professional experience "
+            f"vs {effective_required}+ year requirement"
+        )
+    if candidate.work_months < 24 and effective_required >= 5:
+        return 38, (
             f"seniority cap: {candidate.work_months} months professional experience "
             f"vs {effective_required}+ year requirement"
         )
@@ -676,7 +711,11 @@ def _apply_caps(
         detail = (
             "posting looks like a different profession than this profile"
             if posting.wrong_field_semantic
-            else "posting is not a technical/software opportunity"
+            else (
+                f"job title is a different occupation ({', '.join(posting.wrong_field_terms[:3])})"
+                if posting.wrong_field_title and posting.wrong_field_terms
+                else "posting is not a technical/software opportunity"
+            )
         )
         caps.append((15, f"wrong-field cap: {detail}", "wrong-field"))
     seniority = _seniority_cap(posting, candidate)

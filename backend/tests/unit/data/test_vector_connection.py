@@ -179,6 +179,19 @@ def test_vector_runtime_roots_include_common_site_package_layouts(tmp_path, monk
     assert tmp_path / "vector-runtime" / "Lib" / "site-packages" in roots
 
 
+def test_vector_runtime_path_does_not_shadow_bundled_dependencies(tmp_path, monkeypatch):
+    from data.vector import runtime
+
+    runtime_dir = tmp_path / "vector-runtime"
+    runtime_dir.mkdir()
+    monkeypatch.setattr(runtime.sys, "path", ["bundled-sidecar"])
+
+    runtime.add_vector_runtime_to_path(runtime_dir)
+
+    assert runtime.sys.path[0] == "bundled-sidecar"
+    assert runtime.sys.path.index(str(runtime_dir)) > 0
+
+
 def test_vector_runtime_ready_rejects_partial_lancedb_payload(tmp_path, monkeypatch):
     from data.vector import runtime
 
@@ -432,6 +445,33 @@ def test_pyo3_reinit_error_without_cached_module_degrades_without_restart(monkey
     assert status["error"] == connection.PYO3_RESTART_MESSAGE
 
 
+def test_native_pyo3_panic_is_contained_as_optional_vector_fallback(monkeypatch):
+    """A Rust PanicException is a BaseException and must never escape /health."""
+    from data.vector import connection
+
+    class PanicException(BaseException):
+        pass
+
+    monkeypatch.setattr(connection, "lancedb", None)
+    monkeypatch.setattr(connection, "_LANCEDB_IMPORT_ERROR", "")
+    monkeypatch.setattr(connection, "_LANCEDB_RESTART_REQUIRED", False)
+    monkeypatch.setattr(connection, "_LANCEDB_PYO3_DEGRADED", False)
+    for key in list(sys.modules):
+        if key == "lancedb" or key.startswith("lancedb."):
+            monkeypatch.delitem(sys.modules, key, raising=False)
+
+    def panic(*_args, **_kwargs):
+        raise PanicException("native panic")
+
+    monkeypatch.setattr(importlib, "import_module", panic)
+
+    result = connection._try_import_lancedb(log_warning=False)
+
+    assert result is None
+    assert connection._LANCEDB_PYO3_DEGRADED is True
+    assert connection._LANCEDB_IMPORT_ERROR == connection.PYO3_RESTART_MESSAGE
+
+
 def test_runtime_payload_does_not_block_app_for_installed_pyo3_degraded_state(monkeypatch):
     from system import runtime as runtime_router
     from data.vector import connection
@@ -506,6 +546,23 @@ def test_health_vector_check_does_not_import_connection_when_runtime_ready(monke
 
     assert status == {"status": "ok", "tables": [], "mode": "not_loaded"}
     assert "data.vector.connection" not in sys.modules
+
+
+def test_health_vector_check_contains_native_base_exception(monkeypatch):
+    from system import health
+
+    class PanicException(BaseException):
+        pass
+
+    def panic(refresh=True):
+        raise PanicException("native vector panic")
+
+    monkeypatch.setitem(sys.modules, "data.vector.connection", types.SimpleNamespace(vector_status=panic))
+
+    assert health.check_vector(repo=types.SimpleNamespace()) == {
+        "status": "error",
+        "error": "native vector panic",
+    }
 
 
 def test_runtime_payload_prioritizes_restart_required_over_ready(monkeypatch):

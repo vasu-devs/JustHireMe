@@ -127,8 +127,11 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
   const coveredTerms: string[] = Array.isArray(coverage.covered_terms) ? coverage.covered_terms : [];
   const coveragePct = typeof coverage.coverage_pct === "number" ? coverage.coverage_pct : null;
   const hasCoverage = missingTerms.length > 0 || incorporatedTerms.length > 0 || coveredTerms.length > 0;
-  const qualityScore = Number(j.lead_quality_score || j.source_meta?.lead_quality_score || 0);
   const qualityReason = String(j.lead_quality_reason || j.source_meta?.lead_quality_reason || "");
+  const sourceValidationReason = qualityReason.replace(
+    /freshness assumed \(recency-constrained source\)/i,
+    "Posting date unverified; recency was inferred from the source query",
+  );
   const visibleGenerateErr = generateErr && !/request\s+cancel(?:led|ed)|abort/i.test(generateErr)
     ? generateErr
     : null;
@@ -362,10 +365,10 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
               <span className="pill" style={{ background: `var(--${getTone(j.status)})`, color: `var(--${getTone(j.status)}-ink)` }}>{j.status}</span>
               <span className="pill mono" style={{ background: "var(--paper-3)", color: "var(--ink-3)" }}>{j.platform}</span>
               {j.budget && <span className="pill mono" style={{ background: "var(--green-soft)", color: "var(--green-ink)", border: "1px solid var(--green)" }}>{j.budget}</span>}
-              {(j.signal_score || 0) > 0 && <span className="pill mono" style={{ background: (j.signal_score || 0) >= 80 ? "var(--orange-soft)" : "var(--yellow-soft)", color: (j.signal_score || 0) >= 80 ? "var(--orange-ink)" : "var(--yellow-ink)", border: `1px solid ${(j.signal_score || 0) >= 80 ? "var(--orange)" : "var(--yellow)"}` }}>Lead signal {j.signal_score}</span>}
               {!!j.learning_delta && <span className="pill mono" style={{ background: j.learning_delta > 0 ? "var(--green-soft)" : "var(--bad-soft)", color: j.learning_delta > 0 ? "var(--green-ink)" : "var(--bad)", border: `1px solid ${j.learning_delta > 0 ? "var(--green)" : "var(--bad)"}` }}>Learning {j.learning_delta > 0 ? "+" : ""}{j.learning_delta}</span>}
               {j.feedback && <span className="pill mono" style={{ background: "var(--blue-soft)", color: "var(--blue-ink)", border: "1px solid var(--blue)" }}>{j.feedback.replace(/_/g, " ")}</span>}
               {j.score > 0 && <span className="pill mono" style={{ background: j.score >= 85 ? "var(--green-soft)" : j.score >= 60 ? "var(--yellow-soft)" : "var(--bad-soft)", color: j.score >= 85 ? "var(--green-ink)" : j.score >= 60 ? "var(--yellow-ink)" : "var(--bad)" }}>{j.score}/100 match</span>}
+              {j.score_stale && <span className="pill mono" style={{ background: "var(--yellow-soft)", color: "var(--yellow-ink)", border: "1px solid var(--yellow)" }}>Needs re-score</span>}
               {j.score > 0 && scoredByLabel(j.scored_by) && <span className="pill mono" title="How this score was produced" style={{ background: "var(--paper-2)", color: "var(--ink-3)", fontSize: 10 }}>{scoredByLabel(j.scored_by)}</span>}
             </div>
             <h2 style={{ fontSize: 26, fontWeight: 600, overflowWrap: "anywhere" }}>
@@ -577,13 +580,19 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
 
             <div className="eyebrow">Match Reasoning</div>
 
+            {j.score_stale && (
+              <div style={{ fontSize: 12.5, color: "var(--yellow-ink)", lineHeight: 1.55, background: "var(--yellow-soft)", border: "1px solid var(--yellow)", borderRadius: 10, padding: "10px 12px" }}>
+                This score was produced by an older matching engine and is hidden. Run <strong>Re-score</strong> from Pipeline to calculate current candidate fit.
+              </div>
+            )}
+
             {(j.signal_score || j.signal_reason || (j.signal_tags?.length ?? 0) > 0) && (
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Lead Signal</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Discovery Metadata · Not Candidate Fit</div>
                 <div style={{ background: "var(--orange-soft)", border: "1px solid var(--orange)", borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
                   <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 12.5, color: "var(--orange-ink)", fontWeight: 700 }}>Signal score</span>
-                    <span className="mono" style={{ fontSize: 13, fontWeight: 800, color: "var(--orange-ink)" }}>{j.signal_score || 0}/100</span>
+                    <span style={{ fontSize: 12.5, color: "var(--orange-ink)", fontWeight: 700 }}>Scraper/source heuristic</span>
+                    <span className="mono" style={{ fontSize: 11, fontWeight: 800, color: "var(--orange-ink)" }}>NOT A FIT SCORE</span>
                   </div>
                   {!!j.learning_delta && (
                     <div style={{ background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px" }}>
@@ -718,11 +727,11 @@ export function ApprovalDrawer({ j: initialLead, api, onClose }: {
               </div>
             )}
 
-            {qualityReason && (
+            {sourceValidationReason && (
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Why This Lead Was Shown</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Source Validation</div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6, background: "var(--blue-soft)", borderRadius: 10, padding: "10px 12px", border: "1px solid var(--blue)" }}>
-                  {qualityScore ? `Quality ${qualityScore}: ` : ""}{qualityReason}
+                  {sourceValidationReason}
                 </div>
               </div>
             )}
