@@ -62,7 +62,7 @@ Tasks:
 - Classify features into release tiers:
   - Core: settings, profile, local lead store, scan, ranking, quality explanations, generated application materials.
   - Optional: browser runtime, advanced scraping, local semantic models, heavyweight vector features.
-  - Experimental: auto-apply and any site-driving automation.
+  - Guarded and opt-in: auto-apply and any site-driving automation.
 - Add this release roadmap to maintainer onboarding and link it from the maintainer checklist.
 
 Exit criteria:

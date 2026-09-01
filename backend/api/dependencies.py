@@ -81,6 +81,21 @@ def get_opportunity_service(
     return module.create_opportunity_service(repo, profile_service)
 
 
+def get_auto_apply_campaign_service(
+    repo: Repository = Depends(get_repository),
+    opportunity_service=Depends(get_opportunity_service),
+    generation_service=Depends(get_generation_service),
+    automation_service=Depends(get_automation_service),
+):
+    module = import_module("automation.campaign")
+    return module.AutoApplyCampaignService(
+        repo,
+        opportunity_service,
+        generation_service,
+        automation_service,
+    )
+
+
 def get_template_service(repo: Repository = Depends(get_repository)):
     module = import_module("templates.service")
     return module.create_template_service(repo)

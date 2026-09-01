@@ -11,8 +11,15 @@ from automation import actuator
 
 # --- _ready_to_submit: vision actions alone must NOT authorize a submit -------
 
-def test_ready_requires_uploaded_and_dom_fields():
-    assert actuator._ready_to_submit({"uploaded": True, "fields": ["email"], "vision_actions": 0}) is True
+def test_ready_requires_uploaded_identity_and_clean_preflight():
+    assert actuator._ready_to_submit({
+        "uploaded": True,
+        "fields": ["first_name", "last_name", "email"],
+        "vision_actions": 0,
+        "required_unfilled": [],
+        "sensitive_questions": [],
+        "page_blockers": [],
+    }) is True
 
 
 def test_ready_false_without_upload():
@@ -22,6 +29,47 @@ def test_ready_false_without_upload():
 def test_vision_actions_alone_do_not_make_ready():
     # Uploaded + only vision actions, no DOM-verified fields -> NOT ready.
     assert actuator._ready_to_submit({"uploaded": True, "fields": [], "vision_actions": 5}) is False
+
+
+def test_ready_blocks_unknown_required_and_sensitive_questions():
+    base = {"uploaded": True, "fields": ["name", "email"], "page_blockers": []}
+    assert actuator._ready_to_submit({**base, "required_unfilled": ["Notice period"]}) is False
+    assert actuator._ready_to_submit({**base, "sensitive_questions": ["Visa sponsorship"]}) is False
+    assert actuator._ready_to_submit({**base, "required_unfilled": [], "sensitive_questions": []}) is True
+
+
+class _Body:
+    def __init__(self, text):
+        self.text = text
+
+    async def inner_text(self, timeout):
+        return self.text
+
+
+class _ConfirmationPage:
+    def __init__(self, text, url="https://example.test/apply"):
+        self.text = text
+        self.url = url
+
+    async def wait_for_timeout(self, _delay):
+        return None
+
+    def locator(self, _selector):
+        return _Body(self.text)
+
+
+def test_submission_confirmation_must_be_new_positive_evidence():
+    page = _ConfirmationPage("Thank you for applying")
+    confirmed, _evidence = asyncio.run(actuator._submission_confirmed(
+        page, page.url, "Thank you for applying",
+    ))
+    assert confirmed is False
+
+    confirmed, evidence = asyncio.run(actuator._submission_confirmed(
+        page, page.url, "Complete the fields below",
+    ))
+    assert confirmed is True
+    assert "Thank you" in evidence
 
 
 # --- _clamp -------------------------------------------------------------------
@@ -43,6 +91,11 @@ def test_dangerous_regex_matches_submit_pay():
 def test_dangerous_regex_allows_benign_field_labels():
     for label in ["Email address", "First name", "Phone", "Upload resume", "LinkedIn URL"]:
         assert not actuator._DANGEROUS_CLICK_RE.search(label), label
+
+
+def test_sensitive_question_regex_catches_defaulted_legal_and_eligibility_controls():
+    for label in ["Will you require visa sponsorship?", "Gender", "Accept terms", "Expected salary"]:
+        assert actuator._SENSITIVE_QUESTION_RE.search(label), label
 
 
 # --- _safe_to_click: default-deny hit-test ------------------------------------

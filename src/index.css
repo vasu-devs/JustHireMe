@@ -5726,7 +5726,12 @@ button.profile-map-node {
 .opportunity-candidate input { min-width: 0; flex: 1; border: 1px solid var(--line); border-radius: 9px; padding: 10px 11px; background: var(--paper); color: var(--ink); }
 .product-app .opportunity-candidate button, .product-app .opportunity-card footer button, .product-app .opportunity-outcome button { border: 0; border-radius: 9px; padding: 10px 13px; background: var(--ink); color: var(--paper); font-weight: 800; cursor: pointer; }
 .opportunity-candidate small { color: var(--ink-3); }
-.opportunity-profile-link { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 3px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper-2); }
+.opportunity-profile-link { margin-top: 3px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper-2); }
+.opportunity-profile-link summary { cursor: pointer; color: var(--ink-3); font-size: 10px; font-weight: 800; line-height: 1.35; list-style: none; }
+.opportunity-profile-link summary::-webkit-details-marker { display: none; }
+.opportunity-profile-link summary::after { content: "Edit"; float: right; color: var(--ink); }
+.opportunity-profile-link[open] summary { margin-bottom: 9px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.opportunity-profile-link[open] summary::after { content: "Close"; }
 .opportunity-profile-link span { color: var(--ink-3); font-size: 10px; line-height: 1.35; }
 .opportunity-profile-link.ready { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
 .product-app .opportunity-profile-link button { flex: 0 0 auto; padding: 7px 9px; font-size: 10px; }
@@ -5739,6 +5744,23 @@ button.profile-map-node {
 .opportunity-resume-upload:has(input:disabled) { cursor: not-allowed; opacity: .55; }
 .opportunity-resume-upload input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
 .opportunity-setup { display: grid; grid-template-columns: 130px minmax(240px, 1fr) auto auto auto auto; gap: 12px; align-items: end; margin-top: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.opportunity-targeting { margin-top: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); box-shadow: var(--shadow-xs); }
+.opportunity-targeting > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 15px; cursor: pointer; list-style: none; }
+.opportunity-targeting > summary::-webkit-details-marker { display: none; }
+.opportunity-targeting > summary > span:first-child { display: grid; gap: 3px; }
+.opportunity-targeting > summary strong { font-size: 13px; }
+.opportunity-targeting > summary small { color: var(--ink-3); font-size: 10px; }
+.opportunity-targeting > summary > span:last-child { border-radius: 999px; padding: 5px 9px; font-size: 10px; font-weight: 900; text-transform: uppercase; }
+.opportunity-targeting .automation-on { background: color-mix(in srgb, var(--ok) 14%, var(--paper)); color: var(--ok); }
+.opportunity-targeting .automation-off { background: var(--paper-3); color: var(--ink-3); }
+.opportunity-targeting[open] > summary { border-bottom: 1px solid var(--line); }
+.opportunity-targeting .opportunity-setup { margin-top: 0; border: 0; border-radius: 0 0 14px 14px; box-shadow: none; }
+.opportunity-automation-policy { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(260px, 1fr) auto; gap: 10px 16px; align-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--paper-2); }
+.opportunity-automation-policy.enabled { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: color-mix(in srgb, var(--ok) 6%, var(--paper)); }
+.opportunity-automation-policy > div { display: grid; gap: 3px; }
+.opportunity-automation-policy > div span { color: var(--ink-3); font-size: 10px; line-height: 1.45; }
+.opportunity-automation-policy > label:not(.opportunity-check) { min-width: 150px; }
+.opportunity-automation-notice { margin-top: 12px; padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--blue) 45%, var(--line)); border-radius: 10px; background: color-mix(in srgb, var(--blue) 7%, var(--paper)); color: var(--ink-2); font-size: 12px; }
 .opportunity-campaign-preset { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: 11px; background: color-mix(in srgb, var(--accent) 7%, var(--paper)); }
 .opportunity-campaign-preset > div { display: grid; gap: 3px; }
 .opportunity-campaign-preset strong { color: var(--ink); font-size: 12px; }
@@ -5807,6 +5829,7 @@ button.profile-map-node {
 .opportunity-card footer small { color: var(--ink-3); line-height: 1.4; }
 .opportunity-card-actions { display: flex; gap: 7px; }
 .opportunity-card-actions button.secondary { border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+.product-app .opportunity-card-actions button.auto-apply { background: var(--ok); color: white; }
 .opportunity-card-actions button:disabled { opacity: .55; cursor: default; }
 .opportunity-outcome { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper-2); }
 .opportunity-outcome > label { color: var(--ink-3); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
@@ -5830,6 +5853,8 @@ button.profile-map-node {
   .opportunity-identity-fields { grid-template-columns: 1fr; }
   .opportunity-resume-upload > span { text-align: center; }
   .opportunity-setup { grid-template-columns: 1fr; }
+  .opportunity-targeting > summary { align-items: flex-start; }
+  .opportunity-automation-policy { grid-template-columns: 1fr; }
   .opportunity-campaign-preset { align-items: stretch; flex-direction: column; }
   .opportunity-city-field, .opportunity-scan-actions { grid-column: auto; }
   .opportunity-evidence-field { grid-column: auto; }

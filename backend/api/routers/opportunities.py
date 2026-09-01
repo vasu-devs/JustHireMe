@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 
-from api.dependencies import get_opportunity_service
+from api.dependencies import get_auto_apply_campaign_service, get_opportunity_service
 from api.rate_limit import RateLimiter, require_rate_limit
 from api.uploads import MAX_UPLOAD_SIZE, temp_upload
 from core.types import (
@@ -19,6 +19,7 @@ from core.types import (
 router = APIRouter(prefix="/api/v1/opportunities", tags=["opportunities"])
 _scan_limiter = RateLimiter(2, 60)
 _resume_limiter = RateLimiter(5, 60)
+_auto_apply_limiter = RateLimiter(10, 60)
 
 
 @router.get("")
@@ -195,6 +196,16 @@ async def track_opportunity_application(
     service=Depends(get_opportunity_service),
 ):
     return await service.track_application(candidate_id=candidate_id, opportunity_id=opportunity_id)
+
+
+@router.post("/{opportunity_id}/auto-apply")
+async def auto_apply_to_opportunity(
+    opportunity_id: str,
+    candidate_id: str,
+    service=Depends(get_auto_apply_campaign_service),
+):
+    require_rate_limit(_auto_apply_limiter, candidate_id)
+    return await service.apply(candidate_id=candidate_id, opportunity_id=opportunity_id)
 
 
 @router.post("/{opportunity_id}/outcomes")

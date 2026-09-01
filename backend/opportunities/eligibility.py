@@ -85,6 +85,17 @@ class CandidateConstraints(BaseModel):
     target_monthly_compensation_usd: int = Field(default=0, ge=0)
     unknown_compensation_policy: UnknownCompensationPolicy = UnknownCompensationPolicy.ALLOW
     maximum_internship_months: int = Field(default=12, ge=1, le=36)
+    auto_apply_enabled: bool = False
+    auto_apply_confirmed_at: datetime | None = None
+    auto_apply_minimum_fit_score: int = Field(default=80, ge=0, le=100)
+    auto_apply_daily_limit: int = Field(default=5, ge=1, le=20)
+    auto_apply_allow_strong_stretch: bool = False
+
+    @model_validator(mode="after")
+    def validate_auto_apply_consent(self) -> CandidateConstraints:
+        if self.auto_apply_enabled and self.auto_apply_confirmed_at is None:
+            raise ValueError("auto-apply requires explicit candidate confirmation")
+        return self
 
     @model_validator(mode="after")
     def validate_compensation_targets(self) -> CandidateConstraints:

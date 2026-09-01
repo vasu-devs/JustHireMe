@@ -7,6 +7,7 @@ import type {
   OpportunityApplicationProfilePreview,
   OpportunityApplicationIdentity,
   OpportunityApplicationProfileStatus,
+  OpportunityAutoApplyResult,
   OpportunityCandidateSummary,
   OpportunityCard,
   OpportunityCohortMetrics,
@@ -85,6 +86,11 @@ const DEFAULT_PROFILE: OpportunityCandidate = {
   target_monthly_compensation_usd: 0,
   unknown_compensation_policy: "allow",
   maximum_internship_months: 12,
+  auto_apply_enabled: false,
+  auto_apply_confirmed_at: null,
+  auto_apply_minimum_fit_score: 80,
+  auto_apply_daily_limit: 5,
+  auto_apply_allow_strong_stretch: false,
 };
 const EMPTY_APPLICATION_IDENTITY: OpportunityApplicationIdentity = {
   email: "", phone: "", linkedin_url: "", github_url: "", website_url: "", city: "",
@@ -121,6 +127,8 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [trackingId, setTrackingId] = useState("");
+  const [autoApplyingId, setAutoApplyingId] = useState("");
+  const [automationNotice, setAutomationNotice] = useState("");
   const [outcomeSavingId, setOutcomeSavingId] = useState("");
   const [linkingProfile, setLinkingProfile] = useState(false);
   const [outcomeDrafts, setOutcomeDrafts] = useState<Record<string, OpportunityOutcomeType>>({});
@@ -277,6 +285,11 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
     target_monthly_compensation_usd: profile.target_monthly_compensation_usd,
     unknown_compensation_policy: profile.unknown_compensation_policy,
     maximum_internship_months: profile.maximum_internship_months,
+    auto_apply_enabled: profile.auto_apply_enabled,
+    auto_apply_confirmed_at: profile.auto_apply_confirmed_at,
+    auto_apply_minimum_fit_score: profile.auto_apply_minimum_fit_score,
+    auto_apply_daily_limit: profile.auto_apply_daily_limit,
+    auto_apply_allow_strong_stretch: profile.auto_apply_allow_strong_stretch,
   });
 
   const persistProfile = async () => {
@@ -335,6 +348,30 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
       setError(cause instanceof Error ? cause.message : "Adding opportunity to pipeline failed");
     } finally {
       setTrackingId("");
+    }
+  };
+
+  const autoApply = async (opportunityId: string) => {
+    setAutoApplyingId(opportunityId);
+    setAutomationNotice("");
+    setError("");
+    try {
+      if (!await persistProfile()) return;
+      const response = await opportunitiesApi.autoApply(api, candidateId, opportunityId, { timeoutMs: 240_000 });
+      const result = await responseJson<OpportunityAutoApplyResult>(response, "Auto-apply");
+      if (result.status === "submitted") {
+        setAutomationNotice(`Application submitted and confirmed${result.confirmation_evidence ? ` · ${result.confirmation_evidence}` : ""}.`);
+        setTrackedIds(previous => new Set(previous).add(opportunityId));
+        const metricsResponse = await opportunitiesApi.metrics(api, candidateId);
+        setMetrics(await responseJson<OpportunityFunnelMetrics>(metricsResponse, "Pilot metrics"));
+      } else {
+        const blockers = result.blockers || result.preflight?.required_unfilled || result.preflight?.sensitive_questions || result.preflight?.page_blockers || [];
+        setAutomationNotice(`${words(result.status)}: ${blockers.join(" · ") || "The form needs a human review before submission."}`);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Auto-apply failed");
+    } finally {
+      setAutoApplyingId("");
     }
   };
 
@@ -457,14 +494,14 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
             <button type="submit">Load queue</button>
           </div>
           <small id="opportunity-candidate-note">Candidate decisions stay in this local workspace.</small>
-          <div className={`opportunity-profile-link ${applicationProfile.ready ? "ready" : "missing"}`}>
-            <span>
+          <details className={`opportunity-profile-link ${applicationProfile.ready ? "ready" : "missing"}`}>
+            <summary>
               {resumePreview
                 ? `Confirm uploaded resume: ${resumePreview.profile_name} · ${resumePreview.evidence_count} evidence items`
                 : applicationPreview
                 ? `Confirm ${applicationPreview.profile_name} · ${applicationPreview.evidence_count} evidence items`
-                : applicationProfile.ready ? "Application profile linked" : "Application profile required for truthful documents"}
-            </span>
+                : applicationProfile.ready ? "Application profile ready · edit" : "Finish application identity & résumé"}
+            </summary>
             <div className="opportunity-identity-fields" aria-label="Candidate-specific application identity">
               {([
                 ["email", "Candidate email"], ["phone", "Candidate phone"],
@@ -510,11 +547,18 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
                 />
               </label>
             </div>
-          </div>
+          </details>
         </form>
       </header>
 
-      <section className="opportunity-setup" aria-label="Candidate opportunity constraints">
+      <details className="opportunity-targeting">
+        <summary>
+          <span><strong>Targeting & automation</strong><small>Internships · India + worldwide remote · candidate-specific rules</small></span>
+          <span className={profile.auto_apply_enabled ? "automation-on" : "automation-off"}>
+            Auto-apply {profile.auto_apply_enabled ? "on" : "off"}
+          </span>
+        </summary>
+        <section className="opportunity-setup" aria-label="Candidate opportunity constraints">
         <div className="opportunity-campaign-preset">
           <div>
             <strong>Elite AI internship campaign</strong>
@@ -676,6 +720,41 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
             onChange={event => setProfile(value => ({ ...value, maximum_internship_months: Number(event.target.value) }))}
           />
         </label>
+        <div className={`opportunity-automation-policy ${profile.auto_apply_enabled ? "enabled" : ""}`}>
+          <div>
+            <strong>Guarded auto-apply</strong>
+            <span>Only verified active roles that pass candidate fit, eligibility, document, form, duplicate and daily-limit gates.</span>
+          </div>
+          <label className="opportunity-check">
+            <input
+              type="checkbox"
+              checked={profile.auto_apply_enabled}
+              onChange={event => setProfile(value => ({
+                ...value,
+                auto_apply_enabled: event.target.checked,
+                auto_apply_confirmed_at: event.target.checked ? new Date().toISOString() : null,
+              }))}
+            />
+            <span>I authorize truthful automatic submissions for this candidate</span>
+          </label>
+          {profile.auto_apply_enabled && <>
+            <label>
+              <span>Minimum candidate fit</span>
+              <input type="number" min={0} max={100} value={profile.auto_apply_minimum_fit_score}
+                onChange={event => setProfile(value => ({ ...value, auto_apply_minimum_fit_score: Number(event.target.value) }))} />
+            </label>
+            <label>
+              <span>Daily submission limit</span>
+              <input type="number" min={1} max={20} value={profile.auto_apply_daily_limit}
+                onChange={event => setProfile(value => ({ ...value, auto_apply_daily_limit: Number(event.target.value) }))} />
+            </label>
+            <label className="opportunity-check">
+              <input type="checkbox" checked={profile.auto_apply_allow_strong_stretch}
+                onChange={event => setProfile(value => ({ ...value, auto_apply_allow_strong_stretch: event.target.checked }))} />
+              <span>Allow strong-stretch roles</span>
+            </label>
+          </>}
+        </div>
         <label className="opportunity-check">
           <input
             type="checkbox"
@@ -751,7 +830,10 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
             {scan.status === "running" ? `Scanning ${scan.target_count || ""} sources…` : "Refresh opportunities"}
           </button>
         </div>
-      </section>
+        </section>
+      </details>
+
+      {automationNotice && <div className="opportunity-automation-notice" role="status">{automationNotice}</div>}
 
       {scan.status !== "idle" && (
         <div className={`opportunity-run status-${scan.status}`} role="status">
@@ -954,6 +1036,16 @@ export function OpportunitiesView({ api }: { api: ApiFetch }) {
                         onClick={() => void trackOpportunity(item.opportunity_id)}
                       >
                         {trackedIds.has(item.opportunity_id) ? "Tracked" : trackingId === item.opportunity_id ? "Adding…" : "Track application"}
+                      </button>
+                    )}
+                    {(facts.decision === "apply_now" || (facts.decision === "strong_stretch" && profile.auto_apply_allow_strong_stretch)) && (
+                      <button
+                        className="auto-apply"
+                        disabled={autoApplyingId === item.opportunity_id || !profile.auto_apply_enabled || !applicationProfile.ready}
+                        onClick={() => void autoApply(item.opportunity_id)}
+                        title={!profile.auto_apply_enabled ? "Enable candidate auto-apply in Targeting & automation" : "Generate truthful documents, preflight the form, and submit only after all gates pass"}
+                      >
+                        {autoApplyingId === item.opportunity_id ? "Applying…" : "Auto apply"}
                       </button>
                     )}
                     <button onClick={() => void openExternalUrl(item.canonical_apply_url)}>Open application</button>

@@ -84,6 +84,30 @@ export interface OpportunityCandidate {
   target_monthly_compensation_usd: number;
   unknown_compensation_policy: "allow" | "review" | "skip";
   maximum_internship_months: number;
+  auto_apply_enabled: boolean;
+  auto_apply_confirmed_at: string | null;
+  auto_apply_minimum_fit_score: number;
+  auto_apply_daily_limit: number;
+  auto_apply_allow_strong_stretch: boolean;
+}
+
+export interface OpportunityAutoApplyResult {
+  status: "submitted" | "blocked" | "needs_review" | "submission_unconfirmed" | "failed" | "already_running";
+  candidate_id: string;
+  opportunity_id: string;
+  lead_id?: string;
+  event_id?: string;
+  blockers?: string[];
+  warnings?: string[];
+  confirmation_evidence?: string;
+  preflight?: {
+    fields_filled?: string[];
+    required_unfilled?: string[];
+    sensitive_questions?: string[];
+    page_blockers?: string[];
+    resume_uploaded?: boolean;
+    submit_found?: boolean;
+  };
 }
 
 export interface OpportunityFunnelMetrics {
@@ -120,6 +144,10 @@ export interface OpportunityCandidateSummary {
   consent_confirmed_at: string | null;
   application_profile_ready: boolean;
   pilot_ready: boolean;
+  auto_apply_enabled: boolean;
+  auto_apply_confirmed_at: string | null;
+  auto_apply_minimum_fit_score: number;
+  auto_apply_daily_limit: number;
   profile_updated_at: string;
 }
 
@@ -351,6 +379,13 @@ export const opportunitiesApi = {
     const params = new URLSearchParams({ candidate_id: candidateId });
     return api(
       `/api/v1/opportunities/${encodeURIComponent(opportunityId)}/track?${params.toString()}`,
+      withOpts({ method: "POST" }, opts),
+    );
+  },
+  autoApply(api: ApiFetch, candidateId: string, opportunityId: string, opts?: ApiFetchOptions) {
+    const params = new URLSearchParams({ candidate_id: candidateId });
+    return api(
+      `/api/v1/opportunities/${encodeURIComponent(opportunityId)}/auto-apply?${params.toString()}`,
       withOpts({ method: "POST" }, opts),
     );
   },

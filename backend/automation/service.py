@@ -197,12 +197,23 @@ class AutomationService:
     async def get_lead_for_fire(self, job_id: str) -> tuple[dict, str]:
         return await asyncio.to_thread(get_lead_for_fire_sync, job_id, self.repo)
 
-    async def _require_candidate_submission_ready(self, lead: dict) -> None:
+    async def _require_candidate_submission_ready(
+        self,
+        lead: dict,
+        *,
+        require_auto_apply: bool = False,
+    ) -> None:
         from core.errors import ConflictError
 
         source_meta = lead.get("source_meta") if isinstance(lead.get("source_meta"), dict) else {}
         candidate_id = str(source_meta.get("candidate_id") or "").strip()
         if not candidate_id:
+            if require_auto_apply:
+                enabled = await asyncio.to_thread(
+                    self.repo.settings.get_setting, "auto_apply", "false"
+                )
+                if str(enabled).lower() != "true":
+                    raise ConflictError("Auto-apply is disabled")
             return
         payload = await asyncio.to_thread(
             self.repo.opportunities.get_candidate_profile, candidate_id
@@ -211,6 +222,11 @@ class AutomationService:
             raise ConflictError("Candidate profile is missing or invalid")
         if not str(payload.get("consent_confirmed_at") or "").strip():
             raise ConflictError("Candidate consent is required before preview or submission")
+        if require_auto_apply:
+            if not payload.get("auto_apply_enabled"):
+                raise ConflictError("Auto-apply is disabled for this candidate")
+            if not str(payload.get("auto_apply_confirmed_at") or "").strip():
+                raise ConflictError("Candidate auto-apply confirmation is required")
         status = await asyncio.to_thread(
             self.repo.opportunities.candidate_application_profile_status, candidate_id
         )
@@ -220,16 +236,25 @@ class AutomationService:
             )
 
     async def submit_application(self, lead: dict, asset: str) -> bool:
+        result = await self.submit_application_result(lead, asset)
+        return bool(isinstance(result, dict) and result.get("status") == "submitted")
+
+    async def submit_application_result(self, lead: dict, asset: str) -> dict:
         from automation.actuator import run as actuate
 
-        await self._require_candidate_submission_ready(lead)
-        return await asyncio.to_thread(actuate, lead, asset)
+        _raise_if_blocked(lead, asset)
+        await self._require_candidate_submission_ready(lead, require_auto_apply=True)
+        result = await asyncio.to_thread(actuate, lead, asset, False, True)
+        if isinstance(result, dict):
+            return result
+        return {"status": "submitted" if result else "failed", "ready_to_submit": bool(result)}
 
     async def preview_application(self, lead: dict, asset: str):
         from automation.actuator import run as actuate
 
         await self._require_candidate_submission_ready(lead)
-        return await asyncio.to_thread(actuate, lead, asset, True)
+        result = await asyncio.to_thread(actuate, lead, asset, True, False)
+        return result if isinstance(result, dict) else {"status": "dry_run", "ready_to_submit": bool(result)}
 
     async def read_form(self, url: str, identity: dict, cover_letter: str = "") -> dict:
         from automation.actuator import read_form
@@ -300,7 +325,7 @@ class AutomationService:
         lead = await asyncio.to_thread(self.repo.leads.get_lead_by_id, job_id)
         asset = (lead or {}).get("resume_asset") or (lead or {}).get("asset") or ""
         _raise_if_blocked(lead, asset)
-        await self._require_candidate_submission_ready(lead)
+        await self._require_candidate_submission_ready(lead, require_auto_apply=True)
 
     async def actuate(self, job_id: str, notify, job_store=None) -> None:
         """Run a full application submission, reporting progress through `notify`."""

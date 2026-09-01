@@ -93,12 +93,14 @@ proves the row.
 | App data paths / first-run | [test_app_data_paths.py](../backend/tests/unit/common/test_app_data_paths.py) |
 | UI components (dashboard, onboarding, settings, activity stream) | `npx vitest run` (frontend) |
 
-## Feature 7 — (Opt-in) automation / auto-apply + MCP stdio server
+## Feature 7 — Guarded candidate auto-apply + MCP stdio server
 
 | Aspect | Verified by |
 |---|---|
 | MCP server tool surface | [test_mcp_server.py](../backend/tests/unit/service/test_mcp_server.py) |
 | Browser runtime / actuator gated + labeled | [test_browser_runtime.py](../backend/tests/unit/business/test_browser_runtime.py), [test_actuator_vision_safety.py](../backend/tests/unit/business/test_actuator_vision_safety.py) |
+| Candidate consent, fit/eligibility, duplicate, daily-limit, and stretch policy | [test_auto_apply_policy.py](../backend/tests/unit/business/test_auto_apply_policy.py), [test_automation_candidate_consent.py](../backend/tests/unit/business/test_automation_candidate_consent.py) |
+| Preflight, confirmed submission, audit events, and failure boundaries | [test_auto_apply_campaign.py](../backend/tests/unit/business/test_auto_apply_campaign.py), [test_opportunities_api.py](../backend/tests/unit/service/test_opportunities_api.py) |
 
 ## Connectors & models — providers, per-step routing, embeddings
 

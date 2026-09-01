@@ -79,6 +79,37 @@ def test_candidate_submit_boundary_requires_consent_and_contact_profile(
         asyncio.run(service._require_candidate_submission_ready(_candidate_lead()))
 
 
+@pytest.mark.parametrize(
+    ("enabled", "confirmed", "message"),
+    [
+        (False, "2026-09-01T00:00:00Z", "disabled for this candidate"),
+        (True, None, "confirmation is required"),
+    ],
+)
+def test_candidate_auto_apply_submit_requires_explicit_candidate_authorization(
+    enabled: bool,
+    confirmed: str | None,
+    message: str,
+) -> None:
+    repo = SimpleNamespace(opportunities=SimpleNamespace(
+        get_candidate_profile=lambda _candidate_id: {
+            "candidate_id": "friend-1",
+            "consent_confirmed_at": "2026-08-25T00:00:00Z",
+            "auto_apply_enabled": enabled,
+            "auto_apply_confirmed_at": confirmed,
+        },
+        candidate_application_profile_status=lambda _candidate_id: {"ready": True},
+    ))
+    service = AutomationService(repo)
+
+    with pytest.raises(ConflictError, match=message):
+        asyncio.run(
+            service._require_candidate_submission_ready(
+                _candidate_lead(), require_auto_apply=True
+            )
+        )
+
+
 def test_generic_personal_lead_does_not_require_pilot_candidate_profile() -> None:
     service = AutomationService(SimpleNamespace())
     asyncio.run(service._require_candidate_submission_ready({"job_id": "legacy"}))

@@ -82,7 +82,7 @@ JustHireMe's stable core is the local-first desktop workbench, Python sidecar AP
 | Resume tailoring | Works for any field (engineering, design, finance, healthcare, education, trades, ...) |
 | Résumé/profile ingestion | Tolerates real-world profile shapes (PDF/DOCX/TXT/MD, JSON Resume exports, LinkedIn zips, GitHub, portfolio URLs) and shows a transparent import report — what was pulled in, skipped, or capped |
 | Explainable matching | Fit scores are backed by GraphRAG proof from your own Kùzu skill/project graph, not just a number |
-| Browser automation / auto-apply | Experimental lab, disabled by default |
+| Browser automation / auto-apply | Guarded, candidate-authorized, disabled per candidate by default |
 | API key storage | Local app settings; `.env` is for development overrides; OS keychain planned |
 
 If you are new here, start with the frontend preview first. If you want to contribute backend behavior, source adapters, or packaging, use the full desktop setup below.
@@ -97,7 +97,7 @@ It helps you:
 | Match | Use Kuzu graph data and LanceDB vectors to compare jobs against your profile context | Matching is profile-aware, not keyword-only |
 | Customize | Generate tailored resume PDF, cover letter PDF, and outreach drafts | You get a useful package, not just a list of links |
 
-> Browser automation and auto-apply code exists in the repository, but it is experimental, opt-in, and unsupported as part of the stable core. The supported open-source core is scraper, ranker, vector matching, and customizer.
+> Guarded auto-apply is opt-in per candidate. It only attempts verified active opportunities that pass candidate fit, eligibility, profile, form-safety, duplicate, and daily-limit gates, and it records success only after the employer site returns positive confirmation. CAPTCHA, authentication, sensitive questions, and ambiguous required fields stop for manual review.
 
 ---
 
@@ -322,7 +322,7 @@ The app updates itself automatically from the latest GitHub release. Release not
 Optional:
 
 - Ollama for local model experiments
-- Playwright browser dependencies only for experimental automation work
+- Playwright browser dependencies for guarded form preflight and auto-apply
 
 ### Fast Frontend Preview
 
@@ -368,7 +368,7 @@ cd ..
 
 ### Before Opening An Issue
 
-- Check whether the bug is in supported core behavior or experimental automation.
+- State whether the bug is in discovery/ranking, document generation, or guarded browser automation.
 - Remove API keys, cookies, resumes, local databases, and generated private documents from logs or screenshots.
 - For source requests, include a public example URL and expected normalized fields.
 - For ranking bugs, include the expected score behavior and sanitized job/profile snippets.
@@ -655,16 +655,17 @@ Please do not open public issues with API keys, resumes, cookies, bearer tokens,
 
 ---
 
-## Experimental Automation
+## Guarded Auto-Apply
 
-The repository contains browser automation and auto-apply code for experimentation and future plugin work. This is distinct from the scraping scout (`backend/automation/scout.py`), which is core, supported, and always on — "experimental" here refers specifically to the DOM-fill/vision-based apply actuator, not lead discovery.
+The Opportunities workspace can generate candidate-specific materials, preflight supported application forms, and submit with the candidate's explicit authorization. This is distinct from the scraping scout (`backend/automation/scout.py`), which discovers leads but never submits an application.
 
 | Status | Meaning |
 | --- | --- |
-| Disabled by default | Not part of the supported job workflow |
-| Unsupported lab | Useful for contributors, not normal users |
-| Not marketed as core | The product works without it |
-| Potential future plugin | May be separated later |
+| Disabled per candidate by default | Requires explicit candidate authorization and a confirmed application profile |
+| Default-deny policy | Blocks inactive, ineligible, weak-fit, unpaid-disallowed, unresolved, duplicate, and over-limit opportunities |
+| Safe form boundary | Blocks CAPTCHA/login walls, sensitive or unanswered required questions, and vision-only fills |
+| Confirmed outcomes | A click is not success; only positive employer confirmation marks an application submitted |
+| Manual fallback | Unsupported or ambiguous forms remain available through Open application |
 
 ---
 

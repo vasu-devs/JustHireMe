@@ -8,7 +8,6 @@ from typing import Any
 from pydantic import BaseModel, Field
 from core.logging import get_logger
 from core.url_guard import assert_public_url, block_private_route
-from core import env
 
 _log = get_logger(__name__)
 
@@ -16,8 +15,6 @@ _log = get_logger(__name__)
 # screenshot + close). Past this the coroutine is cancelled so a slow/blocking
 # page can't pin the single-worker sidecar and make the backend look unreachable.
 READ_FORM_DEADLINE_S = 45
-
-_AUTO_APPLY_ENABLED = env.auto_apply_enabled()
 
 _TYPE_TO_CANDIDATE_KEY = {
     "first_name":      lambda c: (c.get("name") or "").split()[0] if c.get("name") else c.get("first_name", ""),
@@ -189,7 +186,10 @@ _DOM_MAP = [
     ("input[name*='lastName']",    "last_name"),
     ("input[name*='full_name']",   "name"),
     ("input[name*='fullName']",    "name"),
-    ("input[name*='name']",        "name"),
+    ("input[name='name' i]",       "name"),
+    ("input[autocomplete='name']", "name"),
+    ("input[aria-label*='full name' i]", "name"),
+    ("input[placeholder*='full name' i]", "name"),
     ("input[name*='email']",       "email"),
     ("input[type='email']",        "email"),
     ("input[name*='phone']",       "phone"),
@@ -219,7 +219,10 @@ async def _upload_resume(p, asset: str) -> bool:
 
 
 async def _fill_dom(p, j: dict, a: str):
-    result: dict[str, Any] = {"fields": [], "uploaded": False, "vision_actions": 0}
+    result: dict[str, Any] = {
+        "fields": [], "uploaded": False, "vision_actions": 0,
+        "required_unfilled": [], "sensitive_questions": [], "page_blockers": [],
+    }
     for sel, key in _DOM_MAP:
         v = j.get(key, "")
         if not v:
@@ -227,16 +230,88 @@ async def _fill_dom(p, j: dict, a: str):
         try:
             el = p.locator(sel).first
             await el.wait_for(state="visible", timeout=2000)
+            if await el.get_attribute("data-jhm-filled") == "true":
+                continue
             await el.focus()
             await p.wait_for_timeout(_FILL_DELAY)
             await el.fill(str(v), timeout=3000)
+            await el.evaluate("el => el.setAttribute('data-jhm-filled', 'true')")
             result["fields"].append(key)
             await p.wait_for_timeout(_FILL_DELAY)
         except Exception as log_exc:
             logging.getLogger(__name__).warning('suppressed exception in backend/automation/actuator.py:_fill_dom: %s', log_exc)
             pass
     result["uploaded"] = await _upload_resume(p, a)
+    facts = await _inspect_form_safety(p)
+    result.update(facts)
     return result
+
+
+_SENSITIVE_QUESTION_RE = re.compile(
+    r"\b(sponsor(?:ship)?|work authori[sz]ation|visa|citizen(?:ship)?|race|ethnic|"
+    r"gender|sex(?:ual)?|disab|veteran|criminal|conviction|background check|"
+    r"salary|compensation|expected pay|notice period|relocat|privacy|terms|"
+    r"non[- ]?compete|bond|legal agreement|demographic)\b",
+    re.I,
+)
+
+
+async def _inspect_form_safety(p) -> dict[str, list[str]]:
+    """Inspect the filled DOM and default-deny on questions we cannot answer."""
+    try:
+        fields = await p.locator("input, textarea, select").evaluate_all(
+            """els => els.map((el, index) => {
+                const style = window.getComputedStyle(el);
+                const visible = style.display !== 'none' && style.visibility !== 'hidden' &&
+                    (el.offsetWidth > 0 || el.offsetHeight > 0);
+                const id = el.id || '';
+                const explicit = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`) : null;
+                const parent = el.closest('label');
+                const fieldset = el.closest('fieldset');
+                const legend = fieldset?.querySelector('legend');
+                const group = el.closest('[role="group"], [role="radiogroup"], .form-group, .field');
+                const label = (explicit?.innerText || legend?.innerText || parent?.innerText ||
+                    group?.querySelector('label')?.innerText ||
+                    el.getAttribute('aria-label') || el.getAttribute('placeholder') ||
+                    el.getAttribute('name') || `field ${index + 1}`).trim().slice(0, 240);
+                const type = (el.getAttribute('type') || el.tagName || '').toLowerCase();
+                const required = el.required || el.getAttribute('aria-required') === 'true';
+                const automated = el.getAttribute('data-jhm-filled') === 'true';
+                const blank = type === 'checkbox' || type === 'radio'
+                    ? !el.checked
+                    : !(el.value || '').trim();
+                return { visible, label, type, required, blank, automated, disabled: el.disabled };
+            }).filter(item => item.visible && !item.disabled && item.type !== 'hidden' && item.type !== 'submit')"""
+        )
+        page_text = str(await p.locator("body").inner_text(timeout=3000) or "")[:100_000]
+    except Exception as exc:
+        _log.warning("form safety inspection failed: %s", exc)
+        return {
+            "required_unfilled": ["form safety inspection failed"],
+            "sensitive_questions": [],
+            "page_blockers": ["form could not be safely inspected"],
+        }
+
+    required_unfilled = [
+        str(item.get("label") or "required field")
+        for item in fields
+        if item.get("required") and not item.get("automated") and item.get("type") != "file"
+    ]
+    sensitive_questions = [
+        str(item.get("label") or "sensitive question")
+        for item in fields
+        if _SENSITIVE_QUESTION_RE.search(str(item.get("label") or ""))
+    ]
+    page_blockers: list[str] = []
+    if re.search(r"\b(captcha|recaptcha|hcaptcha|verify you are human)\b", page_text, re.I):
+        page_blockers.append("CAPTCHA or human verification detected")
+    if re.search(r"\b(sign in|log in|create (?:an )?account|register an account)\b", page_text, re.I):
+        page_blockers.append("account authentication is required")
+    return {
+        "required_unfilled": list(dict.fromkeys(required_unfilled)),
+        "sensitive_questions": list(dict.fromkeys(sensitive_questions)),
+        "page_blockers": page_blockers,
+    }
 
 
 def _ready_to_submit(result: dict) -> bool:
@@ -244,7 +319,16 @@ def _ready_to_submit(result: dict) -> bool:
     # are clicks/types at LLM-proposed pixel coordinates that we cannot verify
     # actually landed in the right field, so they must NOT by themselves make a
     # form "ready to submit". A vision-only form is read/previewed, never auto-sent.
-    return bool(result.get("uploaded")) and bool(result.get("fields"))
+    fields = set(result.get("fields") or [])
+    has_name = "name" in fields or {"first_name", "last_name"}.issubset(fields)
+    return (
+        bool(result.get("uploaded"))
+        and has_name
+        and "email" in fields
+        and not result.get("required_unfilled")
+        and not result.get("sensitive_questions")
+        and not result.get("page_blockers")
+    )
 
 
 def _submit_mode(has_submit: bool, ready: bool, dry_run: bool, auto_apply: bool) -> str:
@@ -492,8 +576,6 @@ async def _find_submit(p):
         "input[type='submit']",
         "button:has-text('Submit Application')",
         "button:has-text('Submit')",
-        "button:has-text('Apply Now')",
-        "button:has-text('Apply')",
     ]:
         try:
             btn = p.locator(sel).first
@@ -505,7 +587,58 @@ async def _find_submit(p):
     return None
 
 
-async def _run(job: dict, asset: str, dry_run: bool = False) -> bool | dict:
+_CONFIRMATION_RE = re.compile(
+    r"\b(application (?:has been )?(?:received|submitted|sent)|thank you for (?:applying|your application)|"
+    r"successfully submitted|submission (?:complete|confirmed))\b",
+    re.I,
+)
+
+
+async def _submission_confirmed(
+    page,
+    before_url: str,
+    before_text: str = "",
+) -> tuple[bool, str]:
+    """Require positive post-submit evidence before the lead is marked applied."""
+    try:
+        await page.wait_for_timeout(2500)
+        text = str(await page.locator("body").inner_text(timeout=5000) or "")[:100_000]
+        match = _CONFIRMATION_RE.search(text)
+        before_match = _CONFIRMATION_RE.search(before_text)
+        if match and (not before_match or match.group(0).lower() != before_match.group(0).lower()):
+            return True, match.group(0)
+        current_url = str(page.url or "")
+        if current_url != before_url and re.search(
+            r"(?:thank[-_]?you|confirmation|success|submitted|application[-_]?received)",
+            current_url,
+            re.I,
+        ):
+            return True, f"confirmation URL: {current_url[:500]}"
+    except Exception as exc:
+        _log.warning("submission confirmation inspection failed: %s", exc)
+    return False, "no positive submission confirmation was detected"
+
+
+def _automation_result(status: str, filled: dict, *, submit_found: bool, ready: bool, **extra) -> dict:
+    return {
+        "status": status,
+        "fields_filled": list(filled.get("fields") or []),
+        "resume_uploaded": bool(filled.get("uploaded")),
+        "submit_found": submit_found,
+        "ready_to_submit": bool(submit_found and ready),
+        "required_unfilled": list(filled.get("required_unfilled") or []),
+        "sensitive_questions": list(filled.get("sensitive_questions") or []),
+        "page_blockers": list(filled.get("page_blockers") or []),
+        **extra,
+    }
+
+
+async def _run(
+    job: dict,
+    asset: str,
+    dry_run: bool = False,
+    allow_submit: bool = False,
+) -> bool | dict:
     if not job.get("url") or not asset or not os.path.isfile(asset):
         return False
 
@@ -551,7 +684,7 @@ async def _run(job: dict, asset: str, dry_run: bool = False) -> bool | dict:
 
             submit_btn = await _find_submit(pg)
             ready = _ready_to_submit(filled)
-            mode = _submit_mode(bool(submit_btn), ready, dry_run, _AUTO_APPLY_ENABLED)
+            mode = _submit_mode(bool(submit_btn), ready, dry_run, allow_submit)
 
             if mode == "dry_run":
                 if submit_btn:
@@ -559,31 +692,39 @@ async def _run(job: dict, asset: str, dry_run: bool = False) -> bool | dict:
                     await submit_btn.evaluate("el => el.style.outline = '3px solid #ef4444'")
                 screenshot_b64 = await pg.screenshot(type="png", full_page=False)
                 screenshot_b64_str = base64.b64encode(screenshot_b64).decode()
-                return {
-                    "status": "dry_run",
-                    "fields_filled": filled["fields"],
-                    "resume_uploaded": filled["uploaded"],
-                    "screenshot_b64": screenshot_b64_str,
-                    "ready_to_submit": bool(submit_btn and ready),
-                }
+                return _automation_result(
+                    "dry_run", filled, submit_found=bool(submit_btn), ready=ready,
+                    screenshot_b64=screenshot_b64_str,
+                )
 
             if mode == "read_only":
-                _log.warning(
-                    "auto-apply is disabled — form was read but not submitted. "
-                    "Set JHM_AUTO_APPLY=true to re-enable."
-                )
+                _log.warning("auto-apply is disabled for this candidate — form was not submitted")
                 _shot = await pg.screenshot(type="png", full_page=False)
-                return {
-                    "status": "read_only",
-                    "fields_filled": filled["fields"],
-                    "resume_uploaded": filled["uploaded"],
-                    "screenshot_b64": base64.b64encode(_shot).decode(),
-                    "ready_to_submit": bool(submit_btn and ready),
-                }
+                return _automation_result(
+                    "read_only", filled, submit_found=bool(submit_btn), ready=ready,
+                    screenshot_b64=base64.b64encode(_shot).decode(),
+                )
 
             if mode == "submit":
+                before_url = str(pg.url or "")
+                try:
+                    before_text = str(
+                        await pg.locator("body").inner_text(timeout=3000) or ""
+                    )[:100_000]
+                except Exception as exc:
+                    _log.warning("pre-submit confirmation baseline could not be read: %s", exc)
+                    before_text = ""
                 await submit_btn.click(timeout=5000)
-                ok = True
+                confirmed, evidence = await _submission_confirmed(
+                    pg, before_url, before_text
+                )
+                return _automation_result(
+                    "submitted" if confirmed else "submission_unconfirmed",
+                    filled,
+                    submit_found=True,
+                    ready=ready,
+                    confirmation_evidence=evidence,
+                )
             else:
                 _log.warning(
                     "submit blocked: submit=%s uploaded=%s fields=%s vision_actions=%s",
@@ -591,6 +732,10 @@ async def _run(job: dict, asset: str, dry_run: bool = False) -> bool | dict:
                     bool(filled.get("uploaded")),
                     filled.get("fields"),
                     filled.get("vision_actions"),
+                )
+                return _automation_result(
+                    "blocked", filled, submit_found=bool(submit_btn), ready=ready,
+                    reason="form did not pass the deterministic submission preflight",
                 )
             await pg.wait_for_timeout(2000)
         finally:
@@ -601,5 +746,10 @@ async def _run(job: dict, asset: str, dry_run: bool = False) -> bool | dict:
     return ok
 
 
-def run(job: dict, asset: str, dry_run: bool = False) -> bool | dict:
-    return asyncio.run(_run(job, asset, dry_run=dry_run))
+def run(
+    job: dict,
+    asset: str,
+    dry_run: bool = False,
+    allow_submit: bool = False,
+) -> bool | dict:
+    return asyncio.run(_run(job, asset, dry_run=dry_run, allow_submit=allow_submit))

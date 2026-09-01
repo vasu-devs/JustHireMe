@@ -89,4 +89,19 @@ describe("opportunitiesApi profile confirmation", () => {
       identity,
     });
   });
+
+  it("starts auto-apply through a candidate-scoped POST endpoint", async () => {
+    const calls: Array<{ path: string; opts?: ApiFetchOptions }> = [];
+    const api: ApiFetch = async (path, opts) => {
+      calls.push({ path, opts });
+      return new Response("{}", { status: 200 });
+    };
+
+    await opportunitiesApi.autoApply(api, "friend/one", "role/two");
+
+    expect(calls[0].path).toBe(
+      "/api/v1/opportunities/role%2Ftwo/auto-apply?candidate_id=friend%2Fone",
+    );
+    expect(calls[0].opts?.method).toBe("POST");
+  });
 });

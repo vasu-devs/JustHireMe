@@ -32,6 +32,7 @@ export type {
   OpportunityCandidateResumePreview,
   OpportunityApplicationProfilePreview,
   OpportunityApplicationProfileStatus,
+  OpportunityAutoApplyResult,
   OpportunityApplicationIdentity,
   OpportunityCandidateSummary,
   OpportunityCard,

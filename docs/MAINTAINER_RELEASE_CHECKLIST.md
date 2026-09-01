@@ -30,7 +30,7 @@ For the full production release plan, see [Production Release Roadmap](PRODUCTIO
 
 - [ ] No `.env`, API keys, cookies, bearer tokens, private resumes, generated PDFs, local databases, graph stores, vector stores, private app data, or packaged sidecar binaries are committed.
 - [ ] Live-fire and test fixtures use fake `.test` identity data, not personal emails, phone numbers, or LinkedIn profiles.
-- [ ] Browser automation and auto-apply behavior is documented as experimental and opt-in.
+- [ ] Browser automation and auto-apply are documented as candidate-authorized, default-deny, and manually reviewable when blocked.
 - [ ] Release notes describe JustHireMe as local-first and do not imply a hosted backend.
 - [ ] Release notes include SHA256 checksums for uploaded installer assets.
 - [ ] Tauri updater signing secrets live in the GitHub Actions release environment, not in local docs or committed files.

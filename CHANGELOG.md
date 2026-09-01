@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.0 - 2026-09-01
+
+- Guarded, candidate-scoped auto-apply is now integrated into Opportunities. Each candidate must explicitly authorize it and can choose a minimum fit score, daily submission limit, and whether strong-stretch roles are allowed.
+- Submissions are default-deny: the role must be verified active, eligible, paid under the candidate's policy, sufficiently matched, supported by candidate evidence, not previously submitted, and within the daily limit. Candidate-specific resume and cover-letter assets are generated before form preflight.
+- Browser preflight blocks unanswered required fields, sensitive/legal/work-authorization/pay questions, CAPTCHA or account-authentication walls, and vision-only fills. The final submit control is narrowly matched, and a click is recorded as submitted only after new positive confirmation text or a confirmation URL appears.
+- Every blocked, manual-review, unconfirmed, started, and confirmed attempt is candidate/opportunity scoped and auditable. Per-candidate serialization prevents concurrent attempts from bypassing duplicate or daily-limit policy.
+- The oversized opportunity setup is now a compact progressive Targeting & automation panel, while the application identity and resume confirmation workflow remains immediately visible in the header.
+- Release validation covers 1,926 backend tests (14 skipped), 93 frontend tests, 5 Rust tests, production desktop and website builds, static analysis, architecture boundaries, desktop/mobile browser checks, frozen-sidecar health, and a clean Windows installer smoke.
+
 ## 1.6.1 - 2026-08-26
 
 - Preserves the complete Elite AI Internship campaign from 1.6.0 while hardening the Windows release gate: installed sidecar pipe handles are explicitly closed after the health check, temporary cleanup can no longer keep a successful smoke process alive, and silent NSIS installs now have a bounded timeout.

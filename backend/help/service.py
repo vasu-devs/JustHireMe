@@ -67,7 +67,7 @@ Provider and model configuration:
 - Global AI sets the default provider/model for agents.
 - Per-Step Configuration can override Scout, Evaluator, Generator, Ingestor, or Actuator.
 - Leave a step provider blank to inherit Global AI.
-- Use Scout for scraping/parsing, Evaluator for job fit analysis, Generator for resume/cover letter/outreach, Ingestor for profile context extraction, and Actuator only for experimental automation.
+- Use Scout for scraping/parsing, Evaluator for job fit analysis, Generator for resume/cover letter/outreach, Ingestor for profile context extraction, and Actuator only after guarded auto-apply policy and form preflight pass.
 - If generated material quality is poor, improve Profile/Add Context first, then use a stronger Generator model.
 
 Adding job sources and links:
@@ -147,10 +147,10 @@ Pipeline and follow-ups:
 - Use it after reviewing leads or generating packages.
 - Activity shows events for scans, scoring, generation, cleanup, and failures.
 
-Experimental automation:
-- Experimental Auto Apply is a contributor lab, disabled by default, and not part of the supported core workflow.
-- The supported workflow is scrape, rank, review, customize, and manually submit.
-- If asked about auto-apply, explain that it is experimental and should be used only for testing.
+Guarded automation:
+- Auto Apply is explicitly authorized per candidate in Opportunities.
+- It submits only after profile, eligibility, fit, form-safety, duplicate, and daily-limit checks pass.
+- Ambiguous, sensitive, authenticated, or CAPTCHA-protected forms are stopped for manual review.
 
 Install and Windows security prompt:
 1. Download the installer from GitHub Releases.
@@ -167,7 +167,7 @@ Common troubleshooting:
 - Bad leads: delete them, tighten source targets, use cleanup, and prefer direct boards.
 - Resume/cover letter not generated: check API key/model, paste a full job description, and make sure Profile/Add Context has useful profile data.
 - PDF preview blocked or blank: restart the app and regenerate; if it persists, report the Activity error.
-- Auto Apply blocked: enable Experimental Auto Apply only in settings if testing the lab feature; otherwise use manual application.
+- Auto Apply blocked: open Opportunities, expand Targeting & automation, confirm the candidate profile and explicit authorization, then review the reported blocker.
 """
 
 _PROVIDER_GUIDE = """
@@ -341,7 +341,7 @@ generate resume/cover letter/outreach, then track roles.
         "sources": _SOURCE_GUIDE,
         "customize": _CUSTOMIZE_GUIDE,
         "workflow": _WORKFLOW_GUIDE,
-        "auto_apply": "Experimental Auto Apply is a contributor lab. It is disabled by default and unsupported for normal users. The supported workflow is scrape, rank, review, customize, and manually submit.",
+        "auto_apply": "Guarded Auto Apply is enabled per candidate in Opportunities. It creates candidate-specific documents, preflights the application form, blocks ambiguous or sensitive questions, enforces fit and daily limits, and records a submission only after the employer site shows confirmation.",
         "install": _USER_GUIDE[_USER_GUIDE.find("Install and Windows security prompt:"):_USER_GUIDE.find("Common troubleshooting:")],
         "general": _WORKFLOW_GUIDE + "\n" + _SOURCE_GUIDE + "\n" + _CUSTOMIZE_GUIDE,
     }
@@ -463,7 +463,7 @@ def answer(question: str, history: list[dict] | None = None) -> dict:
         "the app does support and the closest workflow, or ask one short clarifying question.\n"
         "- For anything you are unsure of, hedge plainly (e.g. 'based on the current settings...') "
         "rather than stating it as certain. Never fabricate features, menu items, settings, or steps.\n"
-        "- Describe experimental automation (Auto Apply) as experimental and opt-in.\n"
+        "- Describe Auto Apply as candidate-authorized, guarded automation; never promise a submission when a blocker or unconfirmed employer response is present.\n"
         "- Mention that JustHireMe is local-first when it answers a privacy or data-location concern.\n"
         "- Include a prerequisite step only when it is actually required (e.g. configure an LLM "
         "provider/API key before AI generation).\n"

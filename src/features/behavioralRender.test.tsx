@@ -104,6 +104,10 @@ describe("high-risk component behavioral render coverage", () => {
       expect(html).toContain("Spoken languages");
       expect(html).toContain("Used only to verify explicit job-language requirements.");
       expect(html).toContain("Candidate consent confirmed");
+      expect(html).toContain("Targeting &amp; automation");
+      expect(html).toContain("Auto-apply off");
+      expect(html).toContain("Guarded auto-apply");
+      expect(html).toContain("I authorize truthful automatic submissions for this candidate");
     } finally {
       vi.unstubAllGlobals();
     }

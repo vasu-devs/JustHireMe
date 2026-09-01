@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.dependencies import get_opportunity_service
+from api.dependencies import get_auto_apply_campaign_service, get_opportunity_service
 from api.routers.opportunities import router
 
 
@@ -82,10 +82,23 @@ class FakeOpportunityService:
         return {"candidate_count": 1, "funnel": {"interviews": 1}}
 
 
+class FakeAutoApplyCampaignService:
+    async def apply(self, *, candidate_id: str, opportunity_id: str):
+        return {
+            "status": "submitted",
+            "candidate_id": candidate_id,
+            "opportunity_id": opportunity_id,
+            "confirmation_evidence": "application received",
+        }
+
+
 def _client() -> TestClient:
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_opportunity_service] = lambda: FakeOpportunityService()
+    app.dependency_overrides[get_auto_apply_campaign_service] = (
+        lambda: FakeAutoApplyCampaignService()
+    )
     return TestClient(app)
 
 
@@ -110,6 +123,20 @@ def test_opportunity_detail_endpoint_is_candidate_scoped() -> None:
     )
     assert response.status_code == 200
     assert response.json() == {"opportunity_id": "opp_123", "candidate_id": "friend-1"}
+
+
+def test_auto_apply_endpoint_is_candidate_scoped_and_returns_confirmation() -> None:
+    response = _client().post(
+        "/api/v1/opportunities/opp_123/auto-apply",
+        params={"candidate_id": "friend-1"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "submitted",
+        "candidate_id": "friend-1",
+        "opportunity_id": "opp_123",
+        "confirmation_evidence": "application received",
+    }
 
 
 def test_candidate_constraints_and_background_scan_endpoints() -> None:

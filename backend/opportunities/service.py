@@ -177,6 +177,13 @@ class OpportunityService:
                 ),
                 "application_profile_ready": application_ready,
                 "pilot_ready": consented and application_ready,
+                "auto_apply_enabled": candidate.auto_apply_enabled,
+                "auto_apply_confirmed_at": (
+                    candidate.auto_apply_confirmed_at.isoformat()
+                    if candidate.auto_apply_confirmed_at else None
+                ),
+                "auto_apply_minimum_fit_score": candidate.auto_apply_minimum_fit_score,
+                "auto_apply_daily_limit": candidate.auto_apply_daily_limit,
                 "profile_updated_at": updated_at,
             })
         return candidates

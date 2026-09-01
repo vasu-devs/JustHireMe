@@ -33,9 +33,9 @@ You are solely responsible for how you use JustHireMe, including:
 - **Outreach and anti-spam.** If you use JustHireMe to draft or send outreach, you are responsible for complying with anti-spam and electronic-communication laws (for example, CAN-SPAM, GDPR/ePrivacy, CASL).
 - **Respecting others' rights.** You will not use JustHireMe to infringe intellectual property, violate privacy, harass, or scrape personal data unlawfully.
 
-## 6. Experimental automation
+## 6. Browser automation and auto-apply
 
-JustHireMe contains **experimental** browser-automation and auto-apply functionality that is disabled by default and is not part of the supported core. If you enable it, you do so at your own risk and remain fully responsible for every action it takes on your behalf, including submissions to third-party sites.
+JustHireMe contains guarded browser-automation and auto-apply functionality that is disabled per candidate by default. It requires your explicit authorization and uses technical safeguards, but no automation can support every third-party form or guarantee an interview or employer response. If you enable it, you remain responsible for the accuracy of candidate data and materials, the selected policy, every submission made on your behalf, and compliance with each third-party site's terms.
 
 ## 7. Acceptable use
 

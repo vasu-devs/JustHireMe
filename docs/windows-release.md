@@ -73,7 +73,7 @@ Tagged releases must verify:
 
 The stable core installer supports app launch, settings, profile/lead workflows, deterministic ranking, local CRM, and document/outreach generation. The required runtime pieces are delivered as one first-run OTA runtime pack so the installer stays small while LanceDB, PyArrow, vector search support, the built-in local embedder path, and Playwright Chromium are installed only once per machine.
 
-Browser automation and auto-apply remain experimental, opt-in lab features. Their Chromium runtime is still installed in the required runtime pack so users are not hit with another download later, but these features should not be described as the primary workflow in release notes.
+Guarded auto-apply is disabled per candidate by default and requires explicit authorization in Opportunities. Its Chromium runtime is installed in the required runtime pack so users are not hit with another download later. Release notes must describe the default-deny safety gates and manual-review fallback.
 
 ## Manual Smoke Test
 
@@ -85,7 +85,7 @@ Browser automation and auto-apply remain experimental, opt-in lab features. Thei
 - Run a scan.
 - Verify leads show signal, fit, and quality explanations.
 - Generate resume PDF, cover letter PDF, and outreach drafts.
-- Confirm browser automation and auto-apply remain clearly experimental and opt-in.
+- Confirm browser automation and auto-apply remain candidate-authorized, default-deny, and opt-in.
 - If a previous release is installed, confirm the update installs over it and preserves local app data.
 
 ## Release Notes
