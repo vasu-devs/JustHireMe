@@ -1,0 +1,62 @@
+name: Mobile app and cloud API
+on:
+  pull_request:
+    paths: ["ios/**", "cloud/**", ".github/workflows/mobile.yml"]
+  push:
+    branches: [main, "codex/ios-*"]
+    paths: ["ios/**", "cloud/**", ".github/workflows/mobile.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cloud:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: jhm_test
+          POSTGRES_PASSWORD: local-test-only
+          POSTGRES_DB: jhm_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U jhm_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install -r cloud/requirements.lock.txt
+      - run: python -m pytest -q
+        working-directory: cloud
+      - run: python -m pytest -q
+        working-directory: cloud
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://jhm_test:local-test-only@localhost:5432/jhm_test
+      - run: python scripts/validate-mobile.py
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode 26 or newer
+        shell: bash
+        run: |
+          XCODE_PATH=$(python3 -c 'import glob; print(sorted(glob.glob("/Applications/Xcode_26*.app"))[-1])')
+          test -n "$XCODE_PATH"
+          sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
+          xcodebuild -version
+      - run: brew install xcodegen
+      - name: Build and test in an available iPhone simulator
+        shell: bash
+        run: |
+          bash ios/scripts/run-simulator.sh
+      - name: Upload native simulator evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-evidence
+          path: ios/TestArtifacts/
+          retention-days: 7
+          if-no-files-found: warn

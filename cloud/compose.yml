@@ -1,0 +1,21 @@
+services:
+  api:
+    build: .
+    env_file: config.env
+    ports: ["127.0.0.1:8000:8000"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes: ["./certificates:/app/certificates:ro"]
+  recovery:
+    build: .
+    env_file: config.env
+    command: ["python", "-m", "jhm_cloud.recovery"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes: ["./certificates:/app/certificates:ro"]
