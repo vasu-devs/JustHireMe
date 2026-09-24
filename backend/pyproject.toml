@@ -21,7 +21,7 @@ dependencies = [
     # `sentence-transformers`, which only pulled in torch/scikit-learn/scipy (and the
     # torch CVE) without ever being imported.
     "onnxruntime~=1.27.0",
-    "tokenizers>=0.20.0",
+    "tokenizers>=0.23.1",
     "huggingface-hub>=0.27.0",
     "pypdf>=6.14.2",
     "playwright>=1.60.0",
