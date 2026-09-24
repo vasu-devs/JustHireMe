@@ -14,7 +14,7 @@ dependencies = [
     "instructor~=1.15.4",
     "kuzu~=0.11.3",
     "lancedb~=0.34.0",
-    "langchain-core~=1.4.0",
+    "langchain-core~=1.4.8",
     "langgraph~=1.2.0",
     # Embedding runtime: embeddings.py imports these directly (ONNX MiniLM + tokenizer
     # + model download). Declared explicitly instead of relying on the unused
