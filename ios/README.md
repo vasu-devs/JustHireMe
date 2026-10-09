@@ -4,7 +4,7 @@ Native SwiftUI source for an iOS 17+ mobile edition of JustHireMe, with a separa
 
 Implemented: email-code sign-in, secure session refresh, profile editing and AI consent, saved opportunities, skill mentions, application status tracking, application drafts and sharing, weekly/monthly StoreKit subscriptions, consumable credits, purchase recovery, credit history, account export, and in-app deletion. An explicitly labelled demo is available without signing in. The demo contains fictional data and never takes payments or calls AI.
 
-This is a first mobile implementation, not an App Store release. Swift compilation, simulator/UI verification, sandbox purchases, signing, and TestFlight must be completed on a Mac. No Apple or cloud account has been provisioned, and no app has been uploaded. Follow [the launch guide](../docs/IOS_LAUNCH.md) for the remaining release gates.
+This is a first mobile implementation, not an App Store release. The native app compiled with Xcode 26.3 and passed five unit tests and three UI tests on an iPhone 16 Pro simulator in the [private CI run](https://github.com/vasu-devs/JustHireMe-iOS-private/actions/runs/34131799854). The app was installed and launched, and screenshots plus a simulator app archive were captured. Physical-device testing, real auth/AI/payment integration, signing, and TestFlight remain. Follow [the launch guide](../docs/IOS_LAUNCH.md) for the release gates.
 
 ## Build on a Mac
 
@@ -20,7 +20,7 @@ open ios/JustHireMe.xcodeproj
 
 Choose the JustHireMe scheme and an iPhone simulator, then Run. The project builds without configuration for exploring the labelled demo, but sign-in and live services require a configured API. Select your Apple signing team for a physical device. The build prepares an opaque app icon from the repository's existing brand artwork.
 
-Run unit tests with Product → Test. Also test on an iPad, the smallest supported iPhone, dark mode, VoiceOver, and large Dynamic Type. CI in `.github/workflows/mobile.yml` contains an unsigned simulator build/test job. Adding a workflow does not mean it has run.
+Run unit tests with Product → Test. Also test on an iPad, the smallest supported iPhone, dark mode, VoiceOver, and large Dynamic Type. CI in `.github/workflows/mobile.yml` runs an unsigned simulator build/test job; the verified run is linked above.
 
 To build, run the native unit/UI tests, launch the demo in an iPhone simulator, and save screenshots in one command on a Mac:
 

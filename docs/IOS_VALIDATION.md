@@ -1,25 +1,30 @@
-# Mobile implementation validation — 7 September 2026
+# Mobile validation — 7 September 2026
 
-Implemented in a Windows workspace. No native iOS build, simulator run, screenshot, device test, signing, TestFlight upload, paid AI call, or real Apple purchase was performed.
+The mobile source was pushed to [JustHireMe-iOS-private](https://github.com/vasu-devs/JustHireMe-iOS-private) after verifying private visibility. No mobile changes were pushed to the public repository.
 
-## Executed checks
+## Verified hosted run
 
-- 29 Python tests passed against SQLite in isolated temporary databases.
-- The same 29 tests passed against a temporary PostgreSQL 17 container, including real row-lock/concurrency paths. The container used synthetic users/jobs and was stopped after validation.
-- Ruff passed for the new cloud modules, tests, and portable validation script.
-- Portable validation passed for plist parsing, privacy manifest structure, asset catalog JSON, and selected configuration invariants. This does not typecheck Swift.
-- Python modules compiled successfully; git whitespace validation passed.
+[GitHub Actions run 34131799854](https://github.com/vasu-devs/JustHireMe-iOS-private/actions/runs/34131799854) passed on source revision `40fa0cfe7b955c29a5528d27af48e524f82db771`.
 
-The test suite covers authentication rejection, account isolation, zero initial balance, duplicate receipt delivery, concurrent purchase delivery, subscription renewal credits, non-expiry, refunds/debt, refund-before-purchase ordering, refund reversal, sandbox account restrictions, consent/credit prerequisites, idempotent generation, provider failure refunds, stale-job recovery, late results, concurrent spending, unsafe input, oversized request rejection, disabled provider behavior, deletion during generation, deletion retries, configured retention purge, and history/notification reconciliation.
+- The native app compiled with Xcode 26.3 (17C529) on a hosted Mac and ran on an iPhone 16 Pro simulator.
+- Five Swift unit tests passed: server account decoding, session-expiry decoding, demo isolation, profile encoding, and whole-word skill matching.
+- Three UI tests passed: onboarding/tab navigation, job creation and interview tracking, and disabled demo drafting.
+- The script installed and launched the demo app after testing, captured `Workspace.png`, exported eight UI screenshot attachments, and packaged `JustHireMe-simulator.zip`.
+- The workspace, credit plans, and profile screenshots were visually inspected.
+- All 29 backend tests passed against SQLite and again against PostgreSQL in Linux CI.
 
-Apple's actual server library was exercised to reject a forged JWS. Auth, successful Apple purchases/history responses, and AI output were mocked. Real Supabase email/refresh/delete flows, Apple signing chains and sandbox lifecycle events, and Anthropic output quality/cost still require staging validation. Tests emitted two upstream TestClient/AnyIO deprecation warnings but no failures.
+The workflow retains the simulator app, screenshots, build log, and `Tests.xcresult` for seven days. A local copy is saved under `ios/TestArtifacts/verified-34131799854/` (ignored by Git).
 
-## Unexecuted checks
+The first hosted attempt failed in icon preparation because a headless AppKit graphics context could not use the RGB bitmap. Replacing that context with an opaque CoreGraphics/ImageIO render fixed the build. The successful run had no Swift build errors or test failures. App Intents metadata extraction emitted an informational warning because the app has no App Intents dependency.
 
-The new macOS CI job and Swift unit tests are provided but have not run. Before launch, complete a successful Xcode build, simulator/device UI checks, accessibility checks, real auth, Apple sandbox purchases and notifications, operational reconciliation, retention and restore drills, and production configuration. See [launch guide](IOS_LAUNCH.md).
+## Local checks
 
-## Follow-up: native simulator preparation
+The same 29 backend tests also passed locally against SQLite and a temporary PostgreSQL 17 container, including row-lock/concurrency paths. The container used synthetic data and was stopped after validation. Ruff, Python compilation, portable plist/privacy manifest/asset checks, Bash syntax, YAML parsing, and Git whitespace checks passed.
 
-The 29 backend tests were rerun successfully. Added three XCTest UI scenarios (onboarding/tab navigation, job creation and interview tracking, disabled demo drafting) and expanded the Swift unit suite to five cases. The simulator script builds and tests the app, installs and launches its demo, captures a screenshot, and packages the simulator app. Xcode screenshot attachments and the `.xcresult` bundle are retained by the macOS workflow. Bash syntax, YAML target/workflow parsing, plist checks, and whitespace checks passed locally.
+The backend suite covers authentication rejection, account isolation, duplicate and concurrent receipt delivery, subscription renewal credits, non-expiry, refunds/debt and reversal, sandbox restrictions, consent, idempotent generation, provider failure refunds, stale-job recovery, concurrent spending, unsafe input, deletion retries, retention purge, and history/notification reconciliation. Apple's actual server library rejected a forged JWS. Successful authentication, Apple purchases/history responses, and AI output were mocked. Two upstream TestClient/AnyIO deprecation warnings remain.
 
-No Xcode installation or connected Mac simulator is available on this Windows host. GitHub access was verified, and an isolated local `codex/ios-simulator-tests` branch was prepared from `origin/main`. Publishing that branch and executing the hosted macOS workflow await the user's approval. Native build success and simulator screenshots must not be claimed until that run actually completes.
+## Remaining validation
+
+Native UI tests exercised the explicitly labelled demo. Real Supabase authentication, Apple sandbox purchases and lifecycle events, AI generation, production deployment, operational reconciliation, and backup/restore drills still require staging credentials and testing. Physical devices, iPad/small-screen layouts, dark mode, accessibility, signing, TestFlight, and App Store submission remain. See the [launch guide](IOS_LAUNCH.md).
+
+The simulator ZIP contains a Mac simulator app, not a signed iPhone IPA. The hosted simulator ends when CI completes; the captured run is not a currently interactive simulator stream.

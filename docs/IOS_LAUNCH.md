@@ -1,6 +1,6 @@
 # JustHireMe iOS launch plan
 
-Prepared 7 September 2026. Implementation entry points: [iOS](../ios/README.md), [cloud API](../cloud/README.md). This document distinguishes available code from deployment and App Store work that needs real accounts and macOS validation.
+Prepared 7 September 2026. Implementation entry points: [iOS](../ios/README.md), [cloud API](../cloud/README.md). Native compilation, five unit tests, three simulator UI tests, and both backend database suites passed in the [private hosted run](https://github.com/vasu-devs/JustHireMe-iOS-private/actions/runs/34131799854). This document distinguishes that validation from deployment and App Store work that needs real accounts.
 
 ## Product and pricing
 
@@ -68,7 +68,7 @@ The desktop remains a separate local product. Do not deploy its unauthenticated 
 
 **Subscription disclosure:** Weekly and monthly plans renew automatically unless cancelled through your Apple account. Payment and renewal terms are shown before purchase. Purchased credits do not expire. Deleting the app or your JustHireMe account does not cancel an Apple subscription.
 
-Supply real screenshots captured from the built app on Apple's required device sizes. Capture an empty account, populated workspace, job detail, profile consent, draft review, and the actual localized paywall. Use fictional screenshot content and remove names/emails from debugging captures. No simulator screenshot or marketing image has been generated in this Windows session.
+Supply real screenshots captured from the built app on Apple's required device sizes. Capture an empty account, populated workspace, job detail, profile consent, draft review, and the actual localized paywall. Use fictional screenshot content and remove names/emails from debugging captures. The hosted simulator run captured demo screenshots, including workspace, plans, profile, and job tracking. These do not replace release screenshots with actual localized StoreKit prices and all required device sizes.
 
 Complete the age-rating questionnaire, export-compliance questions based on actual cryptography use, support URL, privacy policy URL, and App Privacy labels. Expected collected categories include name, email, user ID, purchase history, and user-provided résumé/profile/job content linked to the account for app functionality. Free-text location or other résumé fields may require additional data categories; assess the actual shipped inputs and provider practices. The included privacy manifest is a starting declaration, not an automatic replacement for App Store Connect privacy answers. [App privacy details](https://developer.apple.com/app-store/app-privacy-details/).
 
@@ -80,4 +80,4 @@ Give reviewers working login instructions, the review account mailbox/code retri
 
 ## What remains outside this workspace
 
-No Mac, Apple developer credentials, signing identity, live Supabase project, SMTP service, paid AI credentials, App Store product records, or hosting account were available to configure. Native build/UI verification, production deployment, real payment testing, configuring and validating reconciliation/retention operations, and submission remain incomplete. These are concrete launch gates; the repository changes are not evidence of an approved or deployed app.
+The Windows workspace used a private hosted Mac runner for successful native compilation and demo UI verification. Apple developer credentials, signing identity, live Supabase project, SMTP service, paid AI credentials, App Store product records, and production hosting still need configuration. Physical-device testing, production deployment, real payment testing, reconciliation/retention operations, and submission remain incomplete. The successful simulator run is not evidence of an approved or deployed app.
