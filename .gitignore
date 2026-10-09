@@ -172,3 +172,18 @@ backend/.playwright-profile/
 
 # Large reproducible evaluation output; source fixtures stay versioned
 /backend/evals/output/
+
+# Native iOS and cloud deployment credentials / generated files
+!ios/JustHireMe/
+ios/JustHireMe/Configuration.plist
+ios/*.xcodeproj/
+ios/DerivedData/
+ios/TestArtifacts/
+ios/**/*.xcuserstate
+cloud/.venv/
+cloud/config.env
+cloud/certificates/
+cloud/*.db
+cloud/**/__pycache__/
+ios/JustHireMe/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+ios/TabletArtifacts/

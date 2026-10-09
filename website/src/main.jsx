@@ -899,6 +899,7 @@ function App() {
           {navItems.map((item) => <a key={item} href={`#${item.toLowerCase().replace(" ", "-")}`}>{item}</a>)}
         </nav>
         <div className="header-actions">
+          <a className="header-link" href="/ios/"><span>iPhone beta</span></a>
           <a className="header-link hide-mobile" href="https://vasudev.live"><Icon name="globe" /> <span>Portfolio</span></a>
           <a className="header-link hide-mobile" href="https://x.com/vasu_devs"><Icon name="xlogo" /> <span>X</span></a>
           <a className="header-link support-link" href={coffeeUrl}><Icon name="coffee" /> <span>Support</span></a>

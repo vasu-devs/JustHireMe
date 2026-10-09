@@ -1,0 +1,74 @@
+name: iOS release to TestFlight
+# Manual: archives the signed Release build on a hosted Mac and uploads it to App Store Connect.
+# Secrets (repository settings > Secrets and variables > Actions):
+#   APPLE_TEAM_ID             Apple Developer Team ID
+#   ASC_KEY_ID / ASC_ISSUER_ID App Store Connect API key (role: App Manager or Admin, for cloud signing)
+#   ASC_API_KEY_P8            Base64 of the AuthKey_<KEY_ID>.p8 file
+#   IOS_CONFIGURATION_PLIST   Base64 of the production ios/JustHireMe/Configuration.plist
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: Upload to App Store Connect (off = export the .ipa as an artifact only)
+        type: boolean
+        default: true
+      build_number:
+        description: Build number override (default = commit count)
+        type: string
+        default: ""
+permissions:
+  contents: read
+jobs:
+  archive:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Select Xcode 26 or newer
+        shell: bash
+        run: |
+          XCODE_PATH=$(python3 -c 'import glob; print(sorted(glob.glob("/Applications/Xcode_26*.app"))[-1])')
+          test -n "$XCODE_PATH"
+          sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
+          xcodebuild -version
+      - run: brew install xcodegen
+      - name: Write release configuration and API key
+        shell: bash
+        env:
+          IOS_CONFIGURATION_PLIST: ${{ secrets.IOS_CONFIGURATION_PLIST }}
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          test -n "$IOS_CONFIGURATION_PLIST" || { echo "IOS_CONFIGURATION_PLIST secret is missing" >&2; exit 1; }
+          test -n "$ASC_API_KEY_P8" || { echo "ASC_API_KEY_P8 secret is missing" >&2; exit 1; }
+          printf '%s' "$IOS_CONFIGURATION_PLIST" | base64 --decode > ios/JustHireMe/Configuration.plist
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s' "$ASC_API_KEY_P8" | base64 --decode > "$RUNNER_TEMP/asc/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/asc/AuthKey.p8"
+      - name: Archive and upload
+        shell: bash
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_PATH: ${{ runner.temp }}/asc/AuthKey.p8
+          UPLOAD: ${{ inputs.upload && '1' || '0' }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          bash -n ios/scripts/archive-release.sh
+          if [ -z "$BUILD_NUMBER" ]; then unset BUILD_NUMBER; fi
+          bash ios/scripts/archive-release.sh
+      - name: Remove secrets from the workspace
+        if: always()
+        run: rm -f ios/JustHireMe/Configuration.plist "$RUNNER_TEMP/asc/AuthKey.p8"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-release-evidence
+          path: |
+            ios/TestArtifacts/release-*/*.log
+            ios/TestArtifacts/release-*/export/*.ipa
+            ios/TestArtifacts/release-*/export/*.plist
+          retention-days: 14
+          if-no-files-found: warn

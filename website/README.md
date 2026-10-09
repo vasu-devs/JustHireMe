@@ -2,6 +2,26 @@
 
 Vercel project root: `website/`
 
+## iPhone beta page (`/ios/`)
+
+`ios/index.html` + `src/ios/` is a separate Vite entry, built to `dist/ios/index.html` and served at
+`https://justhireme.ai/ios/`. Its look copies the iOS app (`ios/JustHireMe/NotebookDesign.swift`,
+`Theme.swift`); fonts and screenshots live in `public/ios/`. The screenshots are the app's preview
+data (`docs/mobile-ui/notebook-refined`), cropped to remove the status bar and preview banner.
+
+Sign-ups post to `api/waitlist.js` with `list: "ios"` and a `source` (`?ref=` / `utm_source`, or
+the referrer, e.g. `x` for t.co). Storage:
+
+1. **Supabase** (preferred): run `supabase/waitlist.sql` once in the SQL editor, then set
+   `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (or the legacy `SUPABASE_SERVICE_ROLE_KEY`) in Vercel.
+   The table has RLS on and no public policies; only the serverless function can read or write it.
+   Launch-day query and a `notified_at` column for tracking who has been emailed are in the SQL file.
+2. **Upstash Redis** fallback: if Supabase isn't configured, sign-ups go to the sorted set
+   `justhireme:waitlist:ios` using the existing Upstash variables.
+
+With Redis configured, sign-ups are also limited to 8 per IP per hour. Posts without a `list` still go
+to the older `cloud` list, so the main page's Cloud waitlist keeps working.
+
 ## View Counter
 
 The live unique-view counter is implemented in `api/views.js`.

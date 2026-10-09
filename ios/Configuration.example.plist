@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>APIBaseURL</key><string>https://REPLACE-api.example.com/</string>
+  <key>SupabaseURL</key><string>https://REPLACE.supabase.co/</string>
+  <key>SupabasePublicKey</key><string>REPLACE-public-anon-key</string>
+  <key>PrivacyURL</key><string>https://REPLACE.example.com/privacy</string>
+  <key>SupportURL</key><string>https://REPLACE.example.com/support</string>
+  <key>TermsURL</key><string>https://www.apple.com/legal/internet-services/itunes/dev/stdeula/</string>
+</dict></plist>

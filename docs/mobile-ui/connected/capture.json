@@ -1,0 +1,19 @@
+{
+  "source_run": "https://github.com/vasu-devs/JustHireMe-iOS-private/actions/runs/35723632669",
+  "code_revision": "fb2f1ebf47c15a7873f2ce97fd6ad6731163107a",
+  "source": "Actual iPhone simulator recording during ConnectedWalkthroughUITests",
+  "width": 720,
+  "height": 1566,
+  "fps": 30,
+  "duration_seconds": 138.066667,
+  "edit": "Lossless trim: start at 3.666667 seconds, retain 138 seconds",
+  "video_sha256": "5B4BBF1F820C058DF62102DF6E6FD1C48005F3057948EA58D4D4E3B2DD339AFF",
+  "external_fixtures": [
+    "authentication",
+    "discovery provider",
+    "matching provider",
+    "employer",
+    "email provider",
+    "Apple receipt verifier"
+  ]
+}

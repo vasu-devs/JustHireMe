@@ -1,0 +1,36 @@
+name: Capture tested app on iPad
+on:
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: Successful native test run containing ios-simulator-evidence
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  ipad:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check simulator scripts
+        run: |
+          bash -n ios/scripts/run-simulator.sh
+          bash -n ios/scripts/capture-ipad.sh
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-simulator-evidence
+          run-id: ${{ inputs.source_run }}
+          github-token: ${{ github.token }}
+          path: .tmp/tested-app
+      - name: Launch the tested app on iPad
+        run: bash ios/scripts/capture-ipad.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ipad-simulator-evidence
+          path: ios/TabletArtifacts/
+          retention-days: 7
+          if-no-files-found: error

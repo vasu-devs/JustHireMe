@@ -62,6 +62,8 @@ JustHireMe is built and maintained by Vasudev Siddh - full-stack AI engineer, op
 
 ## Current Status
 
+An **iOS mobile edition is in development** with native SwiftUI source, a separate authenticated cloud API, and StoreKit subscriptions/credits. See [iOS setup](ios/README.md), [cloud setup](cloud/README.md), and the [App Store launch guide](docs/IOS_LAUNCH.md). Native compilation and demo unit/UI tests passed on a hosted iPhone simulator. Live integrations, physical-device testing, production deployment, and App Store submission remain; its current mobile feature scope is documented separately from the desktop release below.
+
 JustHireMe's stable core is the local-first desktop workbench, Python sidecar API, lead ingestion, deterministic ranking, profile-aware matching, local CRM workflows, and document/outreach generation. Every release is built by GitHub Actions from a `v*` tag and now ships installers for **Windows, macOS, and Linux**.
 
 | Area | Status |
